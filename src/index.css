@@ -1,0 +1,12 @@
+html, body, #root {
+  background: #121218 !important;
+  color: #F1F0FF !important;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  min-height: 100dvh;
+}
