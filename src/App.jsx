@@ -630,6 +630,36 @@ body {
   text-align: center;
   width: 100%;
 }
+.compass-permission-btn {
+  background: #7C3AED;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  padding: 14px 28px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.compass-fallback {
+  background: rgba(124,58,237,0.08);
+  border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #9D5FF5;
+  text-align: center;
+  width: 100%;
+}
+.compass-calibrating {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #F59E0B;
+  text-align: center;
+}
 .sim-btn {
   width: 100%;
   margin-top: 12px;
@@ -1325,25 +1355,27 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
 
 // ── Compass Screen ────────────────────────────────────────────────────────
 function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
-  const [bearing, setBearing] = useState(0)
+  const [toBearing, setToBearing] = useState(0)
   const [distance, setDistance] = useState(null)
   const [gpsStatus, setGpsStatus] = useState('searching')
+  // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
+  const [orientState, setOrientState] = useState('init')
+  const [deviceHeading, setDeviceHeading] = useState(null)
   const watchRef = useRef(null)
+  const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const accent = hexAccent(hunt?.accent_color)
   const geofence = realCoords?.geofence_radius_m || 15
 
+  // GPS watch
   useEffect(() => {
-    if (!navigator.geolocation || !realCoords) {
-      setGpsStatus('unavailable')
-      return
-    }
+    if (!navigator.geolocation || !realCoords) { setGpsStatus('unavailable'); return }
     watchRef.current = navigator.geolocation.watchPosition(
       pos => {
         const { latitude, longitude } = pos.coords
         const dist = haversineMetres(latitude, longitude, realCoords.lat, realCoords.lon)
-        setBearing(bearingDegrees(latitude, longitude, realCoords.lat, realCoords.lon))
-        setDistance(Math.round(dist))
+        setToBearing(bearingDegrees(latitude, longitude, realCoords.lat, realCoords.lon))
+        setDistance(dist)
         setGpsStatus('active')
         if (dist <= geofence && !arrivedRef.current) {
           arrivedRef.current = true
@@ -1356,50 +1388,127 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
     return () => navigator.geolocation.clearWatch(watchRef.current)
   }, [realCoords, geofence, onArrived])
 
-  const statusText = {
+  // Device orientation: auto-start on Android/desktop, ask permission on iOS
+  useEffect(() => {
+    if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+      setOrientState('needs-permission')
+    } else if ('DeviceOrientationEvent' in window) {
+      startOrientListener()
+    } else {
+      setOrientState('unsupported')
+    }
+    return () => { if (orientCleanupRef.current) orientCleanupRef.current() }
+  }, [])
+
+  function startOrientListener() {
+    setOrientState('calibrating')
+    const hasAbsolute = 'ondeviceorientationabsolute' in window
+    const evtName = hasAbsolute ? 'deviceorientationabsolute' : 'deviceorientation'
+    let fired = false
+    const timeoutId = setTimeout(() => { if (!fired) setOrientState('unsupported') }, 3000)
+
+    function handler(e) {
+      let heading = null
+      // iOS: webkitCompassHeading is true-north clockwise (most reliable)
+      if (e.webkitCompassHeading != null && e.webkitCompassHeading >= 0) {
+        heading = e.webkitCompassHeading
+      } else if (e.alpha != null) {
+        // deviceorientationabsolute alpha: 0=North, increases clockwise per spec
+        heading = (360 - e.alpha + 360) % 360
+      }
+      if (heading == null) return
+      if (!fired) { fired = true; clearTimeout(timeoutId); setOrientState('active') }
+      setDeviceHeading(heading)
+    }
+
+    window.addEventListener(evtName, handler, true)
+    orientCleanupRef.current = () => window.removeEventListener(evtName, handler, true)
+  }
+
+  async function requestCompassPermission() {
+    try {
+      const result = await DeviceOrientationEvent.requestPermission()
+      if (result === 'granted') {
+        startOrientListener()
+      } else {
+        setOrientState('denied')
+      }
+    } catch {
+      setOrientState('denied')
+    }
+  }
+
+  // Arrow rotation: bearing-to-destination minus device heading = screen-relative angle
+  const arrowDeg = deviceHeading != null
+    ? (toBearing - deviceHeading + 360) % 360
+    : toBearing  // fallback: north-relative bearing
+
+  const cardinalDir = () => {
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+    return dirs[Math.round(toBearing / 45) % 8]
+  }
+
+  const gpsStatusText = {
     searching:   'ACQUIRING GPS…',
     active:      `GPS ACTIVE · TARGET ~${geofence}m`,
     error:       'GPS UNAVAILABLE',
     unavailable: 'GPS NOT SUPPORTED',
   }[gpsStatus]
 
+  const distDisplay = distance != null
+    ? distance < 1000
+      ? <>{Math.round(distance)}<span className="compass-unit"> m</span></>
+      : <>{(distance / 1000).toFixed(1)}<span className="compass-unit"> km</span></>
+    : '—'
+
   return (
     <div className="compass-wrap">
-      <div className="compass-dist">
-        {distance != null ? distance : '—'}
-        <span className="compass-unit"> m</span>
-      </div>
+      <div className="compass-dist">{distDisplay}</div>
 
       <div className="compass-arrow-wrap">
         <div className="compass-ring" />
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: `translate(-50%, -100%) rotate(${bearing}deg)`,
-            transformOrigin: 'bottom center',
-            width: 6,
-            height: 70,
-            background: `linear-gradient(to top, ${accent}, #F59E0B)`,
-            borderRadius: 3,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 12,
-            height: 12,
-            borderRadius: '50%',
-            background: accent,
-          }}
-        />
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: `translate(-50%, -100%) rotate(${arrowDeg}deg)`,
+          transformOrigin: 'bottom center',
+          width: 6,
+          height: 70,
+          background: `linear-gradient(to top, ${accent}, #F59E0B)`,
+          borderRadius: 3,
+          transition: 'transform 0.1s linear',
+          opacity: orientState === 'needs-permission' ? 0.4 : 1,
+        }} />
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 12,
+          height: 12,
+          borderRadius: '50%',
+          background: accent,
+        }} />
       </div>
 
-      <div className="compass-status">{statusText}</div>
+      {orientState === 'needs-permission' && (
+        <button className="compass-permission-btn" onClick={requestCompassPermission}>
+          ENABLE COMPASS
+        </button>
+      )}
+
+      {(orientState === 'denied' || orientState === 'unsupported') && distance != null && (
+        <div className="compass-fallback">
+          Head {cardinalDir()} — {fmtDistance(distance)} away
+        </div>
+      )}
+
+      {orientState === 'calibrating' && (
+        <div className="compass-calibrating">CALIBRATING COMPASS…</div>
+      )}
+
+      <div className="compass-status">{gpsStatusText}</div>
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
     </div>
   )
