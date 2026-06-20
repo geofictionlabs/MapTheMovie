@@ -469,6 +469,20 @@ body {
   margin-bottom: 8px;
   letter-spacing: 1px;
 }
+.puzzle-movie {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #B8B4D8;
+  background: rgba(124,58,237,0.1);
+  border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 8px;
+  padding: 4px 10px;
+  margin-bottom: 10px;
+}
 .puzzle-question {
   font-size: 15px;
   font-weight: 600;
@@ -1224,6 +1238,12 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
     return (
       <div className="puzzle-card solved">
         <div className="puzzle-slot-tag">SLOT {question.slot}</div>
+        {(question.movie_title || question.movie_emoji) && (
+          <div className="puzzle-movie">
+            {question.movie_emoji && <span>{question.movie_emoji}</span>}
+            <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
+          </div>
+        )}
         <div className="puzzle-question">{question.question_text}</div>
         <div className="puzzle-solved-badge">
           <span>✓</span>
@@ -1238,12 +1258,24 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
       {lockoutUntil && lockoutUntil > Date.now() ? (
         <>
           <div className="puzzle-slot-tag">SLOT {question.slot}</div>
+          {(question.movie_title || question.movie_emoji) && (
+            <div className="puzzle-movie">
+              {question.movie_emoji && <span>{question.movie_emoji}</span>}
+              <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
+            </div>
+          )}
           <div className="puzzle-question">{question.question_text}</div>
           <LockoutTimer until={lockoutUntil} onExpire={() => setLockoutUntil(null)} />
         </>
       ) : (
         <>
           <div className="puzzle-slot-tag">SLOT {question.slot}</div>
+          {(question.movie_title || question.movie_emoji) && (
+            <div className="puzzle-movie">
+              {question.movie_emoji && <span>{question.movie_emoji}</span>}
+              <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
+            </div>
+          )}
           {question.category && (
             <div className="puzzle-category">{question.category}</div>
           )}
