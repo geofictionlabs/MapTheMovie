@@ -1706,17 +1706,29 @@ export default function App() {
       let wps = []
       if (isPremium && userPos) {
         try {
-          const { data: wpData } = await supabase.rpc('generate_hunt_waypoints', {
+          const { data: wpData, error: wpErr } = await supabase.rpc('generate_hunt_waypoints', {
             p_session_id: session.id,
             p_start_lat:  userPos.lat,
             p_start_lon:  userPos.lon,
             p_count:      2,
           })
-          if (wpData?.success) wps = wpData.waypoints || []
+          console.log('[waypoints] RPC response:', wpData, wpErr)
+          if (wpData?.success) {
+            // Normalize field names — RPC may return real_lat/real_lon or lat/lon
+            wps = (wpData.waypoints || []).map((wp, i) => ({
+              index:      wp.index ?? i + 1,
+              lat:        wp.lat        ?? wp.real_lat  ?? wp.latitude  ?? 0,
+              lon:        wp.lon        ?? wp.real_lon  ?? wp.longitude ?? 0,
+              geofence_m: wp.geofence_m ?? wp.geofence  ?? 20,
+            }))
+          }
         } catch (e) {
           console.warn('[waypoints] RPC failed, falling back to no waypoints:', e)
         }
+      } else {
+        console.log('[waypoints] skipped — isPremium:', isPremium, 'userPos:', !!userPos)
       }
+      console.log('[waypoints] mode active:', wps.length > 0, '| waypoints:', wps)
       setWaypoints(wps)
       setWaypointsMode(wps.length > 0)
 
@@ -1752,10 +1764,12 @@ export default function App() {
         if (waypointsMode) {
           const phaseSlots = getPhaseSlots(waypointPhase, activeQuestions)
           const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
+          console.log('[phase]', { waypointPhase, phaseSlots, phaseDone, solved: newSolved })
 
           if (phaseDone) {
             if (waypointPhase < waypoints.length) {
               const wp = waypoints[waypointPhase]
+              console.log('[waypoints] advancing to waypoint', waypointPhase + 1, wp)
               setCompassTarget({
                 lat: wp.lat, lon: wp.lon,
                 geofence_m: wp.geofence_m,
