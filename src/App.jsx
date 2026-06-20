@@ -1704,12 +1704,13 @@ export default function App() {
       // Waypoints are stored server-side via generate_hunt_waypoints RPC.
       // Client also stores them locally for phase gating.
       let wps = []
-      if (isPremium && userPos) {
+      if (isPremium) {
+        const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
         try {
           const { data: wpData, error: wpErr } = await supabase.rpc('generate_hunt_waypoints', {
             p_session_id: session.id,
-            p_start_lat:  userPos.lat,
-            p_start_lon:  userPos.lon,
+            p_start_lat:  startPos.lat,
+            p_start_lon:  startPos.lon,
             p_count:      2,
           })
           console.log('[waypoints] RPC response:', wpData, wpErr)
@@ -1725,8 +1726,6 @@ export default function App() {
         } catch (e) {
           console.warn('[waypoints] RPC failed, falling back to no waypoints:', e)
         }
-      } else {
-        console.log('[waypoints] skipped — isPremium:', isPremium, 'userPos:', !!userPos)
       }
       console.log('[waypoints] mode active:', wps.length > 0, '| waypoints:', wps)
       setWaypoints(wps)
