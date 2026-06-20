@@ -1,25 +1,53 @@
 // MapTheMovie Service Worker — push notifications + offline cache
-const CACHE_NAME = 'mtm-v1';
-const PRECACHE = ['/', '/index.html'];
+const CACHE_NAME = 'mtm-v3';
+const ASSET_CACHE = 'mtm-assets-v3';
 
 self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
-  );
+  e.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_NAME && k !== ASSET_CACHE).map(k => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+
+  const url = new URL(e.request.url);
+
+  // Network-first for HTML navigation — always get the latest shell
+  if (e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first for hashed assets (JS/CSS bundles never change at same URL)
+  if (url.pathname.startsWith('/assets/')) {
+    e.respondWith(
+      caches.open(ASSET_CACHE).then(cache =>
+        cache.match(e.request).then(cached => {
+          if (cached) return cached;
+          return fetch(e.request).then(res => {
+            cache.put(e.request, res.clone());
+            return res;
+          });
+        })
+      )
+    );
+    return;
+  }
+
+  // Network-first for everything else
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request).catch(() => caches.match(e.request))
   );
 });
 
