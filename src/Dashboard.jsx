@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 
 // ── CSS ────────────────────────────────────────────────────────────────────
@@ -423,6 +425,61 @@ tr:last-child td { border-bottom: none; }
 }
 .tab-btn.active { color: #7C3AED; }
 .tab-btn-icon { font-size: 18px; }
+
+/* ── Pin Drop Modal ────── */
+.pin-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+.pin-modal-sheet {
+  background: #1C1C26;
+  border-radius: 24px 24px 0 0;
+  width: 100%;
+  max-width: 520px;
+  overflow: hidden;
+  border: 1px solid #32324A;
+  border-bottom: none;
+}
+.pin-map-wrap {
+  width: 100%;
+  height: 52vh;
+}
+.pin-modal-footer {
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: #32324A;
+  font-size: 12px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid #32324A;
+}
+.auth-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  color: #EF4444;
+  font-size: 13px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  text-align: left;
+}
 `
 
 // ── Toast ────────────────────────────────────────────────────────────────
@@ -489,8 +546,81 @@ const THEMES = [
   { id: 'easter',           emoji: '🐣', name: 'Easter',      tag: 'APR',       bg: '#164E63', accent: '#06B6D4' },
 ]
 
+// ── Pin Drop Modal ────────────────────────────────────────────────────────
+function PinDropModal({ onConfirm, onCancel }) {
+  const containerRef = useRef(null)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const [latLng, setLatLng] = useState({ lat: 51.3781, lng: 0.5439 })
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return
+
+    const pinIcon = L.divIcon({
+      html: '<div style="width:20px;height:20px;background:#7C3AED;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',
+      className: '',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    })
+
+    const map = L.map(containerRef.current).setView([51.3781, 0.5439], 14)
+    mapRef.current = map
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map)
+
+    const marker = L.marker([51.3781, 0.5439], { draggable: true, icon: pinIcon }).addTo(map)
+    markerRef.current = marker
+
+    marker.on('dragend', () => {
+      const pos = marker.getLatLng()
+      setLatLng({ lat: pos.lat, lng: pos.lng })
+    })
+
+    map.on('click', e => {
+      marker.setLatLng(e.latlng)
+      setLatLng({ lat: e.latlng.lat, lng: e.latlng.lng })
+    })
+
+    return () => { map.remove(); mapRef.current = null }
+  }, [])
+
+  return (
+    <div className="pin-modal">
+      <div className="pin-modal-sheet">
+        <div style={{ padding: '16px 20px 4px', fontWeight: 700, fontSize: 15 }}>Drop a Pin</div>
+        <div style={{ fontSize: 12, color: '#6B67A0', padding: '0 20px 12px' }}>
+          Tap the map or drag the pin to set your exact location
+        </div>
+        <div ref={containerRef} className="pin-map-wrap" />
+        <div className="pin-modal-footer">
+          <div style={{ fontSize: 11, color: '#6B67A0', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+            {latLng.lat.toFixed(5)}, {latLng.lng.toFixed(5)}
+          </div>
+          <button
+            className="btn-primary"
+            style={{ width: '100%', padding: 14, fontSize: 13, letterSpacing: 2 }}
+            onClick={() => onConfirm(latLng.lat, latLng.lng)}
+          >
+            CONFIRM LOCATION
+          </button>
+          <button
+            className="btn-secondary"
+            style={{ width: '100%', padding: 14, fontSize: 13 }}
+            onClick={onCancel}
+          >
+            CANCEL
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Overview Tab ─────────────────────────────────────────────────────────
-function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, onGoLive, onEndLive }) {
+function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
   const weekTotal = redemptions?.length || 0
@@ -515,7 +645,9 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, onG
         {isLive ? (
           <button className="live-btn end" onClick={onEndLive}>END SESSION</button>
         ) : (
-          <button className="live-btn go" onClick={onGoLive}>GO LIVE HERE</button>
+          <button className="live-btn go" onClick={onGoLive} disabled={gpsLoading}>
+            {gpsLoading ? 'GETTING GPS…' : 'GO LIVE HERE'}
+          </button>
         )}
       </div>
 
@@ -959,7 +1091,11 @@ function SettingsTab({ business, showToast }) {
 export default function Dashboard() {
   const [authStep, setAuthStep] = useState('checking')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authError, setAuthError] = useState('')
   const [emailSent, setEmailSent] = useState(false)
+  const [gpsLoading, setGpsLoading] = useState(false)
+  const [showPinDrop, setShowPinDrop] = useState(false)
   const [tab, setTab] = useState('overview')
   const [business, setBusiness] = useState(null)
   const [campaigns, setCampaigns] = useState([])
@@ -1032,8 +1168,17 @@ export default function Dashboard() {
       .subscribe()
   }
 
-  async function handleLogin() {
+  async function handleLoginPassword() {
+    if (!email.includes('@') || !password) return
+    setAuthError('')
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setAuthError(error.message); return }
+    await checkAuth()
+  }
+
+  async function handleLoginMagicLink() {
     if (!email.includes('@')) return
+    setAuthError('')
     await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.href },
@@ -1041,31 +1186,36 @@ export default function Dashboard() {
     setEmailSent(true)
   }
 
-  async function handleGoLive() {
-    if (!navigator.geolocation) { showToast('⚠️ GPS not available on this device'); return }
+  async function goLiveWithCoords(lat, lon, accuracyM) {
+    const activeCampaign = campaigns.find(c => c.status === 'active')
+    const { error } = await supabase.rpc('go_live', {
+      p_business_id: business.id,
+      p_campaign_id: activeCampaign?.id || null,
+      p_lat: lat,
+      p_lon: lon,
+      p_push_subscription: null,
+    })
+    if (error) { showToast('Could not go live: ' + error.message); return }
+    setIsLive(true)
+    setShowPinDrop(false)
+    const accStr = accuracyM ? ` (accuracy: ${Math.round(accuracyM)}m)` : ''
+    showToast('You are now live! Players are being guided to your location.' + accStr)
+    if (Notification.permission !== 'granted') Notification.requestPermission()
+  }
 
+  async function handleGoLive() {
+    if (!navigator.geolocation) { setShowPinDrop(true); return }
+    setGpsLoading(true)
     navigator.geolocation.getCurrentPosition(
       async pos => {
-        const activeCampaign = campaigns.find(c => c.status === 'active')
-
-        const { error } = await supabase.rpc('go_live', {
-          p_business_id: business.id,
-          p_campaign_id: activeCampaign?.id || null,
-          p_lat: pos.coords.latitude,
-          p_lon: pos.coords.longitude,
-          p_push_subscription: null,
-        })
-
-        if (error) { showToast('⚠️ Could not go live: ' + error.message); return }
-
-        setIsLive(true)
-        showToast('✓ You are now live! Players are being guided to your location.')
-
-        if (Notification.permission !== 'granted') {
-          Notification.requestPermission()
-        }
+        setGpsLoading(false)
+        await goLiveWithCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)
       },
-      () => showToast('⚠️ GPS access denied — enable location in your browser settings')
+      () => {
+        setGpsLoading(false)
+        setShowPinDrop(true)
+      },
+      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
     )
   }
 
@@ -1073,9 +1223,9 @@ export default function Dashboard() {
     if (!business?.id) return
     await supabase
       .from('live_business_sessions')
-      .update({ ended_at: new Date().toISOString() })
+      .update({ session_end: new Date().toISOString(), is_live: false })
       .eq('business_id', business.id)
-      .is('ended_at', null)
+      .is('session_end', null)
     setIsLive(false)
     showToast('Session ended.')
   }
@@ -1110,28 +1260,54 @@ export default function Dashboard() {
           <div className="auth-card">
             <div className="auth-logo">MAP<span>MOVIE</span></div>
             <div className="auth-sub">Business Dashboard · GeoFiction Labs</div>
-            <div className="auth-title">Sign In</div>
-            <p style={{ fontSize: 13, color: '#6B67A0', margin: '8px 0 20px' }}>
-              Enter your business email to receive a magic sign-in link.
-            </p>
+            <div className="auth-title" style={{ marginBottom: 20 }}>Sign In</div>
+
             {emailSent ? (
               <div className="auth-sent">
-                ✉️ Magic link sent! Check your inbox.
+                Magic link sent! Check your inbox.
                 <div style={{ marginTop: 10, fontSize: 12, color: '#6B67A0' }}>
-                  No email? Check your spam folder or contact hello@geofictionlabs.com
+                  No email? Check spam or contact hello@geofictionlabs.com
                 </div>
+                <button
+                  className="auth-btn"
+                  style={{ marginTop: 16, background: 'transparent', border: '1px solid #32324A', color: '#B8B4D8' }}
+                  onClick={() => setEmailSent(false)}
+                >
+                  BACK
+                </button>
               </div>
             ) : (
               <>
+                {authError && <div className="auth-error">{authError}</div>}
                 <input
                   className="auth-input"
                   type="email"
                   placeholder="your@business.com"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                  onChange={e => { setEmail(e.target.value); setAuthError('') }}
+                  onKeyDown={e => e.key === 'Enter' && handleLoginPassword()}
+                  autoComplete="email"
                 />
-                <button className="auth-btn" onClick={handleLogin}>SEND MAGIC LINK</button>
+                <input
+                  className="auth-input"
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setAuthError('') }}
+                  onKeyDown={e => e.key === 'Enter' && handleLoginPassword()}
+                  autoComplete="current-password"
+                />
+                <button className="auth-btn" onClick={handleLoginPassword}>SIGN IN</button>
+
+                <div className="auth-divider">or</div>
+
+                <button
+                  className="auth-btn"
+                  style={{ background: 'transparent', border: '1px solid #32324A', color: '#B8B4D8' }}
+                  onClick={handleLoginMagicLink}
+                >
+                  SEND MAGIC LINK
+                </button>
               </>
             )}
           </div>
@@ -1221,6 +1397,7 @@ export default function Dashboard() {
               redemptions={redemptions}
               todayCount={todayCount}
               isLive={isLive}
+              gpsLoading={gpsLoading}
               onGoLive={handleGoLive}
               onEndLive={handleEndLive}
             />
@@ -1250,6 +1427,12 @@ export default function Dashboard() {
         </div>
       </div>
       <ToastEl />
+      {showPinDrop && (
+        <PinDropModal
+          onConfirm={(lat, lon) => goLiveWithCoords(lat, lon, null)}
+          onCancel={() => setShowPinDrop(false)}
+        />
+      )}
     </>
   )
 }
