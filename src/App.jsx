@@ -1499,7 +1499,7 @@ export default function App() {
     if (user) return user
 
     const { data, error } = await supabase.auth.signInAnonymously()
-    if (error) throw new Error('Sign-in failed — please try again.')
+    if (error) throw new Error('Sign-in failed: ' + error.message)
 
     await supabase.from('profiles').upsert(
       { id: data.user.id },
@@ -1510,9 +1510,13 @@ export default function App() {
 
   async function startHunt(hunt) {
     setStarting(true)
+    setHuntsError(null)
     try {
+      console.log('[startHunt] auth...')
       const user = await ensureAuth()
+      console.log('[startHunt] user:', user?.id)
 
+      console.log('[startHunt] inserting hunt_sessions...')
       const { data: session, error: sessionErr } = await supabase
         .from('hunt_sessions')
         .insert({
@@ -1523,11 +1527,20 @@ export default function App() {
         })
         .select()
         .single()
-      if (sessionErr) throw sessionErr
+      if (sessionErr) {
+        console.error('[startHunt] hunt_sessions error:', sessionErr)
+        throw new Error('Session error: ' + sessionErr.message + ' (code: ' + sessionErr.code + ')')
+      }
+      console.log('[startHunt] session:', session?.id)
 
+      console.log('[startHunt] calling get_puzzle_for_player...')
       const { data: puzzleData, error: puzzleErr } = await supabase
         .rpc('get_puzzle_for_player', { p_puzzle_id: hunt.puzzle_id })
-      if (puzzleErr) throw puzzleErr
+      if (puzzleErr) {
+        console.error('[startHunt] get_puzzle_for_player error:', puzzleErr)
+        throw new Error('Puzzle error: ' + puzzleErr.message + ' (code: ' + puzzleErr.code + ')')
+      }
+      console.log('[startHunt] puzzle questions:', puzzleData?.questions?.length)
 
       setActivePack(hunt)
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
@@ -1540,7 +1553,8 @@ export default function App() {
       setCompassMsg(null)
       setScreen('puzzles')
     } catch (err) {
-      setHuntsError('Could not start hunt — please try again.')
+      console.error('[startHunt] failed:', err)
+      setHuntsError(err.message || 'Could not start hunt. Please try again.')
     } finally {
       setStarting(false)
     }
@@ -1599,7 +1613,7 @@ export default function App() {
 
       if (error || !data?.success) {
         if (data?.error === 'outside_geofence') {
-          setCompassMsg(`${Math.round(data.distance_m)}m away — get a bit closer!`)
+          setCompassMsg(`${Math.round(data.distance_m)}m away - get a bit closer!`)
         }
         return
       }
