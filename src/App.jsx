@@ -497,16 +497,22 @@ body {
   font-style: italic;
   line-height: 1.4;
 }
-.puzzle-input-row { display: flex; gap: 8px; }
+.puzzle-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
 .puzzle-input {
-  flex: 0 0 64px;
+  width: 100%;
+  box-sizing: border-box;
   background: #121218;
   border: 1px solid #32324A;
   border-radius: 10px;
   color: #F1F0FF;
   font-family: 'Share Tech Mono', monospace;
   font-size: 22px;
-  padding: 10px 14px;
+  padding: 12px 16px;
   outline: none;
   text-align: center;
   transition: border-color 0.2s;
@@ -520,13 +526,13 @@ body {
   60%{transform:translateX(4px)}
 }
 .puzzle-submit {
-  flex: 1;
+  width: 100%;
   border: none;
   border-radius: 10px;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 2px;
-  padding: 10px 18px;
+  padding: 16px;
   cursor: pointer;
   font-weight: 700;
   transition: opacity 0.2s;
@@ -1296,7 +1302,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              placeholder="e.g. 88"
+              placeholder={question.placeholder || 'e.g. ?'}
               disabled={status === 'submitting'}
             />
             <button
