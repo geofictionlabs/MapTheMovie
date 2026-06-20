@@ -1825,6 +1825,30 @@ export default function App() {
     setScreen('puzzles')
   }
 
+  async function handleSimulateArrival() {
+    if (!activeSession || !compassTarget) return
+    const { data } = await supabase.rpc('confirm_arrival', {
+      p_session_id:  activeSession.id,
+      p_campaign_id: activeSession.campaign_id,
+      p_arrival_lat: compassTarget.lat,
+      p_arrival_lon: compassTarget.lon,
+    })
+    if (data?.success) {
+      setVoucher(data)
+      setScreen('arrived')
+      return
+    }
+    console.warn('[simulate] confirm_arrival:', data?.error, '— demo fallback')
+    setVoucher({
+      voucher_code:     'MTM-TEST-' + (Math.floor(Math.random() * 9000) + 1000),
+      voucher_headline: 'You found it!',
+      voucher_detail:   'Show this screen to venue staff to claim your reward.',
+      business_name:    'Test Venue',
+      expires_at:       new Date(Date.now() + 86400000).toISOString(),
+    })
+    setScreen('arrived')
+  }
+
   const handleArrived = useCallback(
     async (lat, lon) => {
       if (screen === 'arrived' || !activeSession) return
@@ -1859,6 +1883,11 @@ export default function App() {
         return i >= 2
       })
     : activeQuestions
+
+  const phaseSlots        = waypointsMode ? getPhaseSlots(waypointPhase, activeQuestions) : []
+  const phaseSolvedSlots  = phaseSlots.filter(s => solved[s] !== undefined)
+  const phaseUnsolved     = phaseSlots.filter(s => solved[s] === undefined)
+  const isMultiSlotPhase  = phaseSlots.length > 1
 
   return (
     <>
@@ -1901,6 +1930,26 @@ export default function App() {
             </div>
             <CoordDisplay hunt={activePack} solved={solved} />
             <SignalBar points={signalPoints} accent={accent} />
+            {isMultiSlotPhase && (
+              <div style={{
+                margin: '0 16px 6px', padding: '10px 14px',
+                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+                borderRadius: '8px', fontSize: '11px', fontWeight: '700',
+                letterSpacing: '0.06em', color: '#F59E0B', textAlign: 'center',
+              }}>
+                PHASE {waypointPhase} {'·'} Solve both {phaseSlots.join(' and ')} to proceed
+              </div>
+            )}
+            {isMultiSlotPhase && phaseSolvedSlots.length > 0 && phaseUnsolved.length > 0 && (
+              <div style={{
+                margin: '0 16px 6px', padding: '10px 14px',
+                background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)',
+                borderRadius: '8px', fontSize: '13px', fontWeight: '600',
+                color: '#10B981', textAlign: 'center',
+              }}>
+                {'✓'} Slot {phaseSolvedSlots.join(', ')} solved {'—'} solve Slot {phaseUnsolved.join(' and ')} to continue
+              </div>
+            )}
             <div>
               {visibleQuestions.map(q => (
                 <PuzzleCard
@@ -1935,7 +1984,7 @@ export default function App() {
               className="sim-btn"
               onClick={() => {
                 if (compassTarget.isWaypoint) handleWaypointReached()
-                else handleArrived(compassTarget.lat, compassTarget.lon)
+                else handleSimulateArrival()
               }}
             >
               {compassTarget.isWaypoint ? '↳ SIMULATE WAYPOINT REACH (demo)' : '↳ SIMULATE ARRIVAL (demo only)'}
