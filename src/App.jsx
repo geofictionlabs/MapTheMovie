@@ -1354,7 +1354,8 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
 }
 
 // ── Compass Screen ────────────────────────────────────────────────────────
-function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
+// target = { lat, lon, geofence_m, isWaypoint, label }
+function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg }) {
   const [toBearing, setToBearing] = useState(0)
   const [distance, setDistance] = useState(null)
   const [gpsStatus, setGpsStatus] = useState('searching')
@@ -1365,28 +1366,33 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const accent = hexAccent(hunt?.accent_color)
-  const geofence = realCoords?.geofence_radius_m || 15
+  const geofence = target?.geofence_m || 15
 
-  // GPS watch
+  // GPS watch — maximumAge: 0 forces a fresh position on every update (Safari fix)
   useEffect(() => {
-    if (!navigator.geolocation || !realCoords) { setGpsStatus('unavailable'); return }
+    if (!navigator.geolocation || !target) { setGpsStatus('unavailable'); return }
+    arrivedRef.current = false
     watchRef.current = navigator.geolocation.watchPosition(
       pos => {
         const { latitude, longitude } = pos.coords
-        const dist = haversineMetres(latitude, longitude, realCoords.lat, realCoords.lon)
-        setToBearing(bearingDegrees(latitude, longitude, realCoords.lat, realCoords.lon))
+        const dist = haversineMetres(latitude, longitude, target.lat, target.lon)
+        setToBearing(bearingDegrees(latitude, longitude, target.lat, target.lon))
         setDistance(dist)
         setGpsStatus('active')
         if (dist <= geofence && !arrivedRef.current) {
           arrivedRef.current = true
-          onArrived(latitude, longitude)
+          if (target.isWaypoint) {
+            onWaypointReached()
+          } else {
+            onArrived(latitude, longitude)
+          }
         }
       },
-      () => setGpsStatus('error'),
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      err => { console.warn('[GPS] error', err.code, err.message); setGpsStatus('error') },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     )
     return () => navigator.geolocation.clearWatch(watchRef.current)
-  }, [realCoords, geofence, onArrived])
+  }, [target, geofence, onArrived, onWaypointReached])
 
   // Device orientation: auto-start on Android/desktop, ask permission on iOS
   useEffect(() => {
@@ -1443,10 +1449,12 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
     ? (toBearing - deviceHeading + 360) % 360
     : toBearing  // fallback: north-relative bearing
 
-  const cardinalDir = () => {
-    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
-    return dirs[Math.round(toBearing / 45) % 8]
-  }
+  const CARDINAL = ['N','NE','E','SE','S','SW','W','NW']
+  const cardinalDir = () => CARDINAL[Math.round(toBearing / 45) % 8]
+  const cardinalFull = () => ({
+    N:'north', NE:'north-east', E:'east', SE:'south-east',
+    S:'south', SW:'south-west', W:'west', NW:'north-west',
+  })[cardinalDir()] || 'north'
 
   const gpsStatusText = {
     searching:   'ACQUIRING GPS…',
@@ -1463,7 +1471,26 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
 
   return (
     <div className="compass-wrap">
+      {target?.label && (
+        <div style={{
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 11,
+          letterSpacing: 2,
+          color: target.isWaypoint ? '#F59E0B' : '#10B981',
+          textAlign: 'center',
+          textTransform: 'uppercase',
+        }}>
+          {target.label}
+        </div>
+      )}
+
       <div className="compass-dist">{distDisplay}</div>
+
+      {distance != null && gpsStatus === 'active' && (
+        <div style={{ fontSize: 13, color: '#6B67A0', fontWeight: 600, textAlign: 'center', marginTop: -8 }}>
+          Head {cardinalFull()}
+        </div>
+      )}
 
       <div className="compass-arrow-wrap">
         <div className="compass-ring" />
@@ -1475,7 +1502,9 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
           transformOrigin: 'bottom center',
           width: 6,
           height: 70,
-          background: `linear-gradient(to top, ${accent}, #F59E0B)`,
+          background: target?.isWaypoint
+            ? `linear-gradient(to top, #F59E0B, #FCD34D)`
+            : `linear-gradient(to top, ${accent}, #F59E0B)`,
           borderRadius: 3,
           transition: 'transform 0.1s linear',
           opacity: orientState === 'needs-permission' ? 0.4 : 1,
@@ -1488,7 +1517,7 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
           width: 12,
           height: 12,
           borderRadius: '50%',
-          background: accent,
+          background: target?.isWaypoint ? '#F59E0B' : accent,
         }} />
       </div>
 
@@ -1496,12 +1525,6 @@ function CompassScreen({ realCoords, hunt, onArrived, compassMsg }) {
         <button className="compass-permission-btn" onClick={requestCompassPermission}>
           ENABLE COMPASS
         </button>
-      )}
-
-      {(orientState === 'denied' || orientState === 'unsupported') && distance != null && (
-        <div className="compass-fallback">
-          Head {cardinalDir()} — {fmtDistance(distance)} away
-        </div>
       )}
 
       {orientState === 'calibrating' && (
@@ -1589,6 +1612,27 @@ function ArrivedScreen({ voucher }) {
   )
 }
 
+// ── Waypoint helpers ──────────────────────────────────────────────────────
+function generateWaypoints(startLat, startLon, destLat, destLon, count) {
+  const pts = []
+  for (let i = 1; i <= count; i++) {
+    const f = i / (count + 1)
+    pts.push({
+      index: i,
+      lat: startLat + (destLat - startLat) * f,
+      lon: startLon + (destLon - startLon) * f,
+      geofence_m: 20,
+    })
+  }
+  return pts
+}
+
+function getPhaseSlots(phase, questions) {
+  if (phase === 0) return questions.slice(0, 1).map(q => q.slot)
+  if (phase === 1) return questions.slice(1, 2).map(q => q.slot)
+  return questions.slice(2).map(q => q.slot)
+}
+
 // ── App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('discover')
@@ -1607,6 +1651,10 @@ export default function App() {
   const [showReset, setShowReset] = useState(false)
   const [starting, setStarting] = useState(false)
   const [compassMsg, setCompassMsg] = useState(null)
+  const [waypointsMode, setWaypointsMode] = useState(false)
+  const [waypoints, setWaypoints] = useState([])
+  const [waypointPhase, setWaypointPhase] = useState(0)
+  const [compassTarget, setCompassTarget] = useState(null)
 
   useEffect(() => {
     loadHunts()
@@ -1688,15 +1736,41 @@ export default function App() {
       }
       console.log('[startHunt] puzzle questions:', puzzleData?.questions?.length)
 
+      const questions = puzzleData?.questions || []
+      const isPremium = puzzleData?.pack_tier === 'premium' || puzzleData?.pack_tier === 'elite'
+
       setActivePack(hunt)
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
-      setActiveQuestions(puzzleData?.questions || [])
+      setActiveQuestions(questions)
       setSolved({})
       setSignalPoints(10)
       setShowReset(false)
       setRealCoords(null)
       setVoucher(null)
       setCompassMsg(null)
+      setWaypointPhase(0)
+      setCompassTarget(null)
+
+      // Premium packs: generate waypoints from player start to destination
+      // Waypoints are stored server-side via generate_hunt_waypoints RPC.
+      // Client also stores them locally for phase gating.
+      let wps = []
+      if (isPremium && userPos) {
+        try {
+          const { data: wpData } = await supabase.rpc('generate_hunt_waypoints', {
+            p_session_id: session.id,
+            p_start_lat:  userPos.lat,
+            p_start_lon:  userPos.lon,
+            p_count:      2,
+          })
+          if (wpData?.success) wps = wpData.waypoints || []
+        } catch (e) {
+          console.warn('[waypoints] RPC failed, falling back to no waypoints:', e)
+        }
+      }
+      setWaypoints(wps)
+      setWaypointsMode(wps.length > 0)
+
       setScreen('puzzles')
     } catch (err) {
       console.error('[startHunt] failed:', err)
@@ -1723,19 +1797,55 @@ export default function App() {
       }
 
       if (data.correct) {
-        setSolved(prev => ({ ...prev, [slot]: data.digit }))
+        const newSolved = { ...solved, [slot]: data.digit }
+        setSolved(newSolved)
 
-        if (data.all_solved) {
-          const { data: coords } = await supabase.rpc('unlock_coordinates', {
-            p_session_id: activeSession.id,
-          })
-          if (coords?.success) {
-            setRealCoords({
-              lat: parseFloat(coords.real_lat),
-              lon: parseFloat(coords.real_lon),
-              geofence_radius_m: coords.geofence_radius_m || 15,
-            })
-            setTimeout(() => setScreen('compass'), 600)
+        if (waypointsMode) {
+          const phaseSlots = getPhaseSlots(waypointPhase, activeQuestions)
+          const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
+
+          if (phaseDone) {
+            if (waypointPhase < waypoints.length) {
+              const wp = waypoints[waypointPhase]
+              setCompassTarget({
+                lat: wp.lat, lon: wp.lon,
+                geofence_m: wp.geofence_m,
+                isWaypoint: true,
+                label: `WAYPOINT ${waypointPhase + 1} OF ${waypoints.length}`,
+              })
+              setTimeout(() => setScreen('compass'), 600)
+            } else {
+              // All waypoints passed and this phase's slots solved — unlock final destination
+              const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
+              if (coords?.success) {
+                const finalTarget = {
+                  lat: parseFloat(coords.real_lat),
+                  lon: parseFloat(coords.real_lon),
+                  geofence_m: coords.geofence_radius_m || 15,
+                  isWaypoint: false,
+                  label: 'DESTINATION',
+                }
+                setRealCoords({ lat: finalTarget.lat, lon: finalTarget.lon, geofence_radius_m: finalTarget.geofence_m })
+                setCompassTarget(finalTarget)
+                setTimeout(() => setScreen('compass'), 600)
+              }
+            }
+          }
+        } else {
+          if (data.all_solved) {
+            const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
+            if (coords?.success) {
+              const finalTarget = {
+                lat: parseFloat(coords.real_lat),
+                lon: parseFloat(coords.real_lon),
+                geofence_m: coords.geofence_radius_m || 15,
+                isWaypoint: false,
+                label: 'DESTINATION',
+              }
+              setRealCoords({ lat: finalTarget.lat, lon: finalTarget.lon, geofence_radius_m: finalTarget.geofence_m })
+              setCompassTarget(finalTarget)
+              setTimeout(() => setScreen('compass'), 600)
+            }
           }
         }
       }
@@ -1744,6 +1854,14 @@ export default function App() {
     } catch (err) {
       return { correct: false, error: err.message }
     }
+  }
+
+  function handleWaypointReached() {
+    const next = waypointPhase + 1
+    setWaypointPhase(next)
+    setCompassTarget(null)
+    setCompassMsg(null)
+    setScreen('puzzles')
   }
 
   const handleArrived = useCallback(
@@ -1772,6 +1890,14 @@ export default function App() {
 
   const accent = hexAccent(activePack?.accent_color)
   const slots = activePack?.coordinate_slots || []
+
+  const visibleQuestions = waypointsMode
+    ? activeQuestions.filter((_, i) => {
+        if (waypointPhase === 0) return i === 0
+        if (waypointPhase === 1) return i === 1
+        return i >= 2
+      })
+    : activeQuestions
 
   return (
     <>
@@ -1815,7 +1941,7 @@ export default function App() {
             <CoordDisplay hunt={activePack} solved={solved} />
             <SignalBar points={signalPoints} accent={accent} />
             <div>
-              {activeQuestions.map(q => (
+              {visibleQuestions.map(q => (
                 <PuzzleCard
                   key={q.id}
                   question={q}
@@ -1828,24 +1954,30 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'compass' && activePack && realCoords && (
+        {screen === 'compass' && activePack && compassTarget && (
           <div className="puzzle-screen">
             <div className="pack-nav">
               <button className="nav-back" onClick={() => setScreen('puzzles')}>←</button>
               <span className="nav-pack-name">GPS Compass</span>
-              <span className="nav-count" style={{ color: '#10B981' }}>All slots unlocked</span>
+              <span className="nav-count" style={{ color: compassTarget.isWaypoint ? '#F59E0B' : '#10B981' }}>
+                {compassTarget.isWaypoint ? compassTarget.label : 'All slots unlocked'}
+              </span>
             </div>
             <CompassScreen
-              realCoords={realCoords}
+              target={compassTarget}
               hunt={activePack}
               onArrived={handleArrived}
+              onWaypointReached={handleWaypointReached}
               compassMsg={compassMsg}
             />
             <button
               className="sim-btn"
-              onClick={() => handleArrived(realCoords.lat, realCoords.lon)}
+              onClick={() => {
+                if (compassTarget.isWaypoint) handleWaypointReached()
+                else handleArrived(compassTarget.lat, compassTarget.lon)
+              }}
             >
-              ↳ SIMULATE ARRIVAL (demo only)
+              {compassTarget.isWaypoint ? '↳ SIMULATE WAYPOINT REACH (demo)' : '↳ SIMULATE ARRIVAL (demo only)'}
             </button>
           </div>
         )}
