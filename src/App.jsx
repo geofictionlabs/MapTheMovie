@@ -1562,15 +1562,20 @@ function ArrivedScreen({ voucher }) {
 }
 
 // ── Waypoint helpers ──────────────────────────────────────────────────────
-function generateWaypoints(startLat, startLon, destLat, destLon, count) {
+function generateWaypoints(startLat, startLon, destLat, destLon, tier) {
+  const count = tier === 'premium' ? 2 : tier === 'elite' ? 4 : 0
+  if (count === 0) return []
   const pts = []
   for (let i = 1; i <= count; i++) {
     const f = i / (count + 1)
     pts.push({
-      index: i,
-      lat: startLat + (destLat - startLat) * f,
-      lon: startLon + (destLon - startLon) * f,
+      index:      i,
+      lat:        startLat + (destLat - startLat) * f,
+      lon:        startLon + (destLon - startLon) * f,
       geofence_m: 20,
+      unlocks_slots: tier === 'premium'
+        ? (i === 1 ? ['B'] : ['C', 'D'])
+        : (i === 1 ? ['B'] : i === 2 ? ['C'] : i === 3 ? ['D'] : ['E']),
     })
   }
   return pts
@@ -1700,30 +1705,25 @@ export default function App() {
       setWaypointPhase(0)
       setCompassTarget(null)
 
-      // Premium packs: generate waypoints from player start to destination
-      // Waypoints are stored server-side via generate_hunt_waypoints RPC.
-      // Client also stores them locally for phase gating.
+      // Premium packs: fetch destination once, generate waypoints client-side.
+      // get_puzzle_destination takes only a UUID — no FLOAT8 type issues.
       let wps = []
       if (isPremium) {
         const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
         try {
-          const { data: wpData, error: wpErr } = await supabase.rpc('generate_hunt_waypoints', {
+          const { data: destData, error: destErr } = await supabase.rpc('get_puzzle_destination', {
             p_session_id: session.id,
-            p_start_lat:  startPos.lat,
-            p_start_lon:  startPos.lon,
           })
-          console.log('[waypoints] RPC response:', wpData, wpErr)
-          if (wpData?.success) {
-            // Normalize field names — RPC may return real_lat/real_lon or lat/lon
-            wps = (wpData.waypoints || []).map((wp, i) => ({
-              index:      wp.index ?? i + 1,
-              lat:        wp.lat        ?? wp.real_lat  ?? wp.latitude  ?? 0,
-              lon:        wp.lon        ?? wp.real_lon  ?? wp.longitude ?? 0,
-              geofence_m: wp.geofence_m ?? wp.geofence  ?? 20,
-            }))
+          console.log('[waypoints] get_puzzle_destination:', destData, destErr)
+          if (destData?.success) {
+            wps = generateWaypoints(
+              startPos.lat, startPos.lon,
+              parseFloat(destData.real_lat), parseFloat(destData.real_lon),
+              puzzleData.pack_tier,
+            )
           }
         } catch (e) {
-          console.warn('[waypoints] RPC failed, falling back to no waypoints:', e)
+          console.warn('[waypoints] destination fetch failed, linear mode:', e)
         }
       }
       console.log('[waypoints] mode active:', wps.length > 0, '| waypoints:', wps)
