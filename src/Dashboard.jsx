@@ -620,7 +620,7 @@ function PinDropModal({ onConfirm, onCancel }) {
 }
 
 // ── Overview Tab ─────────────────────────────────────────────────────────
-function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive }) {
+function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
   const weekTotal = redemptions?.length || 0
@@ -671,6 +671,51 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
           </div>
         </div>
       </div>
+
+      {puzzlePreview && puzzlePreview.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div className="section-label">Your Hunt Questions</div>
+          <div className="card" style={{ padding: '16px 20px', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, color: '#B8B4D8', marginBottom: 16, lineHeight: 1.5 }}>
+              Players solve these questions to build your GPS coordinates and find you.
+              Each correct answer contributes one digit to the location.
+            </div>
+            {puzzlePreview.map((q, i) => (
+              <div key={i} style={{
+                background: '#121218',
+                border: '1px solid #32324A',
+                borderRadius: 10,
+                padding: '12px 14px',
+                marginBottom: i < puzzlePreview.length - 1 ? 10 : 0,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{
+                    background: '#7C3AED', color: '#fff',
+                    borderRadius: 4, padding: '2px 7px',
+                    fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1,
+                  }}>SLOT {q.slot}</span>
+                  <span style={{ fontSize: 13, color: '#B8B4D8' }}>
+                    {q.movie_emoji} {q.movie_title} ({q.movie_year})
+                  </span>
+                  <span style={{
+                    marginLeft: 'auto',
+                    background: 'rgba(245,158,11,0.12)', color: '#F59E0B',
+                    borderRadius: 4, padding: '2px 7px',
+                    fontSize: 11, fontFamily: "'Share Tech Mono', monospace",
+                  }}>DIGIT {q.digit}</span>
+                </div>
+                <div style={{ fontSize: 14, color: '#F1F0FF', lineHeight: 1.4 }}>{q.question_text}</div>
+                {q.extraction_note && (
+                  <div style={{ fontSize: 11, color: '#6B67A0', marginTop: 4 }}>{q.extraction_note}</div>
+                )}
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: '#6B67A0', marginTop: 12, textAlign: 'center' }}>
+              Players type full answers — the coordinate digit is extracted server-side
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="section-label">Recent Redemptions</div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -1102,6 +1147,7 @@ export default function Dashboard() {
   const [redemptions, setRedemptions] = useState([])
   const [todayCount, setTodayCount] = useState(0)
   const [isLive, setIsLive] = useState(false)
+  const [puzzlePreview, setPuzzlePreview] = useState(null)
   const realtimeRef = useRef(null)
 
   const { showToast, ToastEl } = useToast()
@@ -1201,6 +1247,13 @@ export default function Dashboard() {
     const accStr = accuracyM ? ` (accuracy: ${Math.round(accuracyM)}m)` : ''
     showToast('You are now live! Players are being guided to your location.' + accStr)
     if (Notification.permission !== 'granted') Notification.requestPermission()
+
+    // Load puzzle preview for this location
+    const { data: previewData } = await supabase.rpc('build_puzzle_for_location', {
+      p_lat: lat,
+      p_lon: lon,
+    })
+    if (previewData?.success) setPuzzlePreview(previewData.questions || [])
   }
 
   async function handleGoLive() {
@@ -1400,6 +1453,7 @@ export default function Dashboard() {
               gpsLoading={gpsLoading}
               onGoLive={handleGoLive}
               onEndLive={handleEndLive}
+              puzzlePreview={puzzlePreview}
             />
           )}
           {tab === 'vouchers' && (
