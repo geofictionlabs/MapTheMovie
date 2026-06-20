@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿﻿﻿﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
@@ -18,10 +18,10 @@ function haversineMetres(lat1, lon1, lat2, lon2) {
 
 function bearingDegrees(lat1, lon1, lat2, lon2) {
   const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const φ1 = (lat1 * Math.PI) / 180
-  const φ2 = (lat2 * Math.PI) / 180
-  const y = Math.sin(dLon) * Math.cos(φ2)
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon)
+  const lat1r = (lat1 * Math.PI) / 180
+  const lat2r = (lat2 * Math.PI) / 180
+  const y = Math.sin(dLon) * Math.cos(lat2r)
+  const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLon)
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
@@ -863,49 +863,7 @@ function LogoSVG() {
   )
 }
 
-// ── Paywall Modal ─────────────────────────────────────────────────────────
-function PaywallModal({ hunt, onClose }) {
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
-
-  async function handleJoin() {
-    if (!email.includes('@')) return
-    await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } })
-    setSent(true)
-  }
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-sheet">
-        <button className="modal-close" onClick={onClose}>✕</button>
-        <div style={{ fontSize: 32 }}>{hunt.pack_emoji}</div>
-        <div className="modal-title">{hunt.pack_name}</div>
-        <div className="modal-sub">
-          This is a {hunt.pack_tier} hunt. Sign in to unlock it — it only takes a magic link.
-        </div>
-        {sent ? (
-          <div className="modal-sent">✓ Magic link sent! Check your inbox.</div>
-        ) : (
-          <div className="modal-email-row">
-            <input
-              className="modal-input"
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleJoin()}
-            />
-            <button className="modal-btn-main" onClick={handleJoin}>JOIN</button>
-          </div>
-        )}
-        <div className="modal-divider">— OR —</div>
-        <button className="modal-free-btn" onClick={onClose}>
-          BROWSE FREE HUNTS ONLY
-        </button>
-      </div>
-    </div>
-  )
-}
+// PaywallModal removed — all tiers freely playable until Stripe is integrated
 
 // ── Leaflet Hunt Map ──────────────────────────────────────────────────────
 function HuntMap({ hunts, userPos, onHuntSelect }) {
@@ -949,7 +907,7 @@ function HuntMap({ hunts, userPos, onHuntSelect }) {
       const tier = hunt.pack_tier
       const color =
         tier === 'elite' ? '#FCD34D' : tier === 'premium' ? '#F59E0B' : '#7C3AED'
-      const label = tier === 'elite' ? '⭐' : hunt.pack_emoji
+      const label = tier === 'elite' ? '\u2B50' : hunt.pack_emoji
 
       const icon = L.divIcon({
         html: `<div style="
@@ -984,7 +942,7 @@ function HuntCard({ hunt, onTap, distLabel }) {
   const accent = hexAccent(hunt.accent_color)
   const tier = hunt.pack_tier
   const badgeClass = tier === 'elite' ? 'badge-elite' : tier === 'premium' ? 'badge-premium' : 'badge-free'
-  const badgeLabel = tier === 'elite' ? '⭐ ELITE' : tier === 'premium' ? '★ PREMIUM' : 'FREE'
+  const badgeLabel = tier === 'elite' ? '\u2B50 ELITE' : tier === 'premium' ? '\u2605 PREMIUM' : 'FREE'
 
   return (
     <div
@@ -1002,7 +960,7 @@ function HuntCard({ hunt, onTap, distLabel }) {
         <div className="hunt-card-desc">{hunt.pack_description}</div>
         <div className="hunt-card-meta">
           <span className={`badge ${badgeClass}`}>{badgeLabel}</span>
-          {distLabel && <span className="badge badge-dist">📍 {distLabel}</span>}
+          {distLabel && <span className="badge badge-dist">{'\u{1F4CD}'} {distLabel}</span>}
           {hunt.voucher_headline && (
             <span className="badge badge-dist" style={{ color: '#F59E0B' }}>
               {hunt.voucher_headline}
@@ -1026,14 +984,9 @@ function HuntCard({ hunt, onTap, distLabel }) {
 // ── Hunt Discovery ────────────────────────────────────────────────────────
 function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
   const [viewMode, setViewMode] = useState('list')
-  const [paywallHunt, setPaywallHunt] = useState(null)
 
   function handleTap(hunt) {
-    if (hunt.is_free_tier) {
-      onStart(hunt)
-    } else {
-      setPaywallHunt(hunt)
-    }
+    onStart(hunt)
   }
 
   function distLabel(hunt) {
@@ -1045,10 +998,6 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
 
   return (
     <div className="discover-screen">
-      {paywallHunt && (
-        <PaywallModal hunt={paywallHunt} onClose={() => setPaywallHunt(null)} />
-      )}
-
       <div className="logo-wrap">
         <LogoSVG />
         <div className="logo-wordmark">
@@ -1070,7 +1019,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
             onClick={() => setViewMode('list')}
           >
-            ☰ List
+            {'☰'} List
           </button>
           <button
             className="view-toggle"
@@ -1080,7 +1029,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
             onClick={() => setViewMode('map')}
           >
-            🗺 Map
+            {'\u{1F5FA}'} Map
           </button>
         </div>
       </div>
@@ -1094,7 +1043,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
 
       {error && !loading && (
         <div className="error-state">
-          ⚠️ {error}
+          {'⚠️'} {error}
           <div style={{ fontSize: 11, marginTop: 6, color: '#B8B4D8' }}>
             Check your connection and try again.
           </div>
@@ -1103,7 +1052,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
 
       {!loading && !error && hunts.length === 0 && (
         <div className="empty-state">
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🗺</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{'\u{1F5FA}'}</div>
           No active hunts in this area yet.
           <div style={{ fontSize: 11, color: '#32324A', marginTop: 6 }}>
             Check back soon — more hunts coming your way.
@@ -1123,7 +1072,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
           />
           <div className="map-legend">
-            ● Purple = Standard &nbsp;·&nbsp; ● Gold = Premium &nbsp;·&nbsp; ⭐ = Elite
+            ● Purple = Standard &nbsp;·&nbsp; ● Gold = Premium &nbsp;·&nbsp; {'\u2B50'} = Elite
             &nbsp;·&nbsp; Locations approximate
           </div>
         </div>
@@ -1223,7 +1172,7 @@ function LockoutTimer({ until, onExpire }) {
 
   return (
     <div className="lockout-box">
-      ⛔ LOCKED — Try again in {secs}s
+      {'⛔'} LOCKED — Try again in {secs}s
     </div>
   )
 }
@@ -1282,7 +1231,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
         )}
         <div className="puzzle-question">{question.question_text}</div>
         <div className="puzzle-solved-badge">
-          <span>✓</span>
+          <span>{'✓'}</span>
           <span>Digit {question.slot} = {solvedDigit}</span>
         </div>
       </div>
@@ -1579,7 +1528,7 @@ function ArrivedScreen({ voucher }) {
 
   return (
     <div className="arrived-wrap">
-      <div className="arrived-emoji">🎉</div>
+      <div className="arrived-emoji">{'\u{1F389}'}</div>
       <div className="arrived-title">YOU FOUND IT</div>
       <div className="arrived-sub">
         You solved the puzzle and walked to the location.
@@ -1906,7 +1855,7 @@ export default function App() {
         {showReset && (
           <div className="reset-overlay">
             <div className="reset-sheet">
-              <div className="reset-icon">📡</div>
+              <div className="reset-icon">{'\u{1F4E1}'}</div>
               <div className="reset-title">SIGNAL LOST</div>
               <div className="reset-body">
                 Too many wrong guesses — coordinate data has been wiped.
