@@ -7,6 +7,7 @@ export default defineConfig({
     'process.env': {}
   },
   build: {
-    charset: 'utf8'
+    charset: 'utf8',
+    target: 'es2015'
   },
 })
