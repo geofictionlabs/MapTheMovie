@@ -1711,7 +1711,6 @@ export default function App() {
             p_session_id: session.id,
             p_start_lat:  startPos.lat,
             p_start_lon:  startPos.lon,
-            p_count:      2,
           })
           console.log('[waypoints] RPC response:', wpData, wpErr)
           if (wpData?.success) {
