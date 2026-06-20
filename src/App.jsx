@@ -1261,11 +1261,10 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
               className={`puzzle-input ${status === 'wrong' ? 'wrong' : ''}`}
               type="number"
               min="0"
-              max="9"
               value={input}
-              onChange={e => setInput(e.target.value.slice(-1))}
+              onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              placeholder="?"
+              placeholder="e.g. 88"
               disabled={status === 'submitting'}
             />
             <button
