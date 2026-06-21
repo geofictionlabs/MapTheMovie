@@ -49,6 +49,29 @@ function diffGeofence(difficulty) {
   return { casual: 25, classic: 15, expert: 10 }[difficulty] || 15
 }
 
+function formatCountdown(endsAt) {
+  const diff = new Date(endsAt) - Date.now()
+  if (diff <= 0) return 'ENDED'
+  const days  = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  const mins  = Math.floor((diff % 3600000) / 60000)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+function fmtPounds(pence, fallbackPounds) {
+  if (pence != null) return '£' + Math.floor(pence / 100).toLocaleString('en-GB')
+  if (fallbackPounds != null) return '£' + Math.floor(fallbackPounds).toLocaleString('en-GB')
+  return '£0'
+}
+
+function fmtEntryFee(pence, fallbackPounds) {
+  if (pence != null) return '£' + (pence / 100).toFixed(2)
+  if (fallbackPounds != null) return '£' + parseFloat(fallbackPounds).toFixed(2)
+  return '£1.99'
+}
+
 function fmtDistance(m) {
   const mi = m / 1609.34
   if (mi < 0.05) return `${Math.round(m)} m`
@@ -930,6 +953,12 @@ body {
   text-decoration: none;
 }
 .footer-link:hover { color: #7C3AED; }
+
+@keyframes prize-pulse {
+  0%, 100% { border-color: #F59E0B; box-shadow: 0 0 10px rgba(245,158,11,0.2), inset 0 0 20px rgba(245,158,11,0.03); }
+  50%       { border-color: #FCD34D; box-shadow: 0 0 32px rgba(245,158,11,0.55), inset 0 0 20px rgba(245,158,11,0.07); }
+}
+.prize-card { animation: prize-pulse 2.4s ease-in-out infinite; }
 `
 
 //  Logo 
@@ -1216,8 +1245,366 @@ function HuntCard({ hunt, onTap, distLabel }) {
     </div>
   )
 }
-//  Hunt Discovery 
-function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
+
+//  Prize Pool Card
+function PrizePoolCard({ pool, onTap }) {
+  const [countdown, setCountdown] = useState(() => formatCountdown(pool.ends_at))
+  useEffect(() => {
+    const t = setInterval(() => setCountdown(formatCountdown(pool.ends_at)), 30000)
+    return () => clearInterval(t)
+  }, [pool.ends_at])
+
+  const poolAmt  = fmtPounds(pool.pool_amount_pence, pool.pool_amount)
+  const entryFee = fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)
+  const players  = (pool.player_count ?? 0).toLocaleString('en-GB')
+
+  return (
+    <div
+      className="prize-card"
+      onClick={() => onTap(pool)}
+      style={{
+        background: 'linear-gradient(135deg, #1A1200 0%, #241A00 50%, #1A1200 100%)',
+        border: '2px solid #F59E0B',
+        borderRadius: 20,
+        marginBottom: 20,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        position: 'relative',
+      }}
+    >
+      {/* Gold shimmer strip */}
+      <div style={{
+        height: 4,
+        background: 'linear-gradient(90deg, #F59E0B, #FCD34D, #F59E0B)',
+      }} />
+
+      <div style={{ padding: '16px 20px 20px' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, color: '#000', fontWeight: 900, flexShrink: 0,
+          }}>&#9733;</div>
+          <div>
+            <div style={{
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: 10,
+              letterSpacing: 2,
+              color: '#F59E0B',
+              fontWeight: 700,
+              marginBottom: 2,
+            }}>PRIZE HUNT</div>
+            <div style={{
+              fontFamily: "'Nunito', sans-serif",
+              fontSize: 18,
+              fontWeight: 900,
+              color: '#FCD34D',
+              lineHeight: 1.1,
+            }}>{pool.title}</div>
+          </div>
+        </div>
+
+        {/* Prize amount */}
+        <div style={{
+          fontFamily: "'Nunito', sans-serif",
+          fontSize: 36,
+          fontWeight: 900,
+          color: '#FCD34D',
+          letterSpacing: -1,
+          marginBottom: 4,
+          lineHeight: 1,
+        }}>{poolAmt}</div>
+        <div style={{
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 11,
+          color: '#B8A050',
+          letterSpacing: 1,
+          marginBottom: 14,
+        }}>PRIZE POOL</div>
+
+        {/* Stats row */}
+        <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
+          <div>
+            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: '#FCD34D', fontWeight: 700 }}>
+              {players}
+            </div>
+            <div style={{ fontSize: 10, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8, marginTop: 2 }}>
+              PLAYERS
+            </div>
+          </div>
+          <div>
+            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: '#FCD34D', fontWeight: 700 }}>
+              {countdown}
+            </div>
+            <div style={{ fontSize: 10, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8, marginTop: 2 }}>
+              REMAINING
+            </div>
+          </div>
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={e => { e.stopPropagation(); onTap(pool) }}
+          style={{
+            width: '100%',
+            background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+            color: '#000',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontWeight: 800,
+            fontSize: 13,
+            letterSpacing: 2,
+            padding: '13px 0',
+            border: 'none',
+            borderRadius: 12,
+            cursor: 'pointer',
+          }}
+        >
+          ENTER NOW &mdash; {entryFee}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+//  Prize Pool Screen
+function PrizePoolScreen({ pool, onBack }) {
+  const [countdown, setCountdown] = useState(() => formatCountdown(pool.ends_at))
+  const [email, setEmail] = useState('')
+  const [notifySent, setNotifySent] = useState(false)
+
+  useEffect(() => {
+    const t = setInterval(() => setCountdown(formatCountdown(pool.ends_at)), 30000)
+    return () => clearInterval(t)
+  }, [pool.ends_at])
+
+  const poolAmt   = fmtPounds(pool.pool_amount_pence, pool.pool_amount)
+  const entryFee  = fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)
+  const players   = (pool.player_count ?? 0).toLocaleString('en-GB')
+  const feeNum    = pool.entry_fee_pence != null ? pool.entry_fee_pence / 100 : pool.entry_fee ?? 1.99
+  const builtFrom = pool.player_count
+    ? `${players} entries x ${fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)}`
+    : null
+
+  function handleNotify(e) {
+    e.preventDefault()
+    if (!email.includes('@')) return
+    setNotifySent(true)
+  }
+
+  return (
+    <div className="puzzle-screen" style={{ background: '#121218', minHeight: '100dvh', color: '#F1F0FF' }}>
+      {/* Nav */}
+      <div className="pack-nav" style={{ borderBottom: '1px solid #32324A' }}>
+        <button className="back-btn" onClick={onBack}>&#8592; Back</button>
+        <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 11, letterSpacing: 2, color: '#F59E0B' }}>
+          PRIZE HUNT
+        </div>
+        <div style={{ width: 56 }} />
+      </div>
+
+      <div style={{ padding: '24px 20px 40px', maxWidth: 480, margin: '0 auto' }}>
+        {/* Title */}
+        <div style={{
+          fontFamily: "'Nunito', sans-serif",
+          fontSize: 26,
+          fontWeight: 900,
+          color: '#FCD34D',
+          marginBottom: 4,
+          lineHeight: 1.2,
+        }}>{pool.title}</div>
+
+        {/* Live badge + countdown */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 24 }}>
+          <span style={{
+            background: 'rgba(16,185,129,0.15)',
+            color: '#10B981',
+            border: '1px solid rgba(16,185,129,0.3)',
+            borderRadius: 6,
+            padding: '2px 8px',
+            fontSize: 10,
+            fontFamily: "'Share Tech Mono', monospace",
+            letterSpacing: 1.5,
+            fontWeight: 700,
+          }}>LIVE</span>
+          <span style={{ fontSize: 12, color: '#8888BB', fontFamily: "'Share Tech Mono', monospace" }}>
+            Ends in {countdown}
+          </span>
+        </div>
+
+        {/* Big prize */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1A1200, #241A00)',
+          border: '2px solid #F59E0B44',
+          borderRadius: 20,
+          padding: '24px 20px',
+          marginBottom: 20,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2, color: '#B8A050', marginBottom: 8 }}>
+            TOTAL PRIZE POOL
+          </div>
+          <div style={{
+            fontFamily: "'Nunito', sans-serif",
+            fontSize: 56,
+            fontWeight: 900,
+            color: '#FCD34D',
+            letterSpacing: -2,
+            lineHeight: 1,
+            marginBottom: 8,
+          }}>{poolAmt}</div>
+          {builtFrom && (
+            <div style={{ fontSize: 12, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace" }}>
+              Built from {builtFrom}
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 12,
+          marginBottom: 20,
+        }}>
+          {[
+            { label: 'PLAYERS', value: players },
+            { label: 'ENTRY FEE', value: entryFee },
+            { label: 'TIME LEFT', value: countdown },
+            { label: 'WINNER', value: '1 PLACE' },
+          ].map(({ label, value }) => (
+            <div key={label} style={{
+              background: '#1C1C26',
+              border: '1px solid #32324A',
+              borderRadius: 12,
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 10, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1.5, color: '#6B67A0', marginBottom: 6 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 18, fontFamily: "'Share Tech Mono', monospace", color: '#FCD34D', fontWeight: 700 }}>
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Location hint */}
+        {pool.location_hint && (
+          <div style={{
+            background: '#1C1C26',
+            border: '1px solid #32324A',
+            borderRadius: 14,
+            padding: '16px 18px',
+            marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 10, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2, color: '#6B67A0', marginBottom: 8 }}>
+              LOCATION HINT
+            </div>
+            <div style={{ fontSize: 14, color: '#B8B4D8', lineHeight: 1.6 }}>
+              {pool.location_hint}
+            </div>
+          </div>
+        )}
+
+        {/* Rules */}
+        {pool.rules && (
+          <div style={{
+            background: '#1C1C26',
+            border: '1px solid #32324A',
+            borderRadius: 14,
+            padding: '16px 18px',
+            marginBottom: 24,
+          }}>
+            <div style={{ fontSize: 10, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2, color: '#6B67A0', marginBottom: 8 }}>
+              RULES
+            </div>
+            <div style={{ fontSize: 13, color: '#B8B4D8', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
+              {pool.rules}
+            </div>
+          </div>
+        )}
+
+        {/* Entry CTA — coming soon */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1A1200, #241A00)',
+          border: '1px solid #F59E0B44',
+          borderRadius: 16,
+          padding: '20px',
+        }}>
+          <div style={{
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: 11,
+            letterSpacing: 2,
+            color: '#F59E0B',
+            marginBottom: 6,
+          }}>PRIZE HUNTS LAUNCHING SOON</div>
+          <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 16, lineHeight: 1.5 }}>
+            Paid entry with real prize pools is coming. Be the first to know when it goes live.
+          </div>
+          {notifySent ? (
+            <div style={{
+              background: 'rgba(16,185,129,0.1)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              borderRadius: 10,
+              padding: '14px 16px',
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: 12,
+              color: '#10B981',
+              textAlign: 'center',
+              letterSpacing: 1,
+            }}>
+              YOU ARE ON THE LIST
+            </div>
+          ) : (
+            <form onSubmit={handleNotify} style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                style={{
+                  flex: 1,
+                  background: '#121218',
+                  border: '1px solid #32324A',
+                  borderRadius: 10,
+                  padding: '11px 14px',
+                  color: '#F1F0FF',
+                  fontFamily: "'Space Grotesk', sans-serif",
+                  fontSize: 13,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+                  color: '#000',
+                  fontFamily: "'Share Tech Mono', monospace",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  letterSpacing: 1.5,
+                  padding: '11px 16px',
+                  border: 'none',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                NOTIFY ME
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+//  Hunt Discovery
+function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onPrizePool }) {
   const [viewMode, setViewMode] = useState('list')
 
   function handleTap(hunt) {
@@ -1311,6 +1698,10 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             &nbsp;&nbsp; Locations approximate
           </div>
         </div>
+      )}
+
+      {viewMode === 'list' && !loading && prizePool && (
+        <PrizePoolCard pool={prizePool} onTap={onPrizePool} />
       )}
 
       {viewMode === 'list' && !loading && hunts.map(h => (
@@ -2228,9 +2619,12 @@ export default function App() {
   const [compassTarget, setCompassTarget] = useState(null)
   const [installPrompt, setInstallPrompt] = useState(null)
   const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [prizePool, setPrizePool] = useState(null)
+  const [activePrizePool, setActivePrizePool] = useState(null)
 
   useEffect(() => {
     loadHunts()
+    loadPrizePool()
     registerSW()
   }, [])
 
@@ -2315,6 +2709,20 @@ export default function App() {
     } finally {
       setHuntsLoading(false)
     }
+  }
+
+  async function loadPrizePool() {
+    try {
+      const { data } = await supabase
+        .from('prize_pools')
+        .select('*')
+        .eq('is_active', true)
+        .gt('ends_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (data) setPrizePool(data)
+    } catch {}
   }
 
   function getUserPos() {
@@ -2616,6 +3024,15 @@ export default function App() {
             error={huntsError}
             onStart={startHunt}
             userPos={userPos}
+            prizePool={prizePool}
+            onPrizePool={pool => { setActivePrizePool(pool); setScreen('prizepool') }}
+          />
+        )}
+
+        {screen === 'prizepool' && activePrizePool && (
+          <PrizePoolScreen
+            pool={activePrizePool}
+            onBack={() => setScreen('discover')}
           />
         )}
 
