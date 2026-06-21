@@ -1859,6 +1859,84 @@ function PreferencesScreen({ initialPrefs, userId, onBack, onSaved }) {
   )
 }
 
+function AccessGate({ onSuccess }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState(false)
+  const [shake, setShake] = useState(false)
+
+  function handleSubmit() {
+    if (code.toUpperCase() === 'MAPTEST2026') {
+      localStorage.setItem('mtm_access', 'MAPTEST2026')
+      onSuccess()
+    } else {
+      setError(true)
+      setShake(true)
+      setTimeout(() => setShake(false), 500)
+      setCode('')
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at top, #1A0533 0%, #0A0A0F 60%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: '24px', zIndex: 9999,
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 32 }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: '50%',
+          background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 32, fontWeight: 900, fontFamily: "'Nunito', sans-serif", color: '#fff',
+          boxShadow: '0 0 40px rgba(124,58,237,0.4)',
+        }}>M</div>
+        <div style={{ textAlign: 'center', lineHeight: 1 }}>
+          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 4, color: '#7C3AED', marginBottom: 2 }}>MAP</div>
+          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 4, color: '#9D5FF5', marginBottom: 2 }}>THE</div>
+          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 4, color: '#7C3AED' }}>MOVIE</div>
+        </div>
+        <div style={{
+          marginTop: 12, background: '#7C3AED22', border: '1px solid #7C3AED',
+          borderRadius: 6, padding: '4px 12px',
+          fontFamily: "'Share Tech Mono', monospace", fontSize: 11, letterSpacing: 3, color: '#9D5FF5',
+        }}>PRIVATE BETA</div>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input
+          type="text"
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setError(false) }}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          placeholder="ENTER ACCESS CODE"
+          autoCapitalize="characters"
+          style={{
+            background: '#1C1C26', border: `1px solid ${error ? '#EF4444' : '#32324A'}`,
+            borderRadius: 10, padding: '14px 16px', color: '#F1F0FF',
+            fontFamily: "'Share Tech Mono', monospace", fontSize: 16, letterSpacing: 4,
+            textAlign: 'center', outline: 'none', width: '100%', boxSizing: 'border-box',
+            animation: shake ? 'shake 0.5s ease' : 'none',
+          }}
+        />
+        {error && (
+          <div style={{ color: '#EF4444', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, textAlign: 'center' }}>
+            Invalid access code. Try again.
+          </div>
+        )}
+        <button
+          onClick={handleSubmit}
+          style={{
+            background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', border: 'none',
+            borderRadius: 10, padding: '14px', color: '#fff',
+            fontFamily: "'Share Tech Mono', monospace", fontSize: 14, letterSpacing: 3,
+            cursor: 'pointer', width: '100%',
+          }}
+        >ENTER</button>
+      </div>
+    </div>
+  )
+}
+
 //  Hunt Discovery
 function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onPrizePool, prefs, onPrefs }) {
   const [viewMode, setViewMode] = useState('list')
@@ -2870,6 +2948,9 @@ function getPhaseSlots(phase, questions) {
 
 //  App 
 export default function App() {
+  const [accessGranted, setAccessGranted] = useState(
+    localStorage.getItem('mtm_access') === 'MAPTEST2026'
+  )
   const [screen, setScreen] = useState('discover')
   const [hunts, setHunts] = useState([])
   const [huntsLoading, setHuntsLoading] = useState(true)
@@ -3290,6 +3371,8 @@ export default function App() {
   const phaseSolvedSlots  = phaseSlots.filter(s => solved[s] !== undefined)
   const phaseUnsolved     = phaseSlots.filter(s => solved[s] === undefined)
   const isMultiSlotPhase  = phaseSlots.length > 1
+
+  if (!accessGranted) return <AccessGate onSuccess={() => setAccessGranted(true)} />
 
   return (
     <>
