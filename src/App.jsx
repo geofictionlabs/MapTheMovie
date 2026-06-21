@@ -45,6 +45,10 @@ function bearingDegrees(lat1, lon1, lat2, lon2) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
+function diffGeofence(difficulty) {
+  return { casual: 25, classic: 15, expert: 10 }[difficulty] || 15
+}
+
 function fmtDistance(m) {
   const mi = m / 1609.34
   if (mi < 0.05) return `${Math.round(m)} m`
@@ -1083,6 +1087,9 @@ function HuntCard({ hunt, onTap, distLabel }) {
   const tier = hunt.pack_tier
   const badgeLabel = tier === 'elite' ? 'ELITE' : tier === 'premium' ? 'PREMIUM' : 'FREE'
   const badgeColor = tier === 'elite' ? '#FCD34D' : tier === 'premium' ? '#F59E0B' : '#10B981'
+  const diff = hunt.difficulty || 'classic'
+  const diffLabel = diff === 'casual' ? 'CASUAL' : diff === 'expert' ? 'EXPERT' : 'CLASSIC'
+  const diffColor = diff === 'casual' ? '#10B981' : diff === 'expert' ? '#EF4444' : '#7C3AED'
 
   return (
     <div
@@ -1141,6 +1148,17 @@ function HuntCard({ hunt, onTap, distLabel }) {
           letterSpacing: 1.5,
           fontWeight: 700,
         }}>{badgeLabel}</span>
+        <span style={{
+          background: diffColor + '1A',
+          color: diffColor,
+          border: '1px solid ' + diffColor + '44',
+          borderRadius: 6,
+          padding: '2px 8px',
+          fontSize: 10,
+          fontFamily: "'Share Tech Mono', monospace",
+          letterSpacing: 1.5,
+          fontWeight: 700,
+        }}>{diffLabel}</span>
         <span style={{ color: '#8888BB', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
           18 MIN
         </span>
@@ -1399,11 +1417,11 @@ function LockoutTimer({ until, onExpire }) {
 }
 
 //  Puzzle Card 
-function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
+function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent, difficulty }) {
   const [input, setInput] = useState('')
   const [status, setStatus] = useState('idle')
   const [msg, setMsg] = useState('')
-  const [showHint, setShowHint] = useState(false)
+  const [showHint, setShowHint] = useState(difficulty === 'casual')
   const [lockoutUntil, setLockoutUntil] = useState(null)
   const isSolved = solvedDigit !== undefined
 
@@ -1486,12 +1504,17 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
             <div className="puzzle-category">{question.category}</div>
           )}
           <div className="puzzle-question">{question.question_text}</div>
-          {question.hint_text && (
+          {question.hint_text && difficulty !== 'expert' && (
             <>
-              <button className="hint-toggle" onClick={() => setShowHint(h => !h)}>
-                {showHint ? 'hide hint' : 'show hint'}
-              </button>
-              {showHint && <div className="puzzle-hint">{question.hint_text}</div>}
+              {difficulty === 'casual'
+                ? <div className="puzzle-hint">{question.hint_text}</div>
+                : <>
+                    <button className="hint-toggle" onClick={() => setShowHint(h => !h)}>
+                      {showHint ? 'hide hint' : 'show hint'}
+                    </button>
+                    {showHint && <div className="puzzle-hint">{question.hint_text}</div>}
+                  </>
+              }
             </>
           )}
           <div className="puzzle-input-row">
@@ -2156,7 +2179,7 @@ function ArrivedScreen({ voucher }) {
 }
 
 //  Waypoint helpers 
-function generateWaypoints(startLat, startLon, destLat, destLon, tier) {
+function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficulty) {
   const count = tier === 'premium' ? 2 : tier === 'elite' ? 4 : 0
   if (count === 0) return []
   const pts = []
@@ -2166,7 +2189,7 @@ function generateWaypoints(startLat, startLon, destLat, destLon, tier) {
       index:      i,
       lat:        startLat + (destLat - startLat) * f,
       lon:        startLon + (destLon - startLon) * f,
-      geofence_m: 20,
+      geofence_m: diffGeofence(difficulty),
       unlocks_slots: tier === 'premium'
         ? (i === 1 ? ['B'] : ['C', 'D'])
         : (i === 1 ? ['B'] : i === 2 ? ['C'] : i === 3 ? ['D'] : ['E']),
@@ -2236,6 +2259,7 @@ export default function App() {
         .select(`
           id,
           voucher_headline,
+          difficulty,
           puzzle_packs (
             id, name, emoji, tier, description, accent_color, theme_tag, genre,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
@@ -2279,6 +2303,7 @@ export default function App() {
           is_free_tier:     pp.tier === 'standard',
           business_name:    b.name,
           voucher_headline: c.voucher_headline,
+          difficulty:       c.difficulty || 'classic',
           approx_lat:       lat,
           approx_lon:       lon,
         }]
@@ -2348,6 +2373,7 @@ export default function App() {
         .rpc('get_puzzle_for_player', {
           p_session_id:  session.id,
           p_exclude_ids: seenIds,
+          p_difficulty:  hunt.difficulty || 'classic',
         })
       if (puzzleErr) {
         throw new Error('Puzzle error: ' + puzzleErr.message + ' (code: ' + puzzleErr.code + ')')
@@ -2370,7 +2396,7 @@ export default function App() {
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
       setActiveQuestions(questions)
       setSolved({})
-      setSignalPoints(10)
+      setSignalPoints(hunt.difficulty === 'expert' ? 5 : 10)
       setShowReset(false)
       setRealCoords(null)
       setVoucher(null)
@@ -2392,6 +2418,7 @@ export default function App() {
               startPos.lat, startPos.lon,
               parseFloat(destData.real_lat), parseFloat(destData.real_lon),
               puzzleData.pack_tier,
+              hunt.difficulty || 'classic',
             )
           }
         } catch (e) { /* linear mode fallback */ }
@@ -2448,7 +2475,7 @@ export default function App() {
                 const finalTarget = {
                   lat: parseFloat(coords.real_lat),
                   lon: parseFloat(coords.real_lon),
-                  geofence_m: coords.geofence_radius_m || 15,
+                  geofence_m: diffGeofence(activePack?.difficulty),
                   isWaypoint: false,
                   label: 'DESTINATION',
                 }
@@ -2675,6 +2702,7 @@ export default function App() {
                   solvedDigit={solved[q.slot]}
                   onSubmitAnswer={handleSubmitAnswer}
                   accent={accent}
+                  difficulty={activePack?.difficulty || 'classic'}
                 />
               ))}
             </div>

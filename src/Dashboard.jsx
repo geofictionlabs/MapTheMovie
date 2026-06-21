@@ -977,6 +977,24 @@ function ThemesTab({ business, campaigns, showToast }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const [activeTheme, setActiveTheme] = useState(null)
   const [applying, setApplying] = useState(null)
+  const [selectedDiff, setSelectedDiff] = useState(activeCampaign?.difficulty || 'classic')
+  const [savingDiff, setSavingDiff] = useState(false)
+
+  async function handleSaveDiff() {
+    if (!activeCampaign) { showToast('! No active campaign'); return }
+    setSavingDiff(true)
+    try {
+      const { error } = await supabase.from('campaigns')
+        .update({ difficulty: selectedDiff })
+        .eq('id', activeCampaign.id)
+      if (error) throw error
+      showToast('Difficulty updated')
+    } catch (err) {
+      showToast('! ' + err.message)
+    } finally {
+      setSavingDiff(false)
+    }
+  }
 
   async function handleApply(theme) {
     if (!activeCampaign) { showToast('! No active campaign to update'); return }
@@ -1028,6 +1046,62 @@ function ThemesTab({ business, campaigns, showToast }) {
 
   return (
     <div>
+      <div className="page-title">Hunt Difficulty</div>
+      <div className="page-sub">Controls question difficulty, hint visibility, and arrival geofence radius</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {[
+          { id: 'casual',  label: 'CASUAL',  color: '#10B981', desc: 'Easy films, hints shown, 25m radius' },
+          { id: 'classic', label: 'CLASSIC', color: '#7C3AED', desc: 'Mixed, hints hidden, 15m radius' },
+          { id: 'expert',  label: 'EXPERT',  color: '#EF4444', desc: 'Deep cuts, no hints, 10m radius' },
+        ].map(d => (
+          <button
+            key={d.id}
+            onClick={() => setSelectedDiff(d.id)}
+            title={d.desc}
+            style={{
+              flex: 1,
+              background: selectedDiff === d.id ? d.color + '22' : '#1C1C26',
+              color: d.color,
+              border: `2px solid ${selectedDiff === d.id ? d.color : d.color + '44'}`,
+              borderRadius: 10,
+              padding: '10px 0',
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 1.5,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: '#8888BB', marginBottom: 16 }}>
+        {selectedDiff === 'casual' && 'Mainstream films. Hints always visible. 25m arrival radius.'}
+        {selectedDiff === 'classic' && 'Mixed difficulty. Hints available on request. 15m arrival radius.'}
+        {selectedDiff === 'expert' && 'Deep cuts only. No hints. 10m arrival radius. Signal Points start at 5.'}
+      </div>
+      <button
+        onClick={handleSaveDiff}
+        disabled={savingDiff}
+        style={{
+          background: savingDiff ? '#32324A' : 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 10,
+          padding: '11px 24px',
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: 1.5,
+          cursor: savingDiff ? 'default' : 'pointer',
+          marginBottom: 32,
+        }}
+      >
+        {savingDiff ? 'SAVING...' : 'SAVE DIFFICULTY'}
+      </button>
+
       <div className="page-title">Seasonal Themes</div>
       <div className="page-sub">Switch your active pack to match the season or upcoming event</div>
 
