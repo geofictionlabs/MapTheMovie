@@ -1714,8 +1714,8 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onP
       ))}
 
       <div className="app-footer">
-        <a className="footer-link" href="/privacy.html">Privacy</a>
-        <a className="footer-link" href="/terms.html">Terms</a>
+        <a className="footer-link" href="/privacy">Privacy</a>
+        <a className="footer-link" href="/terms">Terms</a>
         <a className="footer-link" href="/dashboard">Business Login</a>
       </div>
     </div>
