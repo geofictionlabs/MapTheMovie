@@ -50,8 +50,9 @@ function diffGeofence(difficulty) {
 }
 
 function formatCountdown(endsAt) {
+  if (!endsAt) return null
   const diff = new Date(endsAt) - Date.now()
-  if (diff <= 0) return 'ENDED'
+  if (!isFinite(diff) || diff <= 0) return 'ENDED'
   const days  = Math.floor(diff / 86400000)
   const hours = Math.floor((diff % 86400000) / 3600000)
   const mins  = Math.floor((diff % 3600000) / 60000)
@@ -1397,14 +1398,16 @@ function PrizePoolCard({ pool, onTap }) {
               PLAYERS
             </div>
           </div>
-          <div>
-            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: '#FCD34D', fontWeight: 700 }}>
-              {countdown}
+          {countdown && (
+            <div>
+              <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: '#FCD34D', fontWeight: 700 }}>
+                {countdown}
+              </div>
+              <div style={{ fontSize: 10, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8, marginTop: 2 }}>
+                REMAINING
+              </div>
             </div>
-            <div style={{ fontSize: 10, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8, marginTop: 2 }}>
-              REMAINING
-            </div>
-          </div>
+          )}
         </div>
 
         {/* CTA */}
@@ -2989,8 +2992,7 @@ export default function App() {
       const { data } = await supabase
         .from('prize_pools')
         .select('*')
-        .eq('is_active', true)
-        .gt('ends_at', new Date().toISOString())
+        .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
