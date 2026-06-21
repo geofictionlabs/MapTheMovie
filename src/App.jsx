@@ -1563,52 +1563,30 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
     arrivedRef.current = false
 
-    let watchId = null
-    let positionReceived = false
-
     function onPosition(pos) {
-      positionReceived = true
       setPlayerLat(pos.coords.latitude)
       setPlayerLon(pos.coords.longitude)
       setGpsStatus('active')
     }
 
-    function startWatch(highAccuracy) {
-      if (watchId != null) navigator.geolocation.clearWatch(watchId)
-      watchId = navigator.geolocation.watchPosition(
-        onPosition,
-        err => {
-          console.warn('[GPS] error', err.code, err.message)
-          if (highAccuracy) {
-            // High accuracy failed (common indoors on Safari) — retry without it
-            startWatch(false)
-          } else {
-            setGpsStatus('error')
-          }
-        },
-        { enableHighAccuracy: highAccuracy, maximumAge: highAccuracy ? 0 : 30000, timeout: highAccuracy ? 15000 : 30000 }
-      )
-    }
-
-    // Fast initial fix: low accuracy so Safari can use WiFi/cell immediately
+    // Fast initial fix — gives Safari something to work with immediately
     navigator.geolocation.getCurrentPosition(
       onPosition,
       err => console.warn('[GPS] initial fix failed:', err.message),
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
 
-    // Continuous high-accuracy watch; falls back to low accuracy on error
-    startWatch(true)
+    // Continuous watch — maximumAge: 0 forces Safari to always return fresh position
+    const watchId = navigator.geolocation.watchPosition(
+      onPosition,
+      err => {
+        console.warn('[GPS] watch error', err.code, err.message)
+        setGpsStatus('error')
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+    )
 
-    // Belt-and-braces: if nothing in 10s, also try a low-accuracy watch
-    const fallbackTimer = setTimeout(() => {
-      if (!positionReceived) startWatch(false)
-    }, 10000)
-
-    return () => {
-      clearTimeout(fallbackTimer)
-      if (watchId != null) navigator.geolocation.clearWatch(watchId)
-    }
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
   // Recalculate distance + bearing whenever player position updates
@@ -1723,12 +1701,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     error:       'GPS UNAVAILABLE',
     unavailable: 'GPS NOT SUPPORTED',
   }[gpsStatus]
-
-  const distDisplay = distance != null
-    ? distance < 80
-      ? <>{Math.round(distance)}<span className="compass-unit"> m</span></>
-      : <>{(distance / 1609.34).toFixed(1)}<span className="compass-unit"> mi</span></>
-    : ''
 
   // Needle rotates as soon as heading is available, independent of distance
   const needleRotation = deviceHeading != null ? toBearing - deviceHeading : 0
