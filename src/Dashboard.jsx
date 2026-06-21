@@ -1400,7 +1400,7 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
               <button
                 className="btn-primary"
                 style={{ marginTop: 14, width: '100%' }}
-                onClick={() => showToast('Stripe checkout coming soon - email hello@geofictionlabs.com to upgrade')}
+                onClick={() => showToast('To upgrade your plan, contact us at hello@geofictionlabs.com')}
               >
                 UPGRADE
               </button>

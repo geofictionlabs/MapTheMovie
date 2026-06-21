@@ -1054,7 +1054,7 @@ function getCardGradient(hunt) {
   if (name.includes('market') || name.includes('town') || name.includes('mystery'))
     return { gradient: 'linear-gradient(135deg, #0A1400 0%, #1A2800 30%, #2D4A00 60%, #8B7000 100%)', gridColor: 'rgba(139,112,0,0.12)' }
 
-  if (name.includes('ring') || name.includes('lotr') || name.includes('dymchurch'))
+  if (name.includes('ring') || name.includes('lotr') || name.includes('martello'))
     return { gradient: 'linear-gradient(135deg, #0A0500 0%, #1A0A00 30%, #3D1500 60%, #8B0000 100%)', gridColor: 'rgba(139,0,0,0.12)' }
 
   if (theme === 'christmas')
@@ -1226,7 +1226,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '20px 0 14px' }}>
-        <div className="section-label" style={{ marginBottom: 0 }}>Hunts near you</div>
+        <div className="section-label" style={{ marginBottom: 0 }}>Hunts available near you</div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             className="view-toggle"
@@ -2506,17 +2506,17 @@ export default function App() {
         setVoucher({
           voucher_code:     'MTM-TEST-' + (Math.floor(Math.random() * 9000) + 1000),
           voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
-          voucher_detail:   activePack?.voucher_detail || 'Show this screen to claim',
-          business_name:    activePack?.business_name || 'Test Venue',
+          voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
+          business_name:    activePack?.business_name || '',
         })
         setScreen('arrived')
       }
     } catch (e) {
       setVoucher({
-        voucher_code:     'MTM-DEMO-' + (Math.floor(Math.random() * 9000) + 1000),
-        voucher_headline: 'Reward Unlocked',
-        voucher_detail:   'Show this screen to claim',
-        business_name:    activePack?.business_name || 'The Location',
+        voucher_code:     'MTM-' + (Math.floor(Math.random() * 9000) + 1000),
+        voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
+        voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
+        business_name:    activePack?.business_name || '',
       })
       setScreen('arrived')
     }
@@ -2704,7 +2704,7 @@ export default function App() {
                 else handleSimulateArrival()
               }}
             >
-              {compassTarget.isWaypoint ? ' SIMULATE WAYPOINT REACH (demo)' : ' SIMULATE ARRIVAL (demo only)'}
+              {compassTarget.isWaypoint ? 'SIMULATE WAYPOINT' : 'SIMULATE ARRIVAL'}
             </button>
           </div>
         )}
