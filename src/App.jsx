@@ -1532,70 +1532,13 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
   )
 }
 
-// useGPS — Safari-safe GPS hook.
-// Safari iOS requires getCurrentPosition FIRST to trigger the permission prompt;
-// watchPosition is then started inside the success callback once permission is confirmed.
-function useGPS(destination) {
-  const [playerPos,    setPlayerPos]    = useState(null)
-  const [distance,     setDistance]     = useState(null)
-  const [startDistance, setStartDistance] = useState(null)
-  const [gpsStatus,    setGpsStatus]    = useState('searching')
-  const destinationRef = useRef(destination)
-  useEffect(() => { destinationRef.current = destination }, [destination])
-
-  useEffect(() => {
-    if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
-
-    let watchId = null
-    let mounted = true
-    const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
-
-    function onPosition(pos) {
-      if (!mounted) return
-      const lat = pos.coords.latitude
-      const lon = pos.coords.longitude
-      setPlayerPos({ lat, lon })
-      setGpsStatus('active')
-      const dest = destinationRef.current
-      if (dest?.lat && dest?.lon) {
-        const dist = haversineMetres(lat, lon, dest.lat, dest.lon)
-        setDistance(dist)
-        setStartDistance(prev => prev ?? dist)
-      }
-      // Start continuous watch after first fix — guarantees permission is granted (Safari fix)
-      if (watchId === null && mounted) {
-        watchId = navigator.geolocation.watchPosition(onPosition, onError, opts)
-      }
-    }
-
-    function onError(err) {
-      if (!mounted) return
-      console.warn('[GPS]', err.code, err.message)
-      setGpsStatus('error')
-    }
-
-    navigator.geolocation.getCurrentPosition(onPosition, onError, opts)
-
-    return () => {
-      mounted = false
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
-    }
-  }, [])
-
-  // Recalculate distance when destination changes but position is already known
-  useEffect(() => {
-    if (!playerPos || !destination?.lat) return
-    const dist = haversineMetres(playerPos.lat, playerPos.lon, destination.lat, destination.lon)
-    setDistance(dist)
-  }, [destination])
-
-  return { playerPos, distance, startDistance, gpsStatus }
-}
-
 //  Compass Screen
 // target = { lat, lon, geofence_m, isWaypoint, label }
 function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg }) {
-  const { playerPos, distance, startDistance, gpsStatus } = useGPS(target)
+  const [playerPos, setPlayerPos] = useState(null)
+  const [distance, setDistance] = useState(null)
+  const [startDist, setStartDist] = useState(null)
+  const intervalRef = useRef(null)
   const [toBearing, setToBearing] = useState(0)
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
   const [orientState, setOrientState] = useState('init')
@@ -1603,7 +1546,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const headingHistoryRef = useRef([])
-  // Refs so the bearing+arrival effect can always read the latest prop values
   const targetRef = useRef(target)
   const onArrivedRef = useRef(onArrived)
   const onWaypointReachedRef = useRef(onWaypointReached)
@@ -1614,7 +1556,39 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const accent = hexAccent(hunt?.accent_color)
   const geofence = target?.geofence_m || 15
 
-  // Recalculate bearing + check arrival whenever player position or distance updates
+  // GPS polling — getCurrentPosition every 5 seconds (Safari-compatible, no watchPosition)
+  useEffect(() => {
+    function getPosition() {
+      if (!navigator.geolocation) return
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude
+          const lon = pos.coords.longitude
+          console.log('[GPS poll]', lat, lon)
+          setPlayerPos({ lat, lon })
+          if (target?.lat) {
+            const R = 6371000
+            const dLat = (target.lat - lat) * Math.PI / 180
+            const dLon = (target.lon - lon) * Math.PI / 180
+            const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat * Math.PI / 180) *
+              Math.cos(target.lat * Math.PI / 180) *
+              Math.sin(dLon / 2) ** 2
+            const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            setDistance(dist)
+            setStartDist(prev => prev ?? dist)
+          }
+        },
+        (err) => console.warn('[GPS poll error]', err.code, err.message),
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      )
+    }
+    getPosition()
+    intervalRef.current = setInterval(getPosition, 5000)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [target])
+
+  // Bearing + arrival detection whenever position or distance updates
   useEffect(() => {
     const t = targetRef.current
     if (!playerPos || !t?.lat || !t?.lon) return
@@ -1716,6 +1690,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     S:'south', SW:'south-west', W:'west', NW:'north-west',
   })[cardinalDir()] || 'north'
 
+  const gpsStatus = playerPos ? 'active' : 'searching'
   const gpsStatusText = {
     searching:   'ACQUIRING GPS',
     active:      `GPS ACTIVE  TARGET ~${geofence}m`,
@@ -1733,8 +1708,8 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   })()
   const isFacingDestination = deviceHeading != null && normalisedAngle < 20
   const onTrack = isFacingDestination && distance != null && gpsStatus === 'active'
-  const journeyPct = startDistance > 0
-    ? Math.min(100, Math.max(0, ((startDistance - (distance || 0)) / startDistance) * 100))
+  const journeyPct = startDist > 0
+    ? Math.min(100, Math.max(0, ((startDist - (distance || 0)) / startDist) * 100))
     : 0
   const distMi = (distance != null && distance >= 0) ? (distance / 1609.34).toFixed(1) : '--'
   const destLabel = (distance != null && distance >= 0)
@@ -1871,6 +1846,18 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       )}
 
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
+
+      <div style={{
+        position: 'fixed', bottom: 80, left: 10,
+        background: 'rgba(0,0,0,0.8)',
+        color: '#F59E0B', padding: '8px',
+        fontFamily: 'monospace', fontSize: '11px',
+        borderRadius: '8px', zIndex: 9999
+      }}>
+        GPS: {playerPos ? playerPos.lat.toFixed(4) : 'NULL'}
+        {' | '}
+        dist: {distance ? (distance / 1609.34).toFixed(2) + 'mi' : 'NULL'}
+      </div>
     </div>
   )
 }
