@@ -1532,22 +1532,78 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
   )
 }
 
-//  Compass Screen 
+// useGPS — Safari-safe GPS hook.
+// Safari iOS requires getCurrentPosition FIRST to trigger the permission prompt;
+// watchPosition is then started inside the success callback once permission is confirmed.
+function useGPS(destination) {
+  const [playerPos,    setPlayerPos]    = useState(null)
+  const [distance,     setDistance]     = useState(null)
+  const [startDistance, setStartDistance] = useState(null)
+  const [gpsStatus,    setGpsStatus]    = useState('searching')
+  const destinationRef = useRef(destination)
+  useEffect(() => { destinationRef.current = destination }, [destination])
+
+  useEffect(() => {
+    if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
+
+    let watchId = null
+    let mounted = true
+    const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+
+    function onPosition(pos) {
+      if (!mounted) return
+      const lat = pos.coords.latitude
+      const lon = pos.coords.longitude
+      setPlayerPos({ lat, lon })
+      setGpsStatus('active')
+      const dest = destinationRef.current
+      if (dest?.lat && dest?.lon) {
+        const dist = haversineMetres(lat, lon, dest.lat, dest.lon)
+        setDistance(dist)
+        setStartDistance(prev => prev ?? dist)
+      }
+      // Start continuous watch after first fix — guarantees permission is granted (Safari fix)
+      if (watchId === null && mounted) {
+        watchId = navigator.geolocation.watchPosition(onPosition, onError, opts)
+      }
+    }
+
+    function onError(err) {
+      if (!mounted) return
+      console.warn('[GPS]', err.code, err.message)
+      setGpsStatus('error')
+    }
+
+    navigator.geolocation.getCurrentPosition(onPosition, onError, opts)
+
+    return () => {
+      mounted = false
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+    }
+  }, [])
+
+  // Recalculate distance when destination changes but position is already known
+  useEffect(() => {
+    if (!playerPos || !destination?.lat) return
+    const dist = haversineMetres(playerPos.lat, playerPos.lon, destination.lat, destination.lon)
+    setDistance(dist)
+  }, [destination])
+
+  return { playerPos, distance, startDistance, gpsStatus }
+}
+
+//  Compass Screen
 // target = { lat, lon, geofence_m, isWaypoint, label }
 function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg }) {
-  const [playerLat, setPlayerLat] = useState(null)
-  const [playerLon, setPlayerLon] = useState(null)
+  const { playerPos, distance, startDistance, gpsStatus } = useGPS(target)
   const [toBearing, setToBearing] = useState(0)
-  const [distance, setDistance] = useState(null)
-  const [gpsStatus, setGpsStatus] = useState('searching')
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
   const [orientState, setOrientState] = useState('init')
   const [deviceHeading, setDeviceHeading] = useState(null)
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
-  const startDistRef = useRef(null)
   const headingHistoryRef = useRef([])
-  // Refs so the [] GPS effect can always read the latest prop values
+  // Refs so the bearing+arrival effect can always read the latest prop values
   const targetRef = useRef(target)
   const onArrivedRef = useRef(onArrived)
   const onWaypointReachedRef = useRef(onWaypointReached)
@@ -1558,52 +1614,17 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const accent = hexAccent(hunt?.accent_color)
   const geofence = target?.geofence_m || 15
 
-  // GPS watch — empty deps, runs once on mount, never torn down mid-session
-  useEffect(() => {
-    if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
-    arrivedRef.current = false
-
-    function onPosition(pos) {
-      setPlayerLat(pos.coords.latitude)
-      setPlayerLon(pos.coords.longitude)
-      setGpsStatus('active')
-    }
-
-    // Fast initial fix — gives Safari something to work with immediately
-    navigator.geolocation.getCurrentPosition(
-      onPosition,
-      err => console.warn('[GPS] initial fix failed:', err.message),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    )
-
-    // Continuous watch — maximumAge: 0 forces Safari to always return fresh position
-    const watchId = navigator.geolocation.watchPosition(
-      onPosition,
-      err => {
-        console.warn('[GPS] watch error', err.code, err.message)
-        setGpsStatus('error')
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
-    )
-
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
-
-  // Recalculate distance + bearing whenever player position updates
+  // Recalculate bearing + check arrival whenever player position or distance updates
   useEffect(() => {
     const t = targetRef.current
-    if (!playerLat || !playerLon || !t?.lat || !t?.lon) return
-    const dist = haversineMetres(playerLat, playerLon, t.lat, t.lon)
-    const bear = bearingDegrees(playerLat, playerLon, t.lat, t.lon)
-    setToBearing(bear)
-    if (startDistRef.current === null) startDistRef.current = dist
-    setDistance(dist)
-    if (dist <= (t.geofence_m || 15) && !arrivedRef.current) {
+    if (!playerPos || !t?.lat || !t?.lon) return
+    setToBearing(bearingDegrees(playerPos.lat, playerPos.lon, t.lat, t.lon))
+    if (distance != null && distance <= (t.geofence_m || 15) && !arrivedRef.current) {
       arrivedRef.current = true
       if (t.isWaypoint) { onWaypointReachedRef.current?.() }
-      else { onArrivedRef.current?.(playerLat, playerLon) }
+      else { onArrivedRef.current?.(playerPos.lat, playerPos.lon) }
     }
-  }, [playerLat, playerLon])
+  }, [playerPos, distance])
 
   // Device orientation: Safari iOS requires explicit permission; others auto-start
   useEffect(() => {
@@ -1712,8 +1733,8 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   })()
   const isFacingDestination = deviceHeading != null && normalisedAngle < 20
   const onTrack = isFacingDestination && distance != null && gpsStatus === 'active'
-  const journeyPct = startDistRef.current > 0
-    ? Math.min(100, Math.max(0, ((startDistRef.current - (distance || 0)) / startDistRef.current) * 100))
+  const journeyPct = startDistance > 0
+    ? Math.min(100, Math.max(0, ((startDistance - (distance || 0)) / startDistance) * 100))
     : 0
   const distMi = (distance != null && distance >= 0) ? (distance / 1609.34).toFixed(1) : '--'
   const destLabel = (distance != null && distance >= 0)
