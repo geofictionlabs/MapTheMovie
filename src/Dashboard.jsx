@@ -46,7 +46,7 @@ body {
   letter-spacing: 3px;
   margin-bottom: 6px;
 }
-.auth-sub { font-size: 13px; color: #6B67A0; margin-bottom: 28px; }
+.auth-sub { font-size: 13px; color: #8888BB; margin-bottom: 28px; }
 .auth-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .auth-input {
   width: 100%;
@@ -107,7 +107,7 @@ body {
   color: #B8B4D8;
   border-bottom: 1px solid #32324A;
 }
-.sidebar-biz small { display: block; font-size: 11px; color: #6B67A0; font-weight: 400; margin-top: 2px; }
+.sidebar-biz small { display: block; font-size: 11px; color: #8888BB; font-weight: 400; margin-top: 2px; }
 .sidebar-nav { flex: 1; padding: 12px 0; }
 .nav-item {
   display: flex;
@@ -116,7 +116,7 @@ body {
   padding: 11px 20px;
   font-size: 13px;
   font-weight: 600;
-  color: #6B67A0;
+  color: #8888BB;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: all 0.15s;
@@ -161,11 +161,11 @@ body {
   color: #F1F0FF;
   margin-bottom: 6px;
 }
-.page-sub { font-size: 13px; color: #6B67A0; margin-bottom: 28px; }
+.page-sub { font-size: 13px; color: #8888BB; margin-bottom: 28px; }
 .section-label {
   font-size: 10px;
   letter-spacing: 2px;
-  color: #6B67A0;
+  color: #8888BB;
   text-transform: uppercase;
   font-family: 'Share Tech Mono', monospace;
   margin-bottom: 12px;
@@ -184,14 +184,14 @@ body {
   border-radius: 16px;
   padding: 18px 16px;
 }
-.stat-label { font-size: 11px; color: #6B67A0; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-label { font-size: 11px; color: #8888BB; letter-spacing: 1px; margin-bottom: 6px; }
 .stat-value {
   font-family: 'Nunito', sans-serif;
   font-size: 30px;
   font-weight: 900;
   color: #F1F0FF;
 }
-.stat-unit { font-size: 14px; color: #6B67A0; font-family: 'Space Grotesk', system-ui, sans-serif; }
+.stat-unit { font-size: 14px; color: #8888BB; font-family: 'Space Grotesk', system-ui, sans-serif; }
 .stat-card.accent { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.06); }
 .stat-card.accent .stat-value { color: #9D5FF5; }
 .stat-card.gold { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); }
@@ -232,7 +232,7 @@ body {
   50%      { box-shadow: 0 0 14px #10B981; }
 }
 .live-label { font-weight: 700; font-size: 15px; }
-.live-hint { font-size: 12px; color: #6B67A0; margin-top: 2px; }
+.live-hint { font-size: 12px; color: #8888BB; margin-top: 2px; }
 .live-btn {
   border: none;
   border-radius: 12px;
@@ -244,7 +244,7 @@ body {
   font-weight: 700;
   transition: all 0.2s;
 }
-.live-btn.go { background: #10B981; color: #fff; }
+.live-btn.go { background: linear-gradient(135deg, #F59E0B, #FCD34D); color: #121218; }
 .live-btn.end { background: rgba(239,68,68,0.12); color: #EF4444; border: 1px solid rgba(239,68,68,0.3); }
 
 /*  Toast  */
@@ -276,7 +276,7 @@ body {
   margin-bottom: 18px;
 }
 .card-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
-.card-sub { font-size: 12px; color: #6B67A0; margin-bottom: 16px; }
+.card-sub { font-size: 12px; color: #8888BB; margin-bottom: 16px; }
 
 /*  Table  */
 .table-wrap { overflow-x: auto; }
@@ -286,7 +286,7 @@ th {
   padding: 8px 10px;
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: #6B67A0;
+  color: #8888BB;
   font-family: 'Share Tech Mono', monospace;
   border-bottom: 1px solid #32324A;
 }
@@ -368,8 +368,8 @@ tr:last-child td { border-bottom: none; }
 
 /*  Settings  */
 .plan-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -379,7 +379,10 @@ tr:last-child td { border-bottom: none; }
   border-radius: 16px;
   padding: 20px 16px;
 }
-.plan-card.current { border-color: #7C3AED; }
+.plan-card.current {
+  border-color: #7C3AED;
+  box-shadow: 0 0 0 1px #7C3AED, inset 0 0 0 100px rgba(124,58,237,0.05);
+}
 .plan-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
 .plan-price {
   font-family: 'Nunito', sans-serif;
@@ -388,8 +391,8 @@ tr:last-child td { border-bottom: none; }
   color: #7C3AED;
   margin-bottom: 12px;
 }
-.plan-price span { font-size: 13px; color: #6B67A0; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 400; }
-.plan-feature { font-size: 12px; color: #6B67A0; margin-bottom: 6px; padding-left: 14px; position: relative; }
+.plan-price span { font-size: 13px; color: #8888BB; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 400; }
+.plan-feature { font-size: 12px; color: #8888BB; margin-bottom: 6px; padding-left: 14px; position: relative; }
 .plan-feature::before { content: '+'; position: absolute; left: 0; color: #10B981; font-weight: 700; }
 
 /*  Mobile tab bar  */
@@ -412,7 +415,7 @@ tr:last-child td { border-bottom: none; }
   flex: 1;
   background: none;
   border: none;
-  color: #6B67A0;
+  color: #8888BB;
   font-size: 10px;
   font-weight: 600;
   padding: 6px 4px;
@@ -554,49 +557,56 @@ function PinDropModal({ onConfirm, onCancel }) {
   const [latLng, setLatLng] = useState({ lat: 51.3781, lng: 0.5439 })
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
+    const timerId = setTimeout(() => {
+      if (!containerRef.current || mapRef.current) return
 
-    const pinIcon = L.divIcon({
-      html: '<div style="width:20px;height:20px;background:#7C3AED;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',
-      className: '',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    })
+      const pinIcon = L.divIcon({
+        html: '<div style="width:20px;height:20px;background:#7C3AED;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',
+        className: '',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      })
 
-    const map = L.map(containerRef.current).setView([51.3781, 0.5439], 14)
-    mapRef.current = map
+      const map = L.map(containerRef.current).setView([51.3781, 0.5439], 14)
+      mapRef.current = map
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: ' OpenStreetMap',
-      maxZoom: 19,
-    }).addTo(map)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: ' OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(map)
 
-    const marker = L.marker([51.3781, 0.5439], { draggable: true, icon: pinIcon }).addTo(map)
-    markerRef.current = marker
+      const marker = L.marker([51.3781, 0.5439], { draggable: true, icon: pinIcon }).addTo(map)
+      markerRef.current = marker
 
-    marker.on('dragend', () => {
-      const pos = marker.getLatLng()
-      setLatLng({ lat: pos.lat, lng: pos.lng })
-    })
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng()
+        setLatLng({ lat: pos.lat, lng: pos.lng })
+      })
 
-    map.on('click', e => {
-      marker.setLatLng(e.latlng)
-      setLatLng({ lat: e.latlng.lat, lng: e.latlng.lng })
-    })
+      map.on('click', e => {
+        marker.setLatLng(e.latlng)
+        setLatLng({ lat: e.latlng.lat, lng: e.latlng.lng })
+      })
 
-    return () => { map.remove(); mapRef.current = null }
+      map.invalidateSize()
+    }, 150)
+
+    return () => {
+      clearTimeout(timerId)
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
+    }
   }, [])
 
   return (
     <div className="pin-modal">
       <div className="pin-modal-sheet">
         <div style={{ padding: '16px 20px 4px', fontWeight: 700, fontSize: 15 }}>Drop a Pin</div>
-        <div style={{ fontSize: 12, color: '#6B67A0', padding: '0 20px 12px' }}>
+        <div style={{ fontSize: 12, color: '#8888BB', padding: '0 20px 12px' }}>
           Tap the map or drag the pin to set your exact location
         </div>
         <div ref={containerRef} className="pin-map-wrap" />
         <div className="pin-modal-footer">
-          <div style={{ fontSize: 11, color: '#6B67A0', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+          <div style={{ fontSize: 11, color: '#8888BB', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
             {latLng.lat.toFixed(5)}, {latLng.lng.toFixed(5)}
           </div>
           <button
@@ -620,10 +630,21 @@ function PinDropModal({ onConfirm, onCancel }) {
 }
 
 //  Overview Tab 
-function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview }) {
+function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview, onGoToSettings }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
   const weekTotal = redemptions?.length || 0
+  const [packName, setPackName] = useState(null)
+
+  useEffect(() => {
+    if (!activeCampaign?.id) { setPackName(null); return }
+    supabase
+      .from('campaigns')
+      .select('puzzle_packs(name)')
+      .eq('id', activeCampaign.id)
+      .single()
+      .then(({ data }) => setPackName(data?.puzzle_packs?.name || null))
+  }, [activeCampaign?.id])
 
   return (
     <div>
@@ -667,10 +688,25 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         <div className="stat-card">
           <div className="stat-label">ACTIVE PACK</div>
           <div className="stat-value" style={{ fontSize: 16, paddingTop: 6 }}>
-            {activeCampaign?.pack_name || ''}
+            {packName || activeCampaign?.name || 'No active pack'}
           </div>
         </div>
       </div>
+
+      {!business?.redemption_pin_hash && (
+        <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, color: '#F59E0B', marginBottom: 4 }}>VOUCHERS UNSECURED</div>
+            <div style={{ fontSize: 13, color: '#B8B4D8' }}>Set up your staff PIN to secure voucher redemptions</div>
+          </div>
+          <button
+            onClick={onGoToSettings}
+            style={{ background: '#F59E0B', border: 'none', borderRadius: 8, color: '#121218', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            SET UP PIN
+          </button>
+        </div>
+      )}
 
       {puzzlePreview && puzzlePreview.length > 0 && (
         <div style={{ marginBottom: 24 }}>
@@ -706,11 +742,11 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
                 </div>
                 <div style={{ fontSize: 14, color: '#F1F0FF', lineHeight: 1.4 }}>{q.question_text}</div>
                 {q.extraction_note && (
-                  <div style={{ fontSize: 11, color: '#6B67A0', marginTop: 4 }}>{q.extraction_note}</div>
+                  <div style={{ fontSize: 11, color: '#8888BB', marginTop: 4 }}>{q.extraction_note}</div>
                 )}
               </div>
             ))}
-            <div style={{ fontSize: 12, color: '#6B67A0', marginTop: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: '#8888BB', marginTop: 12, textAlign: 'center' }}>
               Players type full answers  the coordinate digit is extracted server-side
             </div>
           </div>
@@ -759,8 +795,8 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
   )
 }
 
-//  Vouchers Tab 
-function VouchersTab({ business, campaigns, showToast }) {
+//  Vouchers Tab
+function VouchersTab({ business, campaigns, redemptions, showToast }) {
   const [codeText, setCodeText] = useState('')
   const [uploading, setUploading] = useState(false)
   const [existing, setExisting] = useState([])
@@ -837,7 +873,7 @@ function VouchersTab({ business, campaigns, showToast }) {
             {uploading ? 'UPLOADING' : 'UPLOAD CODES'}
           </button>
           {codeText && (
-            <span style={{ fontSize: 12, color: '#6B67A0' }}>
+            <span style={{ fontSize: 12, color: '#8888BB' }}>
               {codeText.split('\n').filter(l => l.trim()).length} code(s) ready
             </span>
           )}
@@ -882,6 +918,56 @@ function VouchersTab({ business, campaigns, showToast }) {
           </div>
         </>
       )}
+
+      <div className="section-label" style={{ marginTop: 28 }}>Player Redemptions</div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>CODE</th>
+                <th>DATE</th>
+                <th>TIME</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(redemptions || []).length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', color: '#8888BB', padding: '28px 16px', fontSize: 13 }}>
+                    No redemptions yet - players will appear here when they arrive
+                  </td>
+                </tr>
+              )}
+              {(redemptions || []).map(r => {
+                const dt = r.created_at ? new Date(r.created_at) : null
+                return (
+                  <tr key={r.id}>
+                    <td className="code-cell">{r.voucher_code}</td>
+                    <td>{dt ? dt.toLocaleDateString('en-GB') : ''}</td>
+                    <td style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 12 }}>
+                      {dt ? dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </td>
+                    <td>
+                      <span style={{
+                        background: r.redeemed_at ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+                        color: r.redeemed_at ? '#10B981' : '#F59E0B',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontFamily: "'Share Tech Mono', monospace",
+                        letterSpacing: 1,
+                      }}>
+                        {r.redeemed_at ? 'REDEEMED' : 'ISSUED'}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
@@ -928,6 +1014,18 @@ function ThemesTab({ business, campaigns, showToast }) {
     }
   }
 
+  const GENRES = [
+    { id: 'action',   label: 'Action',   accent: '#EF4444' },
+    { id: 'comedy',   label: 'Comedy',   accent: '#F59E0B' },
+    { id: 'horror',   label: 'Horror',   accent: '#8B5CF6' },
+    { id: 'sci-fi',   label: 'Sci-Fi',   accent: '#06B6D4' },
+    { id: 'romance',  label: 'Romance',  accent: '#F43F5E' },
+    { id: 'thriller', label: 'Thriller', accent: '#10B981' },
+    { id: 'animated', label: 'Animated', accent: '#FCD34D' },
+    { id: 'classic',  label: 'Classic',  accent: '#B8B4D8' },
+  ]
+  const [activeGenre, setActiveGenre] = useState(null)
+
   return (
     <div>
       <div className="page-title">Seasonal Themes</div>
@@ -941,7 +1039,7 @@ function ThemesTab({ business, campaigns, showToast }) {
             style={{ background: t.bg }}
             onClick={() => handleApply(t)}
           >
-            
+
             <div className="theme-name" style={{ color: t.accent }}>{t.name}</div>
             <div className="theme-tag">{t.tag}</div>
             {applying === t.id && (
@@ -951,7 +1049,32 @@ function ThemesTab({ business, campaigns, showToast }) {
         ))}
       </div>
 
-      <div className="card" style={{ marginTop: 24 }}>
+      <div className="section-label" style={{ marginTop: 28 }}>Genre Filter</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+        {GENRES.map(g => (
+          <button
+            key={g.id}
+            onClick={() => setActiveGenre(activeGenre === g.id ? null : g.id)}
+            style={{
+              background: activeGenre === g.id ? g.accent : '#1C1C26',
+              color: activeGenre === g.id ? '#121218' : g.accent,
+              border: `1px solid ${g.accent}`,
+              borderRadius: 12,
+              padding: '7px 16px',
+              fontSize: 12,
+              fontFamily: "'Share Tech Mono', monospace",
+              letterSpacing: 1,
+              cursor: 'pointer',
+              fontWeight: 700,
+              transition: 'all 0.15s',
+            }}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="card" style={{ marginTop: 0 }}>
         <div className="card-title">Seasonal Pricing</div>
         <div className="card-sub">
           Premium seasonal events attract 3 more players. Featured and Sponsored tiers include priority listing during peak periods.
@@ -973,7 +1096,7 @@ function ThemesTab({ business, campaigns, showToast }) {
             ].map(([event, dates, uplift]) => (
               <tr key={event}>
                 <td style={{ fontWeight: 600 }}>{event}</td>
-                <td style={{ color: '#6B67A0' }}>{dates}</td>
+                <td style={{ color: '#8888BB' }}>{dates}</td>
                 <td style={{ color: '#F59E0B', fontFamily: "'Share Tech Mono', monospace" }}>{uplift}</td>
               </tr>
             ))}
@@ -984,62 +1107,62 @@ function ThemesTab({ business, campaigns, showToast }) {
   )
 }
 
-//  History Tab 
+//  History Tab
 function HistoryTab({ redemptions }) {
+  // Group by day: count total arrivals and redeemed
   const byDay = (redemptions || []).reduce((acc, r) => {
     const day = r.created_at ? r.created_at.slice(0, 10) : 'Unknown'
-    acc[day] = (acc[day] || 0) + 1
+    if (!acc[day]) acc[day] = { players: 0, redeemed: 0 }
+    acc[day].players += 1
+    if (r.redeemed_at) acc[day].redeemed += 1
     return acc
   }, {})
 
-  const days = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14)
-  const maxCount = Math.max(...days.map(d => d[1]), 1)
+  const days = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 30)
 
   return (
     <div>
-      <div className="page-title">Visit History</div>
-      <div className="page-sub">Daily redemption counts over the last 2 weeks</div>
+      <div className="page-title">Campaign History</div>
+      <div className="page-sub">Past sessions and redemption counts</div>
 
-      {days.length > 0 ? (
-        <div className="card">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {days.map(([day, count]) => (
-              <div key={day} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace", width: 90, flexShrink: 0 }}>
-                  {new Date(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                </span>
-                <div style={{ flex: 1, background: '#252533', borderRadius: 4, height: 18, overflow: 'hidden' }}>
-                  <div style={{ width: `${(count / maxCount) * 100}%`, height: '100%', background: '#7C3AED', borderRadius: 4, transition: 'width 0.4s ease' }} />
-                </div>
-                <span style={{ fontSize: 12, color: '#B8B4D8', width: 24, textAlign: 'right' }}>{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="card" style={{ textAlign: 'center', color: '#6B67A0', padding: 40 }}>
-          No redemption history yet. Once players complete hunts, stats appear here.
-        </div>
-      )}
-
-      <div className="section-label" style={{ marginTop: 24 }}>All Redemptions</div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>CODE</th><th>ISSUED</th><th>REDEEMED</th></tr>
+              <tr>
+                <th>DATE</th>
+                <th>PLAYERS</th>
+                <th>REDEMPTIONS</th>
+              </tr>
             </thead>
             <tbody>
-              {(redemptions || []).map(r => (
-                <tr key={r.id}>
-                  <td className="code-cell">{r.voucher_code}</td>
-                  <td style={{ color: '#6B67A0' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : ''}</td>
-                  <td>{r.redeemed_at ? new Date(r.redeemed_at).toLocaleString() : <span style={{ color: '#32324A' }}></span>}</td>
+              {days.length === 0 && (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: 'center', color: '#8888BB', padding: '28px 16px', fontSize: 13 }}>
+                    No campaign history yet
+                  </td>
+                </tr>
+              )}
+              {days.map(([day, stats]) => (
+                <tr key={day}>
+                  <td style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 12 }}>
+                    {new Date(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td style={{ color: '#9D5FF5', fontWeight: 700 }}>{stats.players}</td>
+                  <td>
+                    <span style={{
+                      background: stats.redeemed > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(50,50,74,0.5)',
+                      color: stats.redeemed > 0 ? '#10B981' : '#8888BB',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontFamily: "'Share Tech Mono', monospace",
+                    }}>
+                      {stats.redeemed}
+                    </span>
+                  </td>
                 </tr>
               ))}
-              {(!redemptions || redemptions.length === 0) && (
-                <tr><td colSpan={3} style={{ textAlign: 'center', color: '#32324A', padding: 24 }}>No data yet</td></tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -1048,36 +1171,219 @@ function HistoryTab({ redemptions }) {
   )
 }
 
-//  Settings Tab 
-function SettingsTab({ business, showToast }) {
+//  Settings Tab
+function SettingsTab({ business, showToast, onPinConfigured }) {
   const tier = business?.tier || 'starter'
+  const [bizName, setBizName] = useState(business?.name || '')
+  const [contactEmail, setContactEmail] = useState(business?.email || '')
+  const [saving, setSaving] = useState(false)
+  const origBizName = useRef(business?.name || '')
+  const origContactEmail = useRef(business?.email || '')
+  const isDirty = bizName !== origBizName.current || contactEmail !== origContactEmail.current
+  const [pin, setPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinSaving, setPinSaving] = useState(false)
+  const [pinError, setPinError] = useState('')
+  const [pinSuccess, setPinSuccess] = useState(false)
+  const [pinConfigured, setPinConfigured] = useState(!!business?.redemption_pin_hash)
 
   const PLANS = [
     {
-      id: 'starter', name: 'Starter', price: '49', period: '/mo',
+      id: 'starter', name: 'Starter', price: '£49', period: '/mo',
       features: ['1 active hunt', 'Standard map listing', 'Basic analytics', 'Email support'],
     },
     {
-      id: 'featured', name: 'Featured', price: '99', period: '/mo',
+      id: 'featured', name: 'Featured', price: '£99', period: '/mo',
       features: ['3 active hunts', 'Gold map marker', 'Full analytics + history', 'Priority support', 'Seasonal pack access'],
     },
     {
-      id: 'sponsored', name: 'Sponsored', price: '249', period: '/mo',
+      id: 'sponsored', name: 'Sponsored', price: '£249', period: '/mo',
       features: ['Unlimited hunts', 'Elite map badge', 'Push to all local players', 'Dedicated account manager', 'Co-branded content', 'Custom voucher design'],
     },
   ]
+
+  const TIER_LABELS = { starter: 'Starter', featured: 'Featured', sponsored: 'Sponsored' }
+
+  async function handleSaveDetails() {
+    setSaving(true)
+    try {
+      if (business?.id) {
+        const { error } = await supabase
+          .from('businesses')
+          .update({ name: bizName, contact_email: contactEmail })
+          .eq('id', business.id)
+        if (error) throw error
+        origBizName.current = bizName
+        origContactEmail.current = contactEmail
+        showToast('Details saved.')
+      }
+    } catch (err) {
+      showToast('! Save failed: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function hashPin(p, bizId) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p + bizId))
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  async function handleSavePin() {
+    if (pin.length !== 4) { setPinError('PIN must be exactly 4 digits'); return }
+    if (pin !== confirmPin) { setPinError('PINs do not match'); return }
+    setPinError('')
+    setPinSuccess(false)
+    setPinSaving(true)
+    try {
+      const hash = await hashPin(pin, business.id)
+      const { error } = await supabase.from('businesses').update({ redemption_pin_hash: hash }).eq('id', business.id)
+      if (error) throw error
+      setPinConfigured(true)
+      setPinSuccess(true)
+      setPin('')
+      setConfirmPin('')
+      onPinConfigured?.()
+    } catch (err) {
+      setPinError('Save failed: ' + err.message)
+    } finally {
+      setPinSaving(false)
+    }
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
     window.location.reload()
   }
 
+  const inputStyle = {
+    width: '100%',
+    background: '#121218',
+    border: '1px solid #32324A',
+    borderRadius: 10,
+    color: '#F1F0FF',
+    fontFamily: "'Space Grotesk', system-ui, sans-serif",
+    fontSize: 14,
+    padding: '11px 14px',
+    outline: 'none',
+    marginBottom: 10,
+  }
+
   return (
     <div>
-      <div className="page-title">Settings & Billing</div>
-      <div className="page-sub">Manage your subscription and account</div>
+      <div className="page-title">Settings</div>
+      <div className="page-sub">Manage your business details and subscription</div>
 
-      <div className="section-label">Current Plan</div>
+      <div className="section-label">Business Details</div>
+      <div className="card">
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Business name</div>
+        <input
+          style={inputStyle}
+          value={bizName}
+          onChange={e => setBizName(e.target.value)}
+          placeholder="Your business name"
+        />
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Contact email</div>
+        <input
+          style={inputStyle}
+          type="email"
+          value={contactEmail}
+          onChange={e => setContactEmail(e.target.value)}
+          placeholder="contact@yourbusiness.com"
+        />
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Subscription tier</div>
+        <div style={{
+          background: '#121218',
+          border: '1px solid #32324A',
+          borderRadius: 10,
+          padding: '11px 14px',
+          marginBottom: 16,
+          fontSize: 14,
+          color: '#F59E0B',
+          fontFamily: "'Share Tech Mono', monospace",
+          letterSpacing: 1,
+        }}>
+          {TIER_LABELS[tier] || tier}
+        </div>
+        {isDirty && (
+          <button
+            onClick={handleSaveDetails}
+            disabled={saving}
+            style={{
+              background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+              border: 'none',
+              borderRadius: 12,
+              color: '#121218',
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: 1.5,
+              padding: '13px 0',
+              width: '100%',
+              cursor: saving ? 'default' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? 'SAVING' : 'SAVE CHANGES'}
+          </button>
+        )}
+      </div>
+
+      <div className="section-label">Staff Redemption PIN</div>
+      <div className="card">
+        <div className="card-title">Voucher Security</div>
+        <div className="card-sub">Set a 4-digit PIN that staff enter to confirm voucher redemptions</div>
+        {pinConfigured && (
+          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#10B981', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+            PIN CONFIGURED
+          </div>
+        )}
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>New PIN (4 digits)</div>
+        <input
+          style={inputStyle}
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={pin}
+          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          placeholder="----"
+        />
+        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Confirm PIN</div>
+        <input
+          style={inputStyle}
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={confirmPin}
+          onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          placeholder="----"
+        />
+        {pinError && (
+          <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{pinError}</div>
+        )}
+        {pinSuccess && (
+          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#10B981', lineHeight: 1.5 }}>
+            PIN saved — voucher redemptions are now secured
+          </div>
+        )}
+        <button
+          onClick={handleSavePin}
+          disabled={pinSaving}
+          style={{
+            background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+            border: 'none', borderRadius: 12, color: '#121218',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: 13, fontWeight: 700, letterSpacing: 1.5,
+            padding: '13px 0', width: '100%',
+            cursor: pinSaving ? 'default' : 'pointer',
+            opacity: pinSaving ? 0.7 : 1,
+          }}
+        >
+          {pinSaving ? 'SAVING...' : 'SAVE PIN'}
+        </button>
+      </div>
+
+      <div className="section-label">Subscription Plan</div>
       <div className="plan-grid">
         {PLANS.map(p => (
           <div key={p.id} className={`plan-card ${tier === p.id ? 'current' : ''}`}>
@@ -1088,13 +1394,13 @@ function SettingsTab({ business, showToast }) {
             ))}
             {tier === p.id ? (
               <div style={{ marginTop: 14, fontSize: 11, color: '#10B981', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
-                {'+'} CURRENT PLAN
+                + CURRENT PLAN
               </div>
             ) : (
               <button
                 className="btn-primary"
                 style={{ marginTop: 14, width: '100%' }}
-                onClick={() => showToast('Stripe checkout coming soon  email hello@geofictionlabs.com to upgrade')}
+                onClick={() => showToast('Stripe checkout coming soon - email hello@geofictionlabs.com to upgrade')}
               >
                 UPGRADE
               </button>
@@ -1103,12 +1409,25 @@ function SettingsTab({ business, showToast }) {
         ))}
       </div>
 
-      <div className="card" style={{ marginTop: 8 }}>
-        <div className="card-title">Account</div>
-        <div className="card-sub">{business?.name || 'Your business account'}</div>
+      <div className="section-label" style={{ color: '#EF4444' }}>Danger Zone</div>
+      <div className="card" style={{ border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.04)' }}>
+        <div className="card-title" style={{ color: '#EF4444' }}>End Active Sessions</div>
+        <div className="card-sub">Ending your session removes you from the player map immediately.</div>
         <div className="row">
-          <button className="btn-secondary" onClick={() => showToast('Contact hello@geofictionlabs.com to update business details')}>
-            EDIT DETAILS
+          <button
+            className="btn-secondary"
+            style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}
+            onClick={async () => {
+              if (!business?.id) return
+              await supabase
+                .from('live_business_sessions')
+                .update({ session_end: new Date().toISOString(), is_live: false })
+                .eq('business_id', business.id)
+                .is('session_end', null)
+              showToast('All active sessions ended.')
+            }}
+          >
+            END ALL SESSIONS
           </button>
           <button
             className="btn-secondary"
@@ -1122,7 +1441,7 @@ function SettingsTab({ business, showToast }) {
 
       <div className="card">
         <div className="card-title">Legal</div>
-        <div className="card-sub">GeoFiction Labs Ltd  hello@geofictionlabs.com</div>
+        <div className="card-sub">GeoFiction Labs Ltd - hello@geofictionlabs.com</div>
         <div className="row">
           <a href="/privacy.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Privacy Policy</a>
           <a href="/terms.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Terms of Service</a>
@@ -1297,7 +1616,7 @@ export default function Dashboard() {
       <>
         <style>{CSS}</style>
         <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
-          <div style={{ color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2 }}>
+          <div style={{ color: '#8888BB', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2 }}>
             Loading
           </div>
         </div>
@@ -1309,16 +1628,18 @@ export default function Dashboard() {
     return (
       <>
         <style>{CSS}</style>
-        <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
+        <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh', flexDirection: 'column', justifyContent: 'center' }}>
           <div className="auth-card">
-            <div className="auth-logo">MAP<span>MOVIE</span></div>
-            <div className="auth-sub">Business Dashboard  GeoFiction Labs</div>
+            <div className="auth-logo">
+              <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+            </div>
+            <div className="auth-sub">Business Portal</div>
             <div className="auth-title" style={{ marginBottom: 20 }}>Sign In</div>
 
             {emailSent ? (
               <div className="auth-sent">
                 Magic link sent! Check your inbox.
-                <div style={{ marginTop: 10, fontSize: 12, color: '#6B67A0' }}>
+                <div style={{ marginTop: 10, fontSize: 12, color: '#8888BB' }}>
                   No email? Check spam or contact hello@geofictionlabs.com
                 </div>
                 <button
@@ -1364,6 +1685,9 @@ export default function Dashboard() {
               </>
             )}
           </div>
+          <div style={{ marginTop: 24, fontSize: 12, color: '#8888BB', textAlign: 'center' }}>
+            GeoFiction Labs Ltd
+          </div>
         </div>
       </>
     )
@@ -1375,10 +1699,12 @@ export default function Dashboard() {
         <style>{CSS}</style>
         <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
           <div className="auth-card">
-            <div className="auth-logo">MAP<span>MOVIE</span></div>
-            
+            <div className="auth-logo">
+              <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+            </div>
+
             <div className="auth-title">No Business Account</div>
-            <p style={{ fontSize: 13, color: '#6B67A0', margin: '10px 0 20px', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: '#8888BB', margin: '10px 0 20px', lineHeight: 1.6 }}>
               Your account isn't linked to a business yet. Contact us to get set up.
             </p>
             <a
@@ -1410,7 +1736,9 @@ export default function Dashboard() {
       <div className="dash-root" style={{ background: '#121218', minHeight: '100vh', color: '#F1F0FF' }}>
         {/* Sidebar */}
         <div className="sidebar">
-          <div className="sidebar-logo">MAP<span>MOVIE</span></div>
+          <div className="sidebar-logo">
+            <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+          </div>
           <div className="sidebar-biz">
             {business?.name || 'My Business'}
             <small>
@@ -1432,7 +1760,7 @@ export default function Dashboard() {
             ))}
           </nav>
           <div className="sidebar-footer">
-            <div style={{ fontSize: 11, color: '#6B67A0', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: '#8888BB', marginBottom: 8 }}>
               GeoFiction Labs Ltd
             </div>
             <div style={{ fontSize: 11, color: '#32324A', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
@@ -1454,16 +1782,23 @@ export default function Dashboard() {
               onGoLive={handleGoLive}
               onEndLive={handleEndLive}
               puzzlePreview={puzzlePreview}
+              onGoToSettings={() => setTab('settings')}
             />
           )}
           {tab === 'vouchers' && (
-            <VouchersTab business={business} campaigns={campaigns} showToast={showToast} />
+            <VouchersTab business={business} campaigns={campaigns} redemptions={redemptions} showToast={showToast} />
           )}
           {tab === 'themes' && (
             <ThemesTab business={business} campaigns={campaigns} showToast={showToast} />
           )}
           {tab === 'history' && <HistoryTab redemptions={redemptions} />}
-          {tab === 'settings' && <SettingsTab business={business} showToast={showToast} />}
+          {tab === 'settings' && (
+            <SettingsTab
+              business={business}
+              showToast={showToast}
+              onPinConfigured={() => setBusiness(prev => prev ? { ...prev, redemption_pin_hash: 'set' } : prev)}
+            />
+          )}
         </main>
 
         {/* Mobile tab bar */}

@@ -28,7 +28,7 @@ export default class ErrorBoundary extends Component {
             <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
               Something went wrong
             </div>
-            <div style={{ fontSize: 13, color: '#6B67A0', marginBottom: 24, lineHeight: 1.6, maxWidth: 320 }}>
+            <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 24, lineHeight: 1.6, maxWidth: 320 }}>
               An unexpected error occurred. Please refresh and try again.
             </div>
             <button

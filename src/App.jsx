@@ -3,7 +3,27 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 
-//  Haversine distance 
+// ── Question variety helpers ──────────────────────────────────────────────────
+// Persist seen question IDs per user in localStorage so repeated play sessions
+// get different questions. Capped at 500 IDs to avoid storage bloat.
+function getSeenQuestionIds(userId) {
+  try {
+    const raw = localStorage.getItem('mtm_seen_' + userId)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function markQuestionsSeenLocal(userId, ids) {
+  if (!ids.length) return
+  try {
+    const existing = getSeenQuestionIds(userId)
+    const merged = [...new Set([...existing, ...ids])]
+    localStorage.setItem('mtm_seen_' + userId, JSON.stringify(merged.slice(-500)))
+  } catch {}
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+//  Haversine distance
 function haversineMetres(lat1, lon1, lat2, lon2) {
   const R = 6371000
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -101,7 +121,7 @@ body {
 .logo-sub {
   font-size: 12px;
   letter-spacing: 1.5px;
-  color: #6B67A0;
+  color: #8888BB;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 500;
   margin-top: 8px;
@@ -115,7 +135,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 2px;
-  color: #6B67A0;
+  color: #8888BB;
   text-transform: uppercase;
   margin-bottom: 12px;
 }
@@ -165,7 +185,7 @@ body {
 }
 .hunt-card-desc {
   font-size: 12px;
-  color: #6B67A0;
+  color: #8888BB;
   line-height: 1.4;
   margin-bottom: 8px;
 }
@@ -186,7 +206,7 @@ body {
 .badge-free { background: rgba(16,185,129,0.12); color: #10B981; }
 .badge-premium { background: rgba(245,158,11,0.12); color: #F59E0B; }
 .badge-elite { background: rgba(252,211,77,0.12); color: #FCD34D; }
-.badge-dist { background: #252533; color: #6B67A0; }
+.badge-dist { background: #252533; color: #8888BB; }
 .hunt-card-start {
   flex-shrink: 0;
   display: flex;
@@ -237,7 +257,7 @@ body {
   background: #1C1C26;
   padding: 8px 16px;
   font-size: 11px;
-  color: #6B67A0;
+  color: #8888BB;
   font-family: 'Share Tech Mono', monospace;
   letter-spacing: 0.5px;
 }
@@ -246,7 +266,7 @@ body {
 .loading-state {
   text-align: center;
   padding: 48px 20px;
-  color: #6B67A0;
+  color: #8888BB;
   font-size: 13px;
 }
 .spinner {
@@ -272,7 +292,7 @@ body {
 .empty-state {
   text-align: center;
   padding: 48px 20px;
-  color: #6B67A0;
+  color: #8888BB;
   font-size: 13px;
 }
 
@@ -316,7 +336,7 @@ body {
   color: #F1F0FF;
   margin: 16px 0 8px;
 }
-.modal-sub { font-size: 13px; color: #6B67A0; margin-bottom: 24px; line-height: 1.5; }
+.modal-sub { font-size: 13px; color: #8888BB; margin-bottom: 24px; line-height: 1.5; }
 .modal-email-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .modal-input {
   flex: 1;
@@ -330,7 +350,7 @@ body {
   outline: none;
 }
 .modal-input:focus { border-color: #7C3AED; }
-.modal-input::placeholder { color: #6B67A0; }
+.modal-input::placeholder { color: #8888BB; }
 .modal-btn-main {
   background: #7C3AED;
   color: #fff;
@@ -344,7 +364,7 @@ body {
   white-space: nowrap;
 }
 .modal-sent { font-size: 13px; color: #10B981; margin-bottom: 16px; }
-.modal-divider { text-align: center; font-size: 11px; color: #6B67A0; margin: 16px 0; letter-spacing: 2px; }
+.modal-divider { text-align: center; font-size: 11px; color: #8888BB; margin: 16px 0; letter-spacing: 2px; }
 .modal-free-btn {
   width: 100%;
   background: #252533;
@@ -395,7 +415,7 @@ body {
 .nav-count {
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
-  color: #6B67A0;
+  color: #8888BB;
   white-space: nowrap;
 }
 
@@ -410,7 +430,7 @@ body {
 .coord-label {
   font-size: 10px;
   letter-spacing: 2px;
-  color: #6B67A0;
+  color: #8888BB;
   font-family: 'Share Tech Mono', monospace;
   margin-bottom: 10px;
 }
@@ -493,7 +513,7 @@ body {
   font-family: 'Share Tech Mono', monospace;
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: #6B67A0;
+  color: #8888BB;
 }
 .signal-pips { display: flex; gap: 3px; flex: 1; }
 .signal-pip {
@@ -523,12 +543,12 @@ body {
   font-family: 'Share Tech Mono', monospace;
   font-size: 10px;
   letter-spacing: 2px;
-  color: #6B67A0;
+  color: #8888BB;
   margin-bottom: 10px;
 }
 .puzzle-category {
   font-size: 11px;
-  color: #6B67A0;
+  color: #8888BB;
   margin-bottom: 8px;
   letter-spacing: 1px;
 }
@@ -555,7 +575,7 @@ body {
 }
 .puzzle-hint {
   font-size: 12px;
-  color: #6B67A0;
+  color: #8888BB;
   margin-bottom: 14px;
   font-style: italic;
   line-height: 1.4;
@@ -626,7 +646,7 @@ body {
   background: none;
   border: none;
   font-size: 11px;
-  color: #6B67A0;
+  color: #8888BB;
   cursor: pointer;
   font-family: 'Share Tech Mono', monospace;
   letter-spacing: 1px;
@@ -662,7 +682,7 @@ body {
   letter-spacing: -1px;
   line-height: 1;
 }
-.compass-unit { font-size: 18px; color: #6B67A0; font-weight: 700; }
+.compass-unit { font-size: 18px; color: #8888BB; font-weight: 700; }
 .compass-arrow-wrap {
   position: relative;
   width: 280px;
@@ -709,7 +729,7 @@ body {
 .compass-dist-label {
   font-family: 'Share Tech Mono', monospace;
   font-size: 12px;
-  color: #6B67A0;
+  color: #8888BB;
   letter-spacing: 2px;
   margin-top: 4px;
   text-align: center;
@@ -718,7 +738,7 @@ body {
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
   letter-spacing: 2px;
-  color: #6B67A0;
+  color: #8888BB;
   text-align: center;
 }
 .compass-msg-box {
@@ -769,7 +789,7 @@ body {
   background: #252533;
   border: 1px dashed #32324A;
   border-radius: 10px;
-  color: #6B67A0;
+  color: #8888BB;
   font-family: 'Share Tech Mono', monospace;
   font-size: 10px;
   letter-spacing: 2px;
@@ -784,49 +804,67 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 0;
+  background: #121218;
+  min-height: 100dvh;
 }
 
 /*  Account prompt  */
 .account-prompt {
   margin-top: 20px;
-  background: rgba(124,58,237,0.06);
-  border: 1px solid rgba(124,58,237,0.2);
+  background: #1C1C26;
+  border: 1px solid #32324A;
   border-radius: 14px;
-  padding: 16px;
+  padding: 20px;
   width: 100%;
+  max-width: 340px;
 }
 .account-prompt-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #9D5FF5;
-  margin-bottom: 4px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 24px;
+  font-weight: 900;
+  color: #F1F0FF;
+  margin-bottom: 6px;
 }
-.account-prompt-sub { font-size: 12px; color: #6B67A0; margin-bottom: 12px; }
-.account-email-row { display: flex; gap: 8px; }
+.account-prompt-sub { font-size: 14px; color: #B8B4D8; margin-bottom: 16px; }
+.account-email-row { display: flex; flex-direction: column; gap: 10px; }
 .account-input {
-  flex: 1;
-  background: #121218;
+  width: 100%;
+  background: #1C1C26;
   border: 1px solid #32324A;
   border-radius: 10px;
   color: #F1F0FF;
   font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 13px;
-  padding: 9px 12px;
+  font-size: 15px;
+  padding: 13px 14px;
   outline: none;
 }
-.account-input:focus { border-color: #7C3AED; }
+.account-input:focus { outline: 2px solid #7C3AED; outline-offset: -1px; border-color: transparent; }
 .account-submit {
-  background: #7C3AED;
+  background: linear-gradient(135deg, #F59E0B, #FCD34D);
   border: none;
-  border-radius: 10px;
-  color: #fff;
+  border-radius: 12px;
+  color: #121218;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 1px;
-  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 0;
+  height: 52px;
+  width: 100%;
   cursor: pointer;
 }
-.account-sent { font-size: 12px; color: #10B981; }
+.account-maybe {
+  background: none;
+  border: none;
+  color: #8888BB;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  margin-top: 10px;
+  padding: 4px;
+}
+.account-sent { font-size: 13px; color: #10B981; }
 
 /*  Reset modal  */
 .reset-overlay {
@@ -857,7 +895,7 @@ body {
   letter-spacing: 2px;
   margin-bottom: 10px;
 }
-.reset-body { font-size: 13px; color: #6B67A0; margin-bottom: 24px; line-height: 1.5; }
+.reset-body { font-size: 13px; color: #8888BB; margin-bottom: 24px; line-height: 1.5; }
 .reset-action {
   background: #7C3AED;
   border: none;
@@ -884,7 +922,7 @@ body {
   font-family: 'Share Tech Mono', monospace;
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: #6B67A0;
+  color: #8888BB;
   text-decoration: none;
 }
 .footer-link:hover { color: #7C3AED; }
@@ -1103,11 +1141,11 @@ function HuntCard({ hunt, onTap, distLabel }) {
           letterSpacing: 1.5,
           fontWeight: 700,
         }}>{badgeLabel}</span>
-        <span style={{ color: '#6B67A0', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
+        <span style={{ color: '#8888BB', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
           18 MIN
         </span>
         {distLabel && (
-          <span style={{ color: '#6B67A0', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
+          <span style={{ color: '#8888BB', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
             {distLabel}
           </span>
         )}
@@ -1184,7 +1222,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
           <span className="logo-the"> T H E </span>
           <span className="logo-movie">MOVIE</span>
         </div>
-        <div className="logo-sub">Solve the Clue  Find the Location</div>
+        <div className="logo-sub">Solve the Clue &middot; Find the Location</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '20px 0 14px' }}>
@@ -1194,7 +1232,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             className="view-toggle"
             style={{
               background: viewMode === 'list' ? '#7C3AED' : '#252533',
-              color: viewMode === 'list' ? '#fff' : '#6B67A0',
+              color: viewMode === 'list' ? '#fff' : '#8888BB',
             }}
             onClick={() => setViewMode('list')}
           >
@@ -1204,7 +1242,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             className="view-toggle"
             style={{
               background: viewMode === 'map' ? '#7C3AED' : '#252533',
-              color: viewMode === 'map' ? '#fff' : '#6B67A0',
+              color: viewMode === 'map' ? '#fff' : '#8888BB',
             }}
             onClick={() => setViewMode('map')}
           >
@@ -1477,7 +1515,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
                     : status === 'wrong'
                       ? '#EF4444'
                       : 'linear-gradient(135deg, #F59E0B, #FCD34D)',
-                color: !input ? '#6B67A0' : status === 'correct' || status === 'wrong' ? '#fff' : '#000',
+                color: !input ? '#8888BB' : status === 'correct' || status === 'wrong' ? '#fff' : '#000',
               }}
               onClick={handleSubmit}
               disabled={!input || status === 'submitting'}
@@ -1505,11 +1543,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
   const [orientState, setOrientState] = useState('init')
   const [deviceHeading, setDeviceHeading] = useState(null)
-  // Debug state — remove after Safari diagnosis
-  const [dbgAccuracy, setDbgAccuracy] = useState(null)
-  const [dbgAlpha, setDbgAlpha] = useState(null)
-  const [dbgWebkit, setDbgWebkit] = useState(null)
-  const [gpsWatchFiring, setGpsWatchFiring] = useState(false)
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const startDistRef = useRef(null)
@@ -1525,40 +1558,57 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const accent = hexAccent(hunt?.accent_color)
   const geofence = target?.geofence_m || 15
 
-  // GPS watch — empty deps so Safari never tears it down mid-session
+  // GPS watch — empty deps, runs once on mount, never torn down mid-session
   useEffect(() => {
     if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
     arrivedRef.current = false
-    console.log('[GPS] starting watchPosition...')
 
-    // getCurrentPosition gives an immediate first fix on Safari
+    let watchId = null
+    let positionReceived = false
+
+    function onPosition(pos) {
+      positionReceived = true
+      setPlayerLat(pos.coords.latitude)
+      setPlayerLon(pos.coords.longitude)
+      setGpsStatus('active')
+    }
+
+    function startWatch(highAccuracy) {
+      if (watchId != null) navigator.geolocation.clearWatch(watchId)
+      watchId = navigator.geolocation.watchPosition(
+        onPosition,
+        err => {
+          console.warn('[GPS] error', err.code, err.message)
+          if (highAccuracy) {
+            // High accuracy failed (common indoors on Safari) — retry without it
+            startWatch(false)
+          } else {
+            setGpsStatus('error')
+          }
+        },
+        { enableHighAccuracy: highAccuracy, maximumAge: highAccuracy ? 0 : 30000, timeout: highAccuracy ? 15000 : 30000 }
+      )
+    }
+
+    // Fast initial fix: low accuracy so Safari can use WiFi/cell immediately
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        console.log('[GPS] initial fix:', pos.coords.latitude, pos.coords.longitude)
-        setPlayerLat(pos.coords.latitude)
-        setPlayerLon(pos.coords.longitude)
-        setGpsWatchFiring(true)
-        setGpsStatus('active')
-      },
+      onPosition,
       err => console.warn('[GPS] initial fix failed:', err.message),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
     )
 
-    const watchId = navigator.geolocation.watchPosition(
-      pos => {
-        const { latitude, longitude, accuracy } = pos.coords
-        console.log('[GPS watch fired]', { lat: latitude, lon: longitude, accuracy })
-        setGpsWatchFiring(true)
-        setPlayerLat(latitude)
-        setPlayerLon(longitude)
-        setDbgAccuracy(Math.round(accuracy))
-        setGpsStatus('active')
-      },
-      err => { console.warn('[GPS] error', err.code, err.message); setGpsStatus('error') },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
-    )
-    console.log('[GPS] watchId:', watchId)
-    return () => { console.log('[GPS] clearing watch:', watchId); navigator.geolocation.clearWatch(watchId) }
+    // Continuous high-accuracy watch; falls back to low accuracy on error
+    startWatch(true)
+
+    // Belt-and-braces: if nothing in 10s, also try a low-accuracy watch
+    const fallbackTimer = setTimeout(() => {
+      if (!positionReceived) startWatch(false)
+    }, 10000)
+
+    return () => {
+      clearTimeout(fallbackTimer)
+      if (watchId != null) navigator.geolocation.clearWatch(watchId)
+    }
   }, [])
 
   // Recalculate distance + bearing whenever player position updates
@@ -1567,7 +1617,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     if (!playerLat || !playerLon || !t?.lat || !t?.lon) return
     const dist = haversineMetres(playerLat, playerLon, t.lat, t.lon)
     const bear = bearingDegrees(playerLat, playerLon, t.lat, t.lon)
-    console.log('[distance]', { dist, targetLat: t.lat, targetLon: t.lon })
     setToBearing(bear)
     if (startDistRef.current === null) startDistRef.current = dist
     setDistance(dist)
@@ -1627,8 +1676,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       if (!fired) { fired = true; clearTimeout(timeoutId); setOrientState('active') }
       const smoothed = smoothHeading(heading)
       setDeviceHeading(smoothed)
-      setDbgAlpha(e.alpha != null ? Math.round(e.alpha) : null)
-      setDbgWebkit(e.webkitCompassHeading != null ? Math.round(e.webkitCompassHeading) : null)
     }
 
     window.addEventListener('deviceorientationabsolute', handleOrientation, true)
@@ -1789,26 +1836,10 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         </div>
         <div style={{
           fontSize: 11, letterSpacing: 3, marginTop: 4,
-          color: distance != null ? '#6B67A0' : '#32324A',
+          color: distance != null ? '#8888BB' : '#32324A',
         }}>
           {destLabel}
         </div>
-      </div>
-
-      {/* GPS debug panel — remove after Safari diagnosis */}
-      <div style={{
-        background: '#1C1C26', padding: '8px', borderRadius: '8px',
-        fontFamily: 'monospace', fontSize: '11px', color: '#F59E0B',
-        textAlign: 'left', margin: '8px', width: '100%', maxWidth: 340,
-        boxSizing: 'border-box',
-      }}>
-        <div>playerLat: {String(playerLat)}</div>
-        <div>playerLon: {String(playerLon)}</div>
-        <div>dest.lat: {String(target?.lat)}</div>
-        <div>dest.lon: {String(target?.lon)}</div>
-        <div>currentDistance: {String(distance)}</div>
-        <div>startDistance: {String(startDistRef.current)}</div>
-        <div>watchPosition firing: {String(gpsWatchFiring)}</div>
       </div>
 
       {/* On-track label */}
@@ -1828,7 +1859,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         <div className="compass-calibrating">CALIBRATING COMPASS</div>
       )}
       {distance != null && gpsStatus === 'active' && !onTrack && (
-        <div style={{ fontSize: 12, color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+        <div style={{ fontSize: 12, color: '#8888BB', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
           HEAD {cardinalDir()}
         </div>
       )}
@@ -1836,7 +1867,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       {gpsStatus === 'error' || gpsStatus === 'unavailable' ? (
         <div style={{ textAlign: 'center' }}>
           <div className="compass-status">GPS signal needed</div>
-          <div style={{ fontSize: 12, color: '#6B67A0', marginTop: 4, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: '#8888BB', marginTop: 4, lineHeight: 1.5 }}>
             Step outside and allow location access
           </div>
         </div>
@@ -1847,28 +1878,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       )}
 
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
-
-      {/* DEBUG PANEL — remove after Safari diagnosis */}
-      <div style={{
-        background: '#1C1C26', padding: '12px', borderRadius: '8px',
-        margin: '12px', fontFamily: 'monospace', fontSize: '12px',
-        color: '#B8B4D8', textAlign: 'left', width: '100%', maxWidth: 340,
-        boxSizing: 'border-box',
-      }}>
-        <div>GPS: {playerLat != null ? `${playerLat.toFixed(4)}, ${playerLon.toFixed(4)}` : 'null'}</div>
-        <div>Accuracy: {dbgAccuracy != null ? `${dbgAccuracy}m` : 'null'}</div>
-        <div>Target: {target?.lat?.toFixed(4)}, {target?.lon?.toFixed(4)}</div>
-        <div>distance: {distance != null ? `${Math.round(distance)}m` : 'null'}</div>
-        <div>alpha (raw): {dbgAlpha != null ? dbgAlpha : 'null'}</div>
-        <div>webkitCompassHeading: {dbgWebkit != null ? dbgWebkit : 'null'}</div>
-        <div>deviceHeading state: {deviceHeading != null ? Math.round(deviceHeading) : 'null'}</div>
-        <div>Bearing to dest: {Math.round(toBearing)}</div>
-        <div>Rotation calc: {deviceHeading != null ? `${Math.round(toBearing)} - ${Math.round(deviceHeading)} = ${Math.round(toBearing - deviceHeading)}deg` : 'no heading'}</div>
-        <div>Needle transform: rotate({Math.round(needleRotation)}deg)</div>
-        <div>searching: {String(searching)}</div>
-        <div>orientState: {orientState}</div>
-        <div>Browser: {navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Other'}</div>
-      </div>
     </div>
   )
 }
@@ -1886,24 +1895,27 @@ function AccountPrompt() {
 
   return (
     <div className="account-prompt">
-      <div className="account-prompt-title">Save Your Progress</div>
+      <div className="account-prompt-title">Save your progress</div>
       <div className="account-prompt-sub">
-        Enter your email to get a magic link and unlock premium hunts.
+        Get notified about new hunts near you. Free forever.
       </div>
       {sent ? (
-        <div className="account-sent">Magic link sent  check your inbox.</div>
+        <div className="account-sent">Check your inbox for a sign-in link.</div>
       ) : (
-        <div className="account-email-row">
-          <input
-            className="account-input"
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSave()}
-          />
-          <button className="account-submit" onClick={handleSave}>SAVE</button>
-        </div>
+        <>
+          <div className="account-email-row">
+            <input
+              className="account-input"
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+            />
+            <button className="account-submit" onClick={handleSave}>SAVE PROGRESS</button>
+          </div>
+          <button className="account-maybe" onClick={() => {}}>Maybe later</button>
+        </>
       )}
     </div>
   )
@@ -1911,102 +1923,267 @@ function AccountPrompt() {
 
 //  Arrived Screen 
 function ArrivedScreen({ voucher }) {
-  const [redeemed, setRedeemed] = useState(false)
+  const pinHash = voucher?.redemption_pin_hash || null
+  const businessId = String(voucher?.business_id || '')
+
   const [entered, setEntered] = useState(false)
+  const [step, setStep] = useState('view')
+  const [pinEntered, setPinEntered] = useState('')
+  const [attempts, setAttempts] = useState(0)
+  const [pinMsg, setPinMsg] = useState('')
+  const [holdProgress, setHoldProgress] = useState(0)
+  const holdTimerRef = useRef(null)
+  const lockTimerRef = useRef(null)
 
   useEffect(() => {
     const t = setTimeout(() => setEntered(true), 60)
     return () => clearTimeout(t)
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearInterval(holdTimerRef.current)
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current)
+    }
+  }, [])
+
+  async function checkPin(digits) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(digits + businessId))
+    const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return hex === pinHash
+  }
+
+  async function handleDigit(d) {
+    const next = pinEntered + d
+    if (next.length > 4) return
+    setPinEntered(next)
+    if (next.length < 4) return
+    const correct = await checkPin(next)
+    if (correct) {
+      setStep('success')
+      return
+    }
+    const newAttempts = attempts + 1
+    setAttempts(newAttempts)
+    setPinEntered('')
+    if (newAttempts >= 3) {
+      setStep('lockedout')
+      setPinMsg('Too many attempts - please contact staff')
+      lockTimerRef.current = setTimeout(() => {
+        setStep('handoff')
+        setAttempts(0)
+        setPinMsg('')
+      }, 5 * 60 * 1000)
+    } else {
+      setPinMsg('Incorrect PIN - ' + (3 - newAttempts) + ' attempt' + (3 - newAttempts === 1 ? '' : 's') + ' remaining')
+    }
+  }
+
+  function startHold() {
+    setHoldProgress(0)
+    const start = Date.now()
+    holdTimerRef.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - start) / 3000) * 100)
+      setHoldProgress(pct)
+      if (pct >= 100) {
+        clearInterval(holdTimerRef.current)
+        holdTimerRef.current = null
+        setStep('success')
+      }
+    }, 50)
+  }
+
+  function endHold() {
+    if (holdTimerRef.current) { clearInterval(holdTimerRef.current); holdTimerRef.current = null }
+    if (step !== 'success') setHoldProgress(0)
+  }
+
+  if (step === 'success') {
+    return (
+      <div className="arrived-wrap">
+        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#10B981', margin: '0 auto 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 28, color: '#fff', fontWeight: 700 }}>OK</div>
+          </div>
+          <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 26, color: '#F1F0FF', marginBottom: 10 }}>
+            Redeemed Successfully
+          </div>
+          <div style={{ color: '#B8B4D8', fontSize: 14, lineHeight: 1.6 }}>
+            Thank you for visiting and playing MapTheMovie
+          </div>
+        </div>
+        <div style={{ width: '100%' }}><AccountPrompt /></div>
+      </div>
+    )
+  }
+
+  if (step === 'lockedout') {
+    return (
+      <div className="arrived-wrap">
+        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 2, color: '#EF4444', marginBottom: 16 }}>
+            ACCESS LOCKED
+          </div>
+          <div style={{ color: '#B8B4D8', fontSize: 14, lineHeight: 1.6 }}>
+            {pinMsg}
+          </div>
+          <div style={{ marginTop: 16, color: '#8888BB', fontSize: 13 }}>
+            Locked for 5 minutes
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'pinentry') {
+    const KEYS = ['1','2','3','4','5','6','7','8','9','','0','']
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 24 }}>
+        <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 15, letterSpacing: 3, color: '#F1F0FF', marginBottom: 8 }}>
+          STAFF PIN REQUIRED
+        </div>
+        <div style={{ color: '#8888BB', fontSize: 13, marginBottom: 32 }}>
+          Enter your 4-digit staff PIN
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{
+              width: 16, height: 16, borderRadius: '50%',
+              border: '2px solid #7C3AED',
+              background: pinEntered.length > i ? '#7C3AED' : 'transparent',
+              transition: 'background 0.12s',
+            }} />
+          ))}
+        </div>
+        {pinMsg && (
+          <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 16, textAlign: 'center' }}>
+            {pinMsg}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 72px)', gap: 12, marginBottom: 32 }}>
+          {KEYS.map((k, i) => (
+            k === '' ? <div key={i} /> :
+            <button
+              key={i}
+              onClick={() => handleDigit(k)}
+              style={{
+                width: 72, height: 72,
+                background: '#1C1C26',
+                border: '1px solid #32324A',
+                borderRadius: '50%',
+                fontSize: 24, color: '#F1F0FF',
+                cursor: 'pointer',
+                fontFamily: "'Space Grotesk', system-ui, sans-serif",
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >{k}</button>
+          ))}
+        </div>
+        <button
+          onClick={() => { setStep('handoff'); setPinEntered(''); setPinMsg('') }}
+          style={{ background: 'none', border: 'none', color: '#8888BB', fontSize: 14, cursor: 'pointer', padding: '10px 24px' }}
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  const circumference = 2 * Math.PI * 42
+
   return (
     <div className="arrived-wrap">
-      <div style={{ fontSize: 13, color: '#6B67A0', marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>
+      {step === 'handoff' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 32 }}>
+          <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 22, color: '#F1F0FF', textAlign: 'center', marginBottom: 12, lineHeight: 1.3 }}>
+            Hand your phone to a member of staff
+          </div>
+          <div style={{ color: '#B8B4D8', fontSize: 14, marginBottom: 40, textAlign: 'center' }}>
+            Staff: tap below to enter your PIN
+          </div>
+          {pinHash ? (
+            <button
+              onClick={() => { setPinMsg(''); setPinEntered(''); setStep('pinentry') }}
+              style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', border: 'none', borderRadius: 12, fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 2, fontWeight: 700, padding: '18px 40px', cursor: 'pointer', marginBottom: 24 }}
+            >
+              STAFF REDEMPTION
+            </button>
+          ) : (
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ color: '#8888BB', fontSize: 13, marginBottom: 16 }}>Hold to confirm redemption</div>
+              <div style={{ position: 'relative', width: 100, height: 100, margin: '0 auto' }}>
+                <svg width="100" height="100" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#32324A" strokeWidth="6" />
+                  <circle
+                    cx="50" cy="50" r="42" fill="none" stroke="#7C3AED" strokeWidth="6"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={circumference * (1 - holdProgress / 100)}
+                    style={{ transition: 'stroke-dashoffset 0.05s linear' }}
+                  />
+                </svg>
+                <button
+                  onMouseDown={startHold}
+                  onMouseUp={endHold}
+                  onMouseLeave={endHold}
+                  onTouchStart={e => { e.preventDefault(); startHold() }}
+                  onTouchEnd={endHold}
+                  style={{ position: 'absolute', inset: 8, background: '#1C1C26', border: 'none', borderRadius: '50%', color: '#F1F0FF', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, cursor: 'pointer' }}
+                >
+                  HOLD
+                </button>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setStep('view')}
+            style={{ background: 'none', border: 'none', color: '#8888BB', fontSize: 14, cursor: 'pointer', padding: '10px 24px' }}
+          >
+            Back
+          </button>
+        </div>
+      )}
+
+      <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>
         You solved the puzzle and walked to the location.
         <br />Show this screen to claim your reward.
       </div>
 
-      {/* Ticket card with spring entrance */}
       <div style={{
-        background: '#F1F0FF',
-        color: '#121218',
-        borderRadius: 16,
-        overflow: 'hidden',
-        width: '100%',
-        maxWidth: 340,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        background: '#F1F0FF', color: '#121218', borderRadius: 16, overflow: 'hidden',
+        width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
         transform: entered ? 'translateY(0) scale(1)' : 'translateY(60px) scale(0.92)',
         opacity: entered ? 1 : 0,
         transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease',
       }}>
-        {/* Header band */}
-        <div style={{
-          background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
-          color: '#fff',
-          padding: '20px 24px',
-          fontFamily: "'Share Tech Mono', monospace",
-          fontWeight: 900,
-          fontSize: 18,
-          letterSpacing: 2,
-        }}>
+        <div style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', padding: '20px 24px', fontFamily: "'Share Tech Mono', monospace", fontWeight: 900, fontSize: 18, letterSpacing: 2 }}>
           REWARD UNLOCKED
         </div>
-
-        {/* Perforated divider */}
         <div style={{ borderTop: '2px dashed rgba(124,58,237,0.25)', background: '#F1F0FF' }} />
-
-        {/* Body */}
         <div style={{ padding: '16px 20px 0', background: '#F1F0FF' }}>
-          <div style={{
-            fontSize: 10, letterSpacing: 2, color: '#9D5FF5',
-            fontFamily: "'Share Tech Mono', monospace", marginBottom: 10,
-          }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: '#9D5FF5', fontFamily: "'Share Tech Mono', monospace", marginBottom: 10 }}>
             {voucher?.business_name || 'YOUR REWARD'}
           </div>
-
           {voucher && (
             <>
-              <div style={{
-                fontFamily: "'Nunito', sans-serif", fontSize: 22,
-                fontWeight: 800, color: '#121218', marginBottom: 6, lineHeight: 1.2,
-              }}>
+              <div style={{ fontFamily: "'Nunito', sans-serif", fontSize: 22, fontWeight: 800, color: '#121218', marginBottom: 6, lineHeight: 1.2 }}>
                 {voucher.voucher_headline}
               </div>
-              <div style={{ fontSize: 13, color: '#6B67A0', marginBottom: 16, lineHeight: 1.4 }}>
+              <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 16, lineHeight: 1.4 }}>
                 {voucher.voucher_detail}
               </div>
             </>
           )}
-
-          {/* Code box */}
-          <div style={{
-            background: '#121218', color: '#F59E0B',
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: 28, fontWeight: 700, letterSpacing: 4,
-            padding: '16px 24px', borderRadius: 8,
-            marginBottom: 20, textAlign: 'center',
-          }}>
+          <div style={{ background: '#121218', color: '#F59E0B', fontFamily: "'Share Tech Mono', monospace", fontSize: 28, fontWeight: 700, letterSpacing: 4, padding: '16px 24px', borderRadius: 8, marginBottom: 20, textAlign: 'center' }}>
             {voucher?.voucher_code || '---'}
           </div>
         </div>
-
-        {/* Redeem button — flush bottom */}
         <button
-          onClick={() => !redeemed && setRedeemed(true)}
-          style={{
-            background: redeemed ? '#10B981' : '#7C3AED',
-            color: '#fff', width: '100%', padding: '18px 0',
-            fontFamily: "'Share Tech Mono', monospace",
-            fontWeight: 800, fontSize: 13, letterSpacing: 1,
-            border: 'none', cursor: 'pointer',
-            transition: 'background 0.2s',
-          }}
+          onClick={() => setStep('handoff')}
+          style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', width: '100%', height: 52, fontFamily: "'Share Tech Mono', monospace", fontWeight: 800, fontSize: 13, letterSpacing: 2, border: 'none', cursor: 'pointer', borderRadius: '0 0 16px 16px' }}
         >
-          {redeemed ? 'REDEEMED' : 'STAFF: TAP TO REDEEM'}
+          PRESENT TO STAFF
         </button>
       </div>
-
-      {redeemed && <div style={{ marginTop: 20, width: '100%' }}><AccountPrompt /></div>}
     </div>
   )
 }
@@ -2059,12 +2236,31 @@ export default function App() {
   const [waypoints, setWaypoints] = useState([])
   const [waypointPhase, setWaypointPhase] = useState(0)
   const [compassTarget, setCompassTarget] = useState(null)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
 
   useEffect(() => {
     loadHunts()
-    getUserPos()
     registerSW()
   }, [])
+
+  useEffect(() => {
+    function onBeforeInstall(e) {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setShowInstallBanner(true)
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+  }, [])
+
+  async function handleInstall() {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    const result = await installPrompt.userChoice
+    if (result.outcome === 'accepted') setShowInstallBanner(false)
+    setInstallPrompt(null)
+  }
 
   async function loadHunts() {
     try {
@@ -2158,12 +2354,16 @@ export default function App() {
   }
 
   async function startHunt(hunt) {
+    getUserPos() // request GPS on user interaction, not on page load
     setStarting(true)
     setHuntsError(null)
     try {
       console.log('[startHunt] auth...')
       const user = await ensureAuth()
       console.log('[startHunt] user:', user?.id)
+
+      // Load previously seen question IDs for this user (localStorage)
+      const seenIds = getSeenQuestionIds(user.id)
 
       console.log('[startHunt] inserting hunt_sessions...')
       const { data: session, error: sessionErr } = await supabase
@@ -2184,7 +2384,10 @@ export default function App() {
 
       console.log('[startHunt] calling get_puzzle_for_player...')
       const { data: puzzleData, error: puzzleErr } = await supabase
-        .rpc('get_puzzle_for_player', { p_puzzle_id: hunt.puzzle_id })
+        .rpc('get_puzzle_for_player', {
+          p_session_id:  session.id,
+          p_exclude_ids: seenIds,
+        })
       if (puzzleErr) {
         console.error('[startHunt] get_puzzle_for_player error:', puzzleErr)
         throw new Error('Puzzle error: ' + puzzleErr.message + ' (code: ' + puzzleErr.code + ')')
@@ -2192,6 +2395,16 @@ export default function App() {
       console.log('[startHunt] puzzle questions:', puzzleData?.questions?.length)
 
       const questions = puzzleData?.questions || []
+
+      // Mark these questions as seen — both locally and in the DB (non-blocking)
+      const questionIds = questions.map(q => q.id).filter(Boolean)
+      if (questionIds.length) {
+        markQuestionsSeenLocal(user.id, questionIds)
+        supabase.rpc('mark_questions_seen', {
+          p_session_id:   session.id,
+          p_question_ids: questionIds,
+        }).then(() => {}).catch(() => {})
+      }
       const isPremium = puzzleData?.pack_tier === 'premium' || puzzleData?.pack_tier === 'elite'
 
       setActivePack(hunt)
@@ -2422,6 +2635,50 @@ export default function App() {
             onStart={startHunt}
             userPos={userPos}
           />
+        )}
+
+        {screen === 'discover' && showInstallBanner && (
+          <div style={{
+            position: 'fixed', bottom: 80, left: 16, right: 16,
+            background: '#1C1C26',
+            border: '1px solid #7C3AED',
+            borderRadius: 12, padding: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            zIndex: 1000,
+            boxShadow: '0 4px 20px rgba(124,58,237,0.3)',
+          }}>
+            <div>
+              <div style={{ color: '#F1F0FF', fontWeight: 700, fontSize: 14 }}>
+                Add to Home Screen
+              </div>
+              <div style={{ color: '#8888BB', fontSize: 12, marginTop: 2 }}>
+                Install for the best experience
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowInstallBanner(false)}
+                style={{
+                  background: 'transparent', border: '1px solid #32324A',
+                  color: '#8888BB', padding: '8px 12px',
+                  borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                Later
+              </button>
+              <button
+                onClick={handleInstall}
+                style={{
+                  background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+                  border: 'none', color: '#fff',
+                  padding: '8px 16px', borderRadius: 8,
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                Install
+              </button>
+            </div>
+          </div>
         )}
 
         {screen === 'puzzles' && activePack && (
