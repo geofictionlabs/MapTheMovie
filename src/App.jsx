@@ -2493,28 +2493,33 @@ export default function App() {
 
   async function handleSimulateArrival() {
     try {
-      const { data } = await supabase.rpc('confirm_arrival', {
+      const { data, error } = await supabase.rpc('confirm_arrival', {
         p_session_id:  activeSession?.id,
         p_campaign_id: activeSession?.campaign_id,
-        p_arrival_lat: compassTarget?.lat ?? 0,
-        p_arrival_lon: compassTarget?.lon ?? 0,
+        p_arrival_lat: compassTarget?.lat ?? 51.3963,
+        p_arrival_lon: compassTarget?.lon ?? 0.5277,
       })
       if (data?.success) {
         setVoucher(data)
         setScreen('arrived')
-        return
+      } else {
+        setVoucher({
+          voucher_code:     'MTM-TEST-' + (Math.floor(Math.random() * 9000) + 1000),
+          voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
+          voucher_detail:   activePack?.voucher_detail || 'Show this screen to claim',
+          business_name:    activePack?.business_name || 'Test Venue',
+        })
+        setScreen('arrived')
       }
     } catch (e) {
+      setVoucher({
+        voucher_code:     'MTM-DEMO-' + (Math.floor(Math.random() * 9000) + 1000),
+        voucher_headline: 'Reward Unlocked',
+        voucher_detail:   'Show this screen to claim',
+        business_name:    activePack?.business_name || 'The Location',
+      })
+      setScreen('arrived')
     }
-    // Guaranteed demo fallback  always shows voucher screen
-    setVoucher({
-      voucher_code:     'MTM-DEMO-' + (Math.floor(Math.random() * 9000) + 1000),
-      voucher_headline: 'You found it!',
-      voucher_detail:   'Show this screen to venue staff to claim your reward.',
-      business_name:    activePack?.business_name || 'The Location',
-      expires_at:       new Date(Date.now() + 86400000).toISOString(),
-    })
-    setScreen('arrived')
   }
 
   const handleArrived = useCallback(
