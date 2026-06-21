@@ -1564,7 +1564,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         (pos) => {
           const lat = pos.coords.latitude
           const lon = pos.coords.longitude
-          console.log('[GPS poll]', lat, lon)
           setPlayerPos({ lat, lon })
           if (target?.lat) {
             const R = 6371000
@@ -1579,7 +1578,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
             setStartDist(prev => prev ?? dist)
           }
         },
-        (err) => console.warn('[GPS poll error]', err.code, err.message),
+        () => {},
         { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
       )
     }
@@ -1846,18 +1845,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       )}
 
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
-
-      <div style={{
-        position: 'fixed', bottom: 80, left: 10,
-        background: 'rgba(0,0,0,0.8)',
-        color: '#F59E0B', padding: '8px',
-        fontFamily: 'monospace', fontSize: '11px',
-        borderRadius: '8px', zIndex: 9999
-      }}>
-        GPS: {playerPos ? playerPos.lat.toFixed(4) : 'NULL'}
-        {' | '}
-        dist: {distance ? (distance / 1609.34).toFixed(2) + 'mi' : 'NULL'}
-      </div>
     </div>
   )
 }
@@ -2338,14 +2325,11 @@ export default function App() {
     setStarting(true)
     setHuntsError(null)
     try {
-      console.log('[startHunt] auth...')
       const user = await ensureAuth()
-      console.log('[startHunt] user:', user?.id)
 
       // Load previously seen question IDs for this user (localStorage)
       const seenIds = getSeenQuestionIds(user.id)
 
-      console.log('[startHunt] inserting hunt_sessions...')
       const { data: session, error: sessionErr } = await supabase
         .from('hunt_sessions')
         .insert({
@@ -2357,22 +2341,17 @@ export default function App() {
         .select()
         .single()
       if (sessionErr) {
-        console.error('[startHunt] hunt_sessions error:', sessionErr)
         throw new Error('Session error: ' + sessionErr.message + ' (code: ' + sessionErr.code + ')')
       }
-      console.log('[startHunt] session:', session?.id)
 
-      console.log('[startHunt] calling get_puzzle_for_player...')
       const { data: puzzleData, error: puzzleErr } = await supabase
         .rpc('get_puzzle_for_player', {
           p_session_id:  session.id,
           p_exclude_ids: seenIds,
         })
       if (puzzleErr) {
-        console.error('[startHunt] get_puzzle_for_player error:', puzzleErr)
         throw new Error('Puzzle error: ' + puzzleErr.message + ' (code: ' + puzzleErr.code + ')')
       }
-      console.log('[startHunt] puzzle questions:', puzzleData?.questions?.length)
 
       const questions = puzzleData?.questions || []
 
@@ -2408,7 +2387,6 @@ export default function App() {
           const { data: destData, error: destErr } = await supabase.rpc('get_puzzle_destination', {
             p_session_id: session.id,
           })
-          console.log('[waypoints] get_puzzle_destination:', destData, destErr)
           if (destData?.success) {
             wps = generateWaypoints(
               startPos.lat, startPos.lon,
@@ -2416,17 +2394,13 @@ export default function App() {
               puzzleData.pack_tier,
             )
           }
-        } catch (e) {
-          console.warn('[waypoints] destination fetch failed, linear mode:', e)
-        }
+        } catch (e) { /* linear mode fallback */ }
       }
-      console.log('[waypoints] mode active:', wps.length > 0, '| waypoints:', wps)
       setWaypoints(wps)
       setWaypointsMode(wps.length > 0)
 
       setScreen('puzzles')
     } catch (err) {
-      console.error('[startHunt] failed:', err)
       setHuntsError(err.message || 'Could not start hunt. Please try again.')
     } finally {
       setStarting(false)
@@ -2456,12 +2430,10 @@ export default function App() {
         if (waypointsMode) {
           const phaseSlots = getPhaseSlots(waypointPhase, activeQuestions)
           const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
-          console.log('[phase]', { waypointPhase, phaseSlots, phaseDone, solved: newSolved })
 
           if (phaseDone) {
             if (waypointPhase < waypoints.length) {
               const wp = waypoints[waypointPhase]
-              console.log('[waypoints] advancing to waypoint', waypointPhase + 1, wp)
               setCompassTarget({
                 lat: wp.lat, lon: wp.lon,
                 geofence_m: wp.geofence_m,
@@ -2532,9 +2504,7 @@ export default function App() {
         setScreen('arrived')
         return
       }
-      console.warn('[simulate] confirm_arrival responded:', data?.error)
     } catch (e) {
-      console.warn('[simulate] confirm_arrival threw:', e)
     }
     // Guaranteed demo fallback  always shows voucher screen
     setVoucher({
