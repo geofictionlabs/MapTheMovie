@@ -954,6 +954,69 @@ body {
 }
 .footer-link:hover { color: #7C3AED; }
 
+.settings-btn {
+  background: none;
+  border: 1px solid #32324A;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #8888BB;
+  font-size: 16px;
+  transition: border-color 0.15s, color 0.15s;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  flex-shrink: 0;
+}
+.settings-btn:hover { border-color: #7C3AED; color: #9D5FF5; }
+
+.pref-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #32324A;
+  cursor: pointer;
+  user-select: none;
+}
+.pref-option:last-child { border-bottom: none; }
+.pref-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #32324A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: border-color 0.15s;
+}
+.pref-radio.active { border-color: #7C3AED; }
+.pref-radio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7C3AED;
+}
+.pref-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid #32324A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pref-check.active { border-color: #7C3AED; background: #7C3AED22; }
+
 @keyframes prize-pulse {
   0%, 100% { border-color: #F59E0B; box-shadow: 0 0 10px rgba(245,158,11,0.2), inset 0 0 20px rgba(245,158,11,0.03); }
   50%       { border-color: #FCD34D; box-shadow: 0 0 32px rgba(245,158,11,0.55), inset 0 0 20px rgba(245,158,11,0.07); }
@@ -1603,8 +1666,198 @@ function PrizePoolScreen({ pool, onBack }) {
   )
 }
 
+//  Preferences Screen
+const VENUE_TYPES = [
+  { id: 'food_drink',    label: 'Food & Drink' },
+  { id: 'attractions',   label: 'Attractions' },
+  { id: 'entertainment', label: 'Entertainment' },
+  { id: 'retail',        label: 'Retail' },
+  { id: 'sport',         label: 'Sport' },
+  { id: 'hospitality',   label: 'Hospitality' },
+  { id: 'outdoor',       label: 'Outdoor' },
+]
+const GENRE_OPTIONS = [
+  { id: 'any',     label: 'Any',     note: 'recommended' },
+  { id: 'horror',  label: 'Horror',  note: null },
+  { id: 'action',  label: 'Action',  note: null },
+  { id: 'romance', label: 'Romance', note: null },
+  { id: 'sci-fi',  label: 'Sci-Fi',  note: null },
+  { id: 'family',  label: 'Family',  note: null },
+]
+
+function PreferencesScreen({ initialPrefs, userId, onBack, onSaved }) {
+  const [difficulty, setDifficulty]   = useState(initialPrefs.difficulty   || 'classic')
+  const [categories, setCategories]   = useState(initialPrefs.categories   || ['food_drink', 'attractions', 'entertainment', 'sport', 'outdoor'])
+  const [genres, setGenres]           = useState(initialPrefs.genres       || ['any'])
+  const [saving, setSaving]           = useState(false)
+  const [saved, setSaved]             = useState(false)
+
+  function toggleCategory(id) {
+    setCategories(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleGenre(id) {
+    if (id === 'any') {
+      setGenres(['any'])
+      return
+    }
+    setGenres(prev => {
+      const without = prev.filter(x => x !== 'any')
+      return without.includes(id) ? without.filter(x => x !== id) : [...without, id]
+    })
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const payload = {
+        preferred_difficulty: difficulty,
+        preferred_categories: categories,
+        preferred_genres:     genres,
+      }
+      if (userId) {
+        await supabase.from('profiles').update(payload).eq('id', userId)
+      }
+      onSaved({ difficulty, categories, genres })
+      setSaved(true)
+      setTimeout(onBack, 600)
+    } catch {
+      setSaving(false)
+    }
+  }
+
+  const DIFF_OPTIONS = [
+    { id: 'casual',  label: 'Casual',  note: 'Mainstream films, helpful hints' },
+    { id: 'classic', label: 'Classic', note: 'Mixed films, hints on request' },
+    { id: 'expert',  label: 'Expert',  note: 'Deep cuts, no hints' },
+  ]
+  const DIFF_COLOR = { casual: '#10B981', classic: '#7C3AED', expert: '#EF4444' }
+
+  function SectionHead({ children }) {
+    return (
+      <div style={{
+        fontFamily: "'Share Tech Mono', monospace",
+        fontSize: 10,
+        letterSpacing: 2.5,
+        color: '#6B67A0',
+        fontWeight: 700,
+        marginBottom: 4,
+        marginTop: 28,
+      }}>{children}</div>
+    )
+  }
+
+  return (
+    <div style={{ background: '#121218', minHeight: '100dvh', color: '#F1F0FF' }}>
+      {/* Nav */}
+      <div className="pack-nav" style={{ borderBottom: '1px solid #32324A' }}>
+        <button className="back-btn" onClick={onBack}>&#8592; Back</button>
+        <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 11, letterSpacing: 2, color: '#B8B4D8' }}>
+          PREFERENCES
+        </div>
+        <div style={{ width: 56 }} />
+      </div>
+
+      <div style={{ padding: '8px 20px 80px', maxWidth: 480, margin: '0 auto' }}>
+
+        {/* Difficulty */}
+        <SectionHead>DIFFICULTY</SectionHead>
+        <div style={{ background: '#1C1C26', border: '1px solid #32324A', borderRadius: 14, padding: '0 16px', marginBottom: 4 }}>
+          {DIFF_OPTIONS.map(opt => (
+            <div key={opt.id} className="pref-option" onClick={() => setDifficulty(opt.id)}>
+              <div className={`pref-radio${difficulty === opt.id ? ' active' : ''}`}>
+                {difficulty === opt.id && <div className="pref-radio-dot" style={{ background: DIFF_COLOR[opt.id] }} />}
+              </div>
+              <div>
+                <div style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: difficulty === opt.id ? DIFF_COLOR[opt.id] : '#F1F0FF',
+                  marginBottom: 2,
+                }}>{opt.label}</div>
+                <div style={{ fontSize: 12, color: '#6B67A0' }}>{opt.note}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Venue Types */}
+        <SectionHead>VENUE TYPES I LIKE</SectionHead>
+        <div style={{ background: '#1C1C26', border: '1px solid #32324A', borderRadius: 14, padding: '0 16px', marginBottom: 4 }}>
+          {VENUE_TYPES.map(v => (
+            <div key={v.id} className="pref-option" onClick={() => toggleCategory(v.id)}>
+              <div className={`pref-check${categories.includes(v.id) ? ' active' : ''}`}>
+                {categories.includes(v.id) && (
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 4L3.5 6.5L9 1" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: categories.includes(v.id) ? '#F1F0FF' : '#8888BB' }}>
+                {v.label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Genres */}
+        <SectionHead>FAVOURITE GENRES</SectionHead>
+        <div style={{ background: '#1C1C26', border: '1px solid #32324A', borderRadius: 14, padding: '0 16px', marginBottom: 32 }}>
+          {GENRE_OPTIONS.map(g => (
+            <div key={g.id} className="pref-option" onClick={() => toggleGenre(g.id)}>
+              <div className={`pref-check${genres.includes(g.id) ? ' active' : ''}`}>
+                {genres.includes(g.id) && (
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 4L3.5 6.5L9 1" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: genres.includes(g.id) ? '#F1F0FF' : '#8888BB' }}>
+                  {g.label}
+                </span>
+                {g.note && (
+                  <span style={{ fontSize: 11, color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace" }}>
+                    {g.note}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Save */}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%',
+            background: saved
+              ? 'rgba(16,185,129,0.15)'
+              : saving
+                ? '#32324A'
+                : 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+            color: saved ? '#10B981' : '#fff',
+            border: saved ? '1px solid rgba(16,185,129,0.3)' : 'none',
+            borderRadius: 14,
+            padding: '15px 0',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontWeight: 800,
+            fontSize: 13,
+            letterSpacing: 2,
+            cursor: saving ? 'default' : 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          {saved ? 'SAVED' : saving ? 'SAVING...' : 'SAVE PREFERENCES'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 //  Hunt Discovery
-function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onPrizePool }) {
+function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onPrizePool, prefs, onPrefs }) {
   const [viewMode, setViewMode] = useState('list')
 
   function handleTap(hunt) {
@@ -1618,9 +1871,17 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onP
     )
   }
 
+  const activeGenres = prefs?.genres || []
+  const genreFiltered = (!activeGenres.length || activeGenres.includes('any'))
+    ? hunts
+    : hunts.filter(h => !h.genre || activeGenres.includes(h.genre))
+
   return (
     <div className="discover-screen">
-      <div className="logo-wrap">
+      <div className="logo-wrap" style={{ position: 'relative' }}>
+        <button className="settings-btn" onClick={onPrefs} title="Preferences" aria-label="Open preferences">
+          &#9881;
+        </button>
         <LogoSVG />
         <div className="logo-wordmark">
           <span className="logo-map">MAP</span>
@@ -1672,9 +1933,18 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onP
         </div>
       )}
 
+      {!loading && !error && genreFiltered.length === 0 && hunts.length > 0 && (
+        <div className="empty-state">
+          No hunts match your genre preferences.
+          <div style={{ fontSize: 11, color: '#32324A', marginTop: 6 }}>
+            Tap the settings icon to adjust your preferences.
+          </div>
+        </div>
+      )}
+
       {!loading && !error && hunts.length === 0 && (
         <div className="empty-state">
-          
+
           No active hunts in this area yet.
           <div style={{ fontSize: 11, color: '#32324A', marginTop: 6 }}>
             Check back soon  more hunts coming your way.
@@ -1704,7 +1974,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onP
         <PrizePoolCard pool={prizePool} onTap={onPrizePool} />
       )}
 
-      {viewMode === 'list' && !loading && hunts.map(h => (
+      {viewMode === 'list' && !loading && genreFiltered.map(h => (
         <HuntCard
           key={h.campaign_id}
           hunt={h}
@@ -2621,10 +2891,13 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [prizePool, setPrizePool] = useState(null)
   const [activePrizePool, setActivePrizePool] = useState(null)
+  const [prefs, setPrefs] = useState({ difficulty: 'classic', categories: ['food_drink', 'attractions', 'entertainment', 'sport', 'outdoor'], genres: ['any'] })
+  const [prefsUserId, setPrefsUserId] = useState(null)
 
   useEffect(() => {
     loadHunts()
     loadPrizePool()
+    loadPrefs()
     registerSW()
   }, [])
 
@@ -2722,6 +2995,25 @@ export default function App() {
         .limit(1)
         .maybeSingle()
       if (data) setPrizePool(data)
+    } catch {}
+  }
+
+  async function loadPrefs() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setPrefsUserId(user.id)
+      const { data } = await supabase
+        .from('profiles')
+        .select('preferred_difficulty, preferred_categories, preferred_genres')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (!data) return
+      setPrefs({
+        difficulty: data.preferred_difficulty || 'classic',
+        categories: data.preferred_categories || ['food_drink', 'attractions', 'entertainment', 'sport', 'outdoor'],
+        genres:     data.preferred_genres     || ['any'],
+      })
     } catch {}
   }
 
@@ -3026,6 +3318,17 @@ export default function App() {
             userPos={userPos}
             prizePool={prizePool}
             onPrizePool={pool => { setActivePrizePool(pool); setScreen('prizepool') }}
+            prefs={prefs}
+            onPrefs={() => setScreen('prefs')}
+          />
+        )}
+
+        {screen === 'prefs' && (
+          <PreferencesScreen
+            initialPrefs={prefs}
+            userId={prefsUserId}
+            onBack={() => setScreen('discover')}
+            onSaved={updated => setPrefs(updated)}
           />
         )}
 
