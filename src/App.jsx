@@ -1,9 +1,9 @@
-﻿﻿﻿﻿import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 
-// ── Haversine distance ─────────────────────────────────────────────────────
+//  Haversine distance 
 function haversineMetres(lat1, lon1, lat2, lon2) {
   const R = 6371000
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -26,8 +26,9 @@ function bearingDegrees(lat1, lon1, lat2, lon2) {
 }
 
 function fmtDistance(m) {
-  if (m < 1000) return `${Math.round(m)}m`
-  return `${(m / 1000).toFixed(1)}km`
+  const mi = m / 1609.34
+  if (mi < 0.05) return `${Math.round(m)} m`
+  return `${mi.toFixed(1)} mi`
 }
 
 // accent_color stored without '#' in DB
@@ -36,14 +37,15 @@ function hexAccent(raw) {
   return raw.startsWith('#') ? raw : '#' + raw
 }
 
-// ── CSS ────────────────────────────────────────────────────────────────────
+//  CSS 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #121218;
+  background: radial-gradient(ellipse at top, #1A0533 0%, #0A0A0F 60%);
+  background-attachment: fixed;
   color: #F1F0FF;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   min-height: 100dvh;
@@ -58,47 +60,54 @@ body {
   position: relative;
 }
 
-/* ── Logo ─────────────────── */
+/*  Logo  */
 .logo-wrap {
   text-align: center;
-  padding: 40px 24px 8px;
+  padding: 60px 24px 8px;
 }
 .logo-wordmark {
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
   margin-top: 10px;
 }
 .logo-map {
   font-family: 'Nunito', sans-serif;
-  font-size: 32px;
+  font-size: 56px;
   font-weight: 900;
-  color: #7C3AED;
-  letter-spacing: 3px;
+  color: #F1F0FF;
+  line-height: 1;
+  letter-spacing: 0;
 }
 .logo-the {
   font-family: 'Share Tech Mono', monospace;
-  font-size: 11px;
-  color: #6B67A0;
-  letter-spacing: 4px;
+  font-size: 13px;
+  color: #9D5FF5;
+  letter-spacing: 10px;
+  margin: 4px 0;
 }
 .logo-movie {
   font-family: 'Nunito', sans-serif;
-  font-size: 32px;
+  font-size: 56px;
   font-weight: 900;
-  color: #F59E0B;
-  letter-spacing: 3px;
+  background: linear-gradient(180deg, #FCD34D 0%, #F59E0B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  letter-spacing: 0;
 }
 .logo-sub {
-  font-size: 11px;
-  letter-spacing: 3px;
+  font-size: 12px;
+  letter-spacing: 1.5px;
   color: #6B67A0;
-  font-family: 'Share Tech Mono', monospace;
-  margin-top: 6px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 500;
+  margin-top: 8px;
 }
 
-/* ── Discover screen ──────── */
+/*  Discover screen  */
 .discover-screen {
   padding: 0 16px 40px;
 }
@@ -121,7 +130,7 @@ body {
   transition: all 0.2s;
 }
 
-/* ── Hunt card ────────────── */
+/*  Hunt card  */
 .hunt-card {
   background: #1C1C26;
   border: 1px solid #32324A;
@@ -196,7 +205,25 @@ body {
   font-weight: 700;
 }
 
-/* ── Map ─────────────────── */
+/*  Hunt card hero  */
+.hunt-card-hero {
+  position: relative;
+  height: 160px;
+  overflow: hidden;
+}
+.hunt-card-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  transform: perspective(200px) rotateX(20deg);
+  transform-origin: bottom;
+  pointer-events: none;
+}
+/*  Map  */
 .leaflet-container {
   background: #1C1C26 !important;
 }
@@ -215,7 +242,7 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* ── Loading / Error ─────── */
+/*  Loading / Error  */
 .loading-state {
   text-align: center;
   padding: 48px 20px;
@@ -249,7 +276,7 @@ body {
   font-size: 13px;
 }
 
-/* ── Paywall modal ──────── */
+/*  Paywall modal  */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -331,7 +358,7 @@ body {
   cursor: pointer;
 }
 
-/* ── Puzzle screen ──────── */
+/*  Puzzle screen  */
 .puzzle-screen {
   padding: 0 16px 40px;
 }
@@ -372,7 +399,7 @@ body {
   white-space: nowrap;
 }
 
-/* ── Coord display ──────── */
+/*  Coord display  */
 .coord-bar {
   background: #1C1C26;
   border: 1px solid #32324A;
@@ -390,18 +417,54 @@ body {
 .coord-strings {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 20px;
-  letter-spacing: 2px;
+  font-size: 18px;
+  letter-spacing: 1px;
   margin-bottom: 14px;
 }
-.coord-slot-solved {
-  color: #F59E0B;
-  font-weight: 700;
+.coord-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
 }
-.coord-slot-pending {
+.coord-fixed {
+  color: #B8B4D8;
+  min-width: 10px;
+  text-align: center;
+}
+.coord-slot-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 40px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.coord-slot-box.pending {
+  background: #121218;
+  border: 1px solid #32324A;
   color: #32324A;
+  animation: slot-pulse 2s infinite;
+}
+.coord-slot-box.solved {
+  background: #F59E0B;
+  border: 1px solid #F59E0B;
+  color: #000;
+  animation: slot-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes slot-pulse {
+  0%, 100% { border-color: #32324A; box-shadow: none; }
+  50%       { border-color: #7C3AED; box-shadow: 0 0 8px rgba(124,58,237,0.4); }
+}
+@keyframes slot-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
 }
 .progress-track {
   height: 4px;
@@ -415,7 +478,7 @@ body {
   transition: width 0.4s ease;
 }
 
-/* ── Signal bar ──────────── */
+/*  Signal bar  */
 .signal-bar {
   display: flex;
   align-items: center;
@@ -432,11 +495,11 @@ body {
   letter-spacing: 1.5px;
   color: #6B67A0;
 }
-.signal-pips { display: flex; gap: 4px; flex: 1; }
+.signal-pips { display: flex; gap: 3px; flex: 1; }
 .signal-pip {
   flex: 1;
   height: 12px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: #252533;
   transition: background 0.2s;
 }
@@ -446,7 +509,7 @@ body {
   color: #B8B4D8;
 }
 
-/* ── Puzzle card ─────────── */
+/*  Puzzle card  */
 .puzzle-card {
   background: #1C1C26;
   border: 1px solid #32324A;
@@ -583,7 +646,7 @@ body {
   color: #EF4444;
 }
 
-/* ── Compass screen ──────── */
+/*  Compass screen  */
 .compass-wrap {
   padding: 20px 0;
   display: flex;
@@ -592,24 +655,64 @@ body {
   gap: 16px;
 }
 .compass-dist {
-  font-family: 'Nunito', sans-serif;
-  font-size: 60px;
-  font-weight: 900;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 48px;
+  font-weight: 700;
   color: #F1F0FF;
-  letter-spacing: -2px;
+  letter-spacing: -1px;
   line-height: 1;
 }
-.compass-unit { font-size: 20px; color: #6B67A0; font-weight: 700; }
+.compass-unit { font-size: 18px; color: #6B67A0; font-weight: 700; }
 .compass-arrow-wrap {
   position: relative;
-  width: 180px;
-  height: 180px;
+  width: 280px;
+  height: 280px;
 }
 .compass-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 3px solid #32324A;
+  border: 3px solid #7C3AED;
+  box-shadow: 0 0 24px rgba(124,58,237,0.35), inset 0 0 24px rgba(124,58,237,0.12);
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+.compass-ring.on-track {
+  border-color: #10B981;
+  box-shadow: 0 0 30px rgba(16,185,129,0.4), inset 0 0 24px rgba(16,185,129,0.12);
+}
+.compass-on-track-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #10B981;
+  animation: on-track-pulse 1s infinite;
+}
+@keyframes on-track-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.compass-journey-bar {
+  width: 200px;
+  height: 6px;
+  background: #32324A;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 4px auto 0;
+}
+.compass-journey-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #7C3AED, #F59E0B);
+  transition: width 1s ease;
+}
+.compass-dist-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  color: #6B67A0;
+  letter-spacing: 2px;
+  margin-top: 4px;
+  text-align: center;
 }
 .compass-status {
   font-family: 'Share Tech Mono', monospace;
@@ -631,16 +734,16 @@ body {
   width: 100%;
 }
 .compass-permission-btn {
-  background: #7C3AED;
+  background: linear-gradient(180deg, #FCD34D 0%, #F59E0B 100%);
   border: none;
   border-radius: 12px;
-  color: #fff;
+  color: #000;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 900;
   letter-spacing: 2px;
-  padding: 14px 28px;
+  padding: 14px 32px;
   cursor: pointer;
-  font-weight: 700;
 }
 .compass-fallback {
   background: rgba(124,58,237,0.08);
@@ -674,77 +777,16 @@ body {
   cursor: pointer;
 }
 
-/* ── Arrived screen ──────── */
+/*  Arrived screen  */
 .arrived-wrap {
-  padding: 32px 0 24px;
+  padding: 24px 16px 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-}
-.arrived-emoji { font-size: 64px; }
-.arrived-title {
-  font-family: 'Nunito', sans-serif;
-  font-size: 28px;
-  font-weight: 900;
-  color: #F1F0FF;
-  letter-spacing: 2px;
-}
-.arrived-sub { font-size: 13px; color: #6B67A0; text-align: center; line-height: 1.5; }
-.voucher-card {
-  background: #1C1C26;
-  border: 1px solid #32324A;
-  border-radius: 18px;
-  padding: 22px 20px;
-  width: 100%;
-  margin-top: 10px;
-}
-.voucher-from {
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #6B67A0;
-  font-family: 'Share Tech Mono', monospace;
-  margin-bottom: 8px;
-}
-.voucher-offer {
-  font-family: 'Nunito', sans-serif;
-  font-size: 20px;
-  font-weight: 800;
-  color: #F59E0B;
-  margin-bottom: 4px;
-}
-.voucher-detail { font-size: 13px; color: #B8B4D8; margin-bottom: 14px; }
-.voucher-code {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 22px;
-  letter-spacing: 4px;
-  color: #F1F0FF;
-  background: #252533;
-  border-radius: 10px;
-  padding: 12px 16px;
-  text-align: center;
-}
-.redeem-btn {
-  width: 100%;
-  margin-top: 16px;
-  border: none;
-  border-radius: 14px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 13px;
-  letter-spacing: 2px;
-  padding: 18px;
-  cursor: pointer;
-  font-weight: 700;
-  transition: all 0.2s;
-}
-.redeem-btn.idle { background: #7C3AED; color: #fff; }
-.redeem-btn.done {
-  background: rgba(16,185,129,0.12);
-  color: #10B981;
-  border: 1px solid rgba(16,185,129,0.3);
+  gap: 0;
 }
 
-/* ── Account prompt ──────── */
+/*  Account prompt  */
 .account-prompt {
   margin-top: 20px;
   background: rgba(124,58,237,0.06);
@@ -786,7 +828,7 @@ body {
 }
 .account-sent { font-size: 12px; color: #10B981; }
 
-/* ── Reset modal ─────────── */
+/*  Reset modal  */
 .reset-overlay {
   position: fixed;
   inset: 0;
@@ -829,7 +871,7 @@ body {
   width: 100%;
 }
 
-/* ── Footer ──────────────── */
+/*  Footer  */
 .app-footer {
   text-align: center;
   padding: 24px 16px 40px;
@@ -848,24 +890,42 @@ body {
 .footer-link:hover { color: #7C3AED; }
 `
 
-// ── Logo ──────────────────────────────────────────────────────────────────
+//  Logo 
 function LogoSVG() {
+  const holes = [0, 45, 90, 135, 180, 225, 270, 315]
   return (
-    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-      <circle cx="24" cy="24" r="24" fill="#7C3AED" fillOpacity="0.15" />
-      <circle cx="24" cy="24" r="16" fill="#7C3AED" fillOpacity="0.25" />
-      <circle cx="24" cy="24" r="6" fill="#7C3AED" />
-      <circle cx="24" cy="10" r="3" fill="#F59E0B" />
-      <circle cx="24" cy="38" r="3" fill="#F59E0B" />
-      <circle cx="10" cy="24" r="3" fill="#F59E0B" />
-      <circle cx="38" cy="24" r="3" fill="#F59E0B" />
+    <svg
+      width="64" height="64" viewBox="0 0 64 64" fill="none"
+      style={{ filter: 'drop-shadow(0 0 16px rgba(124,58,237,0.7)) drop-shadow(0 0 4px rgba(245,158,11,0.4))' }}
+    >
+      <defs>
+        <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#FCD34D" />
+        </linearGradient>
+      </defs>
+      {/* Outer ring */}
+      <circle cx="32" cy="32" r="28" fill="#1C1C26" stroke="#7C3AED" strokeWidth="2.5" />
+      {/* Sprocket holes */}
+      {holes.map(deg => {
+        const r = (deg * Math.PI) / 180
+        return (
+          <circle key={deg} cx={32 + 20 * Math.cos(r)} cy={32 + 20 * Math.sin(r)}
+            r="3.5" fill="#7C3AED" fillOpacity="0.55" />
+        )
+      })}
+      {/* Inner hub */}
+      <circle cx="32" cy="32" r="9" fill="#7C3AED" fillOpacity="0.25" stroke="#7C3AED" strokeWidth="1.5" />
+      {/* Lightning bolt */}
+      <path d="M37 11 L25 33 L32 33 L27 53 L39 29 L32 29 Z"
+        fill="url(#boltGrad)" stroke="#FCD34D" strokeWidth="0.4" strokeLinejoin="round" />
     </svg>
   )
 }
 
-// PaywallModal removed — all tiers freely playable until Stripe is integrated
+// PaywallModal removed  all tiers freely playable until Stripe is integrated
 
-// ── Leaflet Hunt Map ──────────────────────────────────────────────────────
+//  Leaflet Hunt Map 
 function HuntMap({ hunts, userPos, onHuntSelect }) {
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
@@ -875,20 +935,20 @@ function HuntMap({ hunts, userPos, onHuntSelect }) {
 
     const center = userPos
       ? [userPos.lat, userPos.lon]
-      : hunts.length > 0
-        ? [hunts[0].approx_lat, hunts[0].approx_lon]
-        : [51.08, 1.17]
+      : [51.3879, 0.5113]
+
+    const zoom = userPos ? 14 : 11
 
     const map = L.map(mapRef.current, {
       center,
-      zoom: 14,
+      zoom,
       zoomControl: true,
       attributionControl: true,
     })
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
+      attribution: ' <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map)
 
     if (userPos) {
@@ -907,7 +967,7 @@ function HuntMap({ hunts, userPos, onHuntSelect }) {
       const tier = hunt.pack_tier
       const color =
         tier === 'elite' ? '#FCD34D' : tier === 'premium' ? '#F59E0B' : '#7C3AED'
-      const label = tier === 'elite' ? '\u2B50' : hunt.pack_emoji
+      const label = tier === 'elite' ? 'E' : '+'
 
       const icon = L.divIcon({
         html: `<div style="
@@ -937,51 +997,170 @@ function HuntMap({ hunts, userPos, onHuntSelect }) {
   return <div ref={mapRef} style={{ width: '100%', height: '340px' }} />
 }
 
-// ── Hunt Card ─────────────────────────────────────────────────────────────
+function getCardGradient(hunt) {
+  const name  = (hunt.pack_name  || '').toLowerCase()
+  const theme = (hunt.theme_tag  || hunt.genre || '').toLowerCase()
+
+  if (name.includes('80s') || name.includes('nostalgia'))
+    return { gradient: 'linear-gradient(135deg, #0D0221 0%, #1A0533 30%, #4A0080 60%, #FF006E 100%)', gridColor: 'rgba(255,0,110,0.12)' }
+
+  if (name.includes('castle') || name.includes('keep'))
+    return { gradient: 'linear-gradient(135deg, #1A0F00 0%, #2D1800 30%, #5C3000 60%, #C8860A 100%)', gridColor: 'rgba(200,134,10,0.12)' }
+
+  if (name.includes('medway') || name.includes('dockyard') || name.includes('cipher'))
+    return { gradient: 'linear-gradient(135deg, #000D1A 0%, #001833 30%, #003366 60%, #4A7FA5 100%)', gridColor: 'rgba(74,127,165,0.12)' }
+
+  if (name.includes('thames') || name.includes('gateway'))
+    return { gradient: 'linear-gradient(135deg, #001A1A 0%, #003333 30%, #005C5C 60%, #7ABFBF 100%)', gridColor: 'rgba(122,191,191,0.12)' }
+
+  if (name.includes('market') || name.includes('town') || name.includes('mystery'))
+    return { gradient: 'linear-gradient(135deg, #0A1400 0%, #1A2800 30%, #2D4A00 60%, #8B7000 100%)', gridColor: 'rgba(139,112,0,0.12)' }
+
+  if (name.includes('ring') || name.includes('lotr') || name.includes('dymchurch'))
+    return { gradient: 'linear-gradient(135deg, #0A0500 0%, #1A0A00 30%, #3D1500 60%, #8B0000 100%)', gridColor: 'rgba(139,0,0,0.12)' }
+
+  if (theme === 'christmas')
+    return { gradient: 'linear-gradient(135deg, #001A00 0%, #003300 30%, #006600 60%, #CC0000 100%)', gridColor: 'rgba(204,0,0,0.12)' }
+
+  if (theme === 'halloween')
+    return { gradient: 'linear-gradient(135deg, #0D0800 0%, #1A1000 30%, #4A2800 60%, #FF6600 100%)', gridColor: 'rgba(255,102,0,0.12)' }
+
+  if (theme.includes('horror'))
+    return { gradient: 'linear-gradient(135deg, #0A0000 0%, #1A0000 30%, #4A0000 60%, #8B0000 100%)', gridColor: 'rgba(139,0,0,0.12)' }
+
+  if (theme.includes('valentin') || theme.includes('romance'))
+    return { gradient: 'linear-gradient(135deg, #1A0010 0%, #3D0025 30%, #8B0050 60%, #FF006E 100%)', gridColor: 'rgba(255,0,110,0.12)' }
+
+  if (theme.includes('summer'))
+    return { gradient: 'linear-gradient(135deg, #1A0D00 0%, #331A00 30%, #664400 60%, #FF8800 100%)', gridColor: 'rgba(255,136,0,0.12)' }
+
+  if (theme.includes('sci-fi') || theme.includes('scifi'))
+    return { gradient: 'linear-gradient(135deg, #000A1A 0%, #001433 30%, #003366 60%, #0066CC 100%)', gridColor: 'rgba(0,102,204,0.12)' }
+
+  return { gradient: 'linear-gradient(135deg, #0D0221 0%, #1A0533 30%, #4A0080 60%, #7C3AED 100%)', gridColor: 'rgba(124,58,237,0.12)' }
+}
+//  Hunt Card 
 function HuntCard({ hunt, onTap, distLabel }) {
   const accent = hexAccent(hunt.accent_color)
   const tier = hunt.pack_tier
-  const badgeClass = tier === 'elite' ? 'badge-elite' : tier === 'premium' ? 'badge-premium' : 'badge-free'
-  const badgeLabel = tier === 'elite' ? '\u2B50 ELITE' : tier === 'premium' ? '\u2605 PREMIUM' : 'FREE'
+  const badgeLabel = tier === 'elite' ? 'ELITE' : tier === 'premium' ? 'PREMIUM' : 'FREE'
+  const badgeColor = tier === 'elite' ? '#FCD34D' : tier === 'premium' ? '#F59E0B' : '#10B981'
 
   return (
     <div
-      className="hunt-card"
-      style={{ borderColor: '#32324A' }}
+      style={{
+        background: '#1C1C26',
+        border: '1px solid #32324A',
+        borderRadius: 20,
+        marginBottom: 16,
+        cursor: 'pointer',
+        overflow: 'hidden',
+        transition: 'border-color 0.15s',
+      }}
       onMouseEnter={e => (e.currentTarget.style.borderColor = accent)}
       onMouseLeave={e => (e.currentTarget.style.borderColor = '#32324A')}
       onClick={() => onTap(hunt)}
     >
-      <div className="hunt-card-emoji" style={{ background: accent + '22' }}>
-        {hunt.pack_emoji}
-      </div>
-      <div className="hunt-card-body">
-        <div className="hunt-card-name">{hunt.pack_name}</div>
-        <div className="hunt-card-desc">{hunt.pack_description}</div>
-        <div className="hunt-card-meta">
-          <span className={`badge ${badgeClass}`}>{badgeLabel}</span>
-          {distLabel && <span className="badge badge-dist">{'\u{1F4CD}'} {distLabel}</span>}
-          {hunt.voucher_headline && (
-            <span className="badge badge-dist" style={{ color: '#F59E0B' }}>
-              {hunt.voucher_headline}
-            </span>
-          )}
+      {/* Synthwave hero */}
+      {(() => {
+        const { gradient, gridColor } = getCardGradient(hunt)
+        return (
+          <div style={{ height: 160, background: gradient, position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backgroundImage: `linear-gradient(${gridColor} 1px, transparent 1px), linear-gradient(90deg, ${gridColor} 1px, transparent 1px)`,
+              backgroundSize: '30px 30px',
+              transform: 'perspective(200px) rotateX(20deg)',
+              transformOrigin: 'bottom',
+            }} />
+          </div>
+        )
+      })()}
+
+      {/* Pack name  flat, below the tilted hero */}
+      <div style={{ padding: '14px 18px 0' }}>
+        <div style={{
+          fontFamily: "'Nunito', sans-serif",
+          fontSize: 21,
+          fontWeight: 900,
+          color: '#fff',
+          lineHeight: 1.2,
+        }}>
+          {hunt.pack_name}
         </div>
       </div>
-      <div className="hunt-card-start">
+
+      {/* Meta row */}
+      <div style={{ padding: '8px 18px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{
+          background: badgeColor + '1A',
+          color: badgeColor,
+          border: '1px solid ' + badgeColor + '44',
+          borderRadius: 6,
+          padding: '2px 8px',
+          fontSize: 10,
+          fontFamily: "'Share Tech Mono', monospace",
+          letterSpacing: 1.5,
+          fontWeight: 700,
+        }}>{badgeLabel}</span>
+        <span style={{ color: '#6B67A0', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
+          18 MIN
+        </span>
+        {distLabel && (
+          <span style={{ color: '#6B67A0', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 0.8 }}>
+            {distLabel}
+          </span>
+        )}
+        <span style={{ color: '#F59E0B', fontSize: 11, fontFamily: "'Share Tech Mono', monospace" }}>
+          4.8 * (124)
+        </span>
+      </div>
+
+      {/* Bottom row: voucher pill + START HUNT */}
+      <div style={{ padding: '10px 18px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{
+          background: '#0A0A12',
+          border: '1px solid #32324A',
+          borderRadius: 20,
+          padding: '6px 14px',
+          fontSize: 12,
+          color: '#B8B4D8',
+          fontWeight: 600,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          maxWidth: '55%',
+        }}>
+          {tier === 'elite'
+            ? 'Exclusive reward  limited availability'
+            : tier === 'premium'
+              ? 'Premium reward at destination'
+              : 'Reward waiting at destination'}
+        </div>
         <button
-          className="btn-start"
-          style={{ background: accent, color: '#fff' }}
           onClick={e => { e.stopPropagation(); onTap(hunt) }}
+          style={{
+            background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+            color: '#000',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontWeight: 800,
+            fontSize: 11,
+            letterSpacing: 2,
+            padding: '10px 20px',
+            border: 'none',
+            borderRadius: 12,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
         >
-          PLAY
+          START HUNT
         </button>
       </div>
     </div>
   )
 }
-
-// ── Hunt Discovery ────────────────────────────────────────────────────────
+//  Hunt Discovery 
 function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
   const [viewMode, setViewMode] = useState('list')
 
@@ -1002,10 +1181,10 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
         <LogoSVG />
         <div className="logo-wordmark">
           <span className="logo-map">MAP</span>
-          <span className="logo-the">· T H E ·</span>
+          <span className="logo-the"> T H E </span>
           <span className="logo-movie">MOVIE</span>
         </div>
-        <div className="logo-sub">Solve the Clue · Find the Location</div>
+        <div className="logo-sub">Solve the Clue  Find the Location</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '20px 0 14px' }}>
@@ -1019,7 +1198,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
             onClick={() => setViewMode('list')}
           >
-            {'☰'} List
+            List
           </button>
           <button
             className="view-toggle"
@@ -1029,7 +1208,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
             onClick={() => setViewMode('map')}
           >
-            {'\u{1F5FA}'} Map
+            Map
           </button>
         </div>
       </div>
@@ -1037,13 +1216,13 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
       {loading && (
         <div className="loading-state">
           <div className="spinner" />
-          Loading hunts nearby…
+          Loading hunts nearby
         </div>
       )}
 
       {error && !loading && (
         <div className="error-state">
-          {'⚠️'} {error}
+          {'!'} {error}
           <div style={{ fontSize: 11, marginTop: 6, color: '#B8B4D8' }}>
             Check your connection and try again.
           </div>
@@ -1052,10 +1231,10 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
 
       {!loading && !error && hunts.length === 0 && (
         <div className="empty-state">
-          <div style={{ fontSize: 40, marginBottom: 12 }}>{'\u{1F5FA}'}</div>
+          
           No active hunts in this area yet.
           <div style={{ fontSize: 11, color: '#32324A', marginTop: 6 }}>
-            Check back soon — more hunts coming your way.
+            Check back soon  more hunts coming your way.
           </div>
         </div>
       )}
@@ -1072,8 +1251,8 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
             }}
           />
           <div className="map-legend">
-            ● Purple = Standard &nbsp;·&nbsp; ● Gold = Premium &nbsp;·&nbsp; {'\u2B50'} = Elite
-            &nbsp;·&nbsp; Locations approximate
+             Purple = Standard &nbsp;&nbsp;  Gold = Premium &nbsp;&nbsp; {'*'} = Elite
+            &nbsp;&nbsp; Locations approximate
           </div>
         </div>
       )}
@@ -1096,7 +1275,7 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos }) {
   )
 }
 
-// ── Coord Display ─────────────────────────────────────────────────────────
+//  Coord Display 
 function CoordDisplay({ hunt, solved }) {
   const slots = hunt?.coordinate_slots || []
   const accent = hexAccent(hunt?.accent_color)
@@ -1105,23 +1284,27 @@ function CoordDisplay({ hunt, solved }) {
 
   function renderStr(str) {
     if (!str) return null
-    return str.split('').map((ch, i) => {
-      if (slots.includes(ch)) {
-        const digit = solved[ch]
-        return digit !== undefined
-          ? <span key={i} className="coord-slot-solved">{digit}</span>
-          : <span key={i} className="coord-slot-pending">_</span>
-      }
-      return <span key={i} style={{ color: '#B8B4D8' }}>{ch}</span>
-    })
+    return (
+      <div className="coord-row">
+        {str.split('').map((ch, i) => {
+          if (slots.includes(ch)) {
+            const digit = solved[ch]
+            return digit !== undefined
+              ? <span key={i} className="coord-slot-box solved">{digit}</span>
+              : <span key={i} className="coord-slot-box pending">_</span>
+          }
+          return <span key={i} className="coord-fixed">{ch}</span>
+        })}
+      </div>
+    )
   }
 
   return (
     <div className="coord-bar">
-      <div className="coord-label">Target Coordinates</div>
+      <div className="coord-label">TARGET COORDINATES</div>
       <div className="coord-strings">
-        <div>{renderStr(hunt?.masked_lat)}</div>
-        <div>{renderStr(hunt?.masked_lon)}</div>
+        {renderStr(hunt?.masked_lat)}
+        {renderStr(hunt?.masked_lon)}
       </div>
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${progress}%`, background: accent }} />
@@ -1130,7 +1313,7 @@ function CoordDisplay({ hunt, solved }) {
   )
 }
 
-// ── Signal Bar ────────────────────────────────────────────────────────────
+//  Signal Bar 
 function SignalBar({ points, accent }) {
   const MAX = 10
   const warn = points <= 3
@@ -1155,7 +1338,7 @@ function SignalBar({ points, accent }) {
   )
 }
 
-// ── Lockout Timer ─────────────────────────────────────────────────────────
+//  Lockout Timer 
 function LockoutTimer({ until, onExpire }) {
   const [secs, setSecs] = useState(0)
 
@@ -1172,12 +1355,12 @@ function LockoutTimer({ until, onExpire }) {
 
   return (
     <div className="lockout-box">
-      {'⛔'} LOCKED — Try again in {secs}s
+      {''} LOCKED  Try again in {secs}s
     </div>
   )
 }
 
-// ── Puzzle Card ───────────────────────────────────────────────────────────
+//  Puzzle Card 
 function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
   const [input, setInput] = useState('')
   const [status, setStatus] = useState('idle')
@@ -1199,7 +1382,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
 
     if (result.correct) {
       setStatus('correct')
-      setMsg('✓ Correct!')
+      setMsg('Correct!')
     } else if (result.locked_out) {
       setLockoutUntil(new Date(result.locked_until).getTime())
       setStatus('idle')
@@ -1225,13 +1408,13 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
         <div className="puzzle-slot-tag">SLOT {question.slot}</div>
         {(question.movie_title || question.movie_emoji) && (
           <div className="puzzle-movie">
-            {question.movie_emoji && <span>{question.movie_emoji}</span>}
+            
             <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
           </div>
         )}
         <div className="puzzle-question">{question.question_text}</div>
         <div className="puzzle-solved-badge">
-          <span>{'✓'}</span>
+          <span>{'+'}</span>
           <span>Digit {question.slot} = {solvedDigit}</span>
         </div>
       </div>
@@ -1245,7 +1428,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
           <div className="puzzle-slot-tag">SLOT {question.slot}</div>
           {(question.movie_title || question.movie_emoji) && (
             <div className="puzzle-movie">
-              {question.movie_emoji && <span>{question.movie_emoji}</span>}
+              
               <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
             </div>
           )}
@@ -1257,7 +1440,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
           <div className="puzzle-slot-tag">SLOT {question.slot}</div>
           {(question.movie_title || question.movie_emoji) && (
             <div className="puzzle-movie">
-              {question.movie_emoji && <span>{question.movie_emoji}</span>}
+              
               <span>{question.movie_title}{question.movie_year ? ' ' + question.movie_year : ''}</span>
             </div>
           )}
@@ -1286,11 +1469,20 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
             />
             <button
               className="puzzle-submit"
-              style={{ background: accent, color: '#fff' }}
+              style={{
+                background: !input
+                  ? '#32324A'
+                  : status === 'correct'
+                    ? '#10B981'
+                    : status === 'wrong'
+                      ? '#EF4444'
+                      : 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+                color: !input ? '#6B67A0' : status === 'correct' || status === 'wrong' ? '#fff' : '#000',
+              }}
               onClick={handleSubmit}
               disabled={!input || status === 'submitting'}
             >
-              {status === 'submitting' ? '…' : 'SUBMIT'}
+              {status === 'submitting' ? '...' : status === 'correct' ? 'Correct!' : 'SUBMIT'}
             </button>
           </div>
           {msg && (
@@ -1302,52 +1494,96 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent }) {
   )
 }
 
-// ── Compass Screen ────────────────────────────────────────────────────────
+//  Compass Screen 
 // target = { lat, lon, geofence_m, isWaypoint, label }
 function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg }) {
+  const [playerLat, setPlayerLat] = useState(null)
+  const [playerLon, setPlayerLon] = useState(null)
   const [toBearing, setToBearing] = useState(0)
   const [distance, setDistance] = useState(null)
   const [gpsStatus, setGpsStatus] = useState('searching')
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
   const [orientState, setOrientState] = useState('init')
   const [deviceHeading, setDeviceHeading] = useState(null)
-  const watchRef = useRef(null)
+  // Debug state — remove after Safari diagnosis
+  const [dbgAccuracy, setDbgAccuracy] = useState(null)
+  const [dbgAlpha, setDbgAlpha] = useState(null)
+  const [dbgWebkit, setDbgWebkit] = useState(null)
+  const [gpsWatchFiring, setGpsWatchFiring] = useState(false)
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
+  const startDistRef = useRef(null)
+  const headingHistoryRef = useRef([])
+  // Refs so the [] GPS effect can always read the latest prop values
+  const targetRef = useRef(target)
+  const onArrivedRef = useRef(onArrived)
+  const onWaypointReachedRef = useRef(onWaypointReached)
+  useEffect(() => { targetRef.current = target }, [target])
+  useEffect(() => { onArrivedRef.current = onArrived }, [onArrived])
+  useEffect(() => { onWaypointReachedRef.current = onWaypointReached }, [onWaypointReached])
+
   const accent = hexAccent(hunt?.accent_color)
   const geofence = target?.geofence_m || 15
 
-  // GPS watch — maximumAge: 0 forces a fresh position on every update (Safari fix)
+  // GPS watch — empty deps so Safari never tears it down mid-session
   useEffect(() => {
-    if (!navigator.geolocation || !target) { setGpsStatus('unavailable'); return }
+    if (!navigator.geolocation) { setGpsStatus('unavailable'); return }
     arrivedRef.current = false
-    watchRef.current = navigator.geolocation.watchPosition(
+    console.log('[GPS] starting watchPosition...')
+
+    // getCurrentPosition gives an immediate first fix on Safari
+    navigator.geolocation.getCurrentPosition(
       pos => {
-        const { latitude, longitude } = pos.coords
-        const dist = haversineMetres(latitude, longitude, target.lat, target.lon)
-        setToBearing(bearingDegrees(latitude, longitude, target.lat, target.lon))
-        setDistance(dist)
+        console.log('[GPS] initial fix:', pos.coords.latitude, pos.coords.longitude)
+        setPlayerLat(pos.coords.latitude)
+        setPlayerLon(pos.coords.longitude)
+        setGpsWatchFiring(true)
         setGpsStatus('active')
-        if (dist <= geofence && !arrivedRef.current) {
-          arrivedRef.current = true
-          if (target.isWaypoint) {
-            onWaypointReached()
-          } else {
-            onArrived(latitude, longitude)
-          }
-        }
+      },
+      err => console.warn('[GPS] initial fix failed:', err.message),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    )
+
+    const watchId = navigator.geolocation.watchPosition(
+      pos => {
+        const { latitude, longitude, accuracy } = pos.coords
+        console.log('[GPS watch fired]', { lat: latitude, lon: longitude, accuracy })
+        setGpsWatchFiring(true)
+        setPlayerLat(latitude)
+        setPlayerLon(longitude)
+        setDbgAccuracy(Math.round(accuracy))
+        setGpsStatus('active')
       },
       err => { console.warn('[GPS] error', err.code, err.message); setGpsStatus('error') },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
     )
-    return () => navigator.geolocation.clearWatch(watchRef.current)
-  }, [target, geofence, onArrived, onWaypointReached])
+    console.log('[GPS] watchId:', watchId)
+    return () => { console.log('[GPS] clearing watch:', watchId); navigator.geolocation.clearWatch(watchId) }
+  }, [])
 
-  // Device orientation: auto-start on Android/desktop, ask permission on iOS
+  // Recalculate distance + bearing whenever player position updates
   useEffect(() => {
-    if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+    const t = targetRef.current
+    if (!playerLat || !playerLon || !t?.lat || !t?.lon) return
+    const dist = haversineMetres(playerLat, playerLon, t.lat, t.lon)
+    const bear = bearingDegrees(playerLat, playerLon, t.lat, t.lon)
+    console.log('[distance]', { dist, targetLat: t.lat, targetLon: t.lon })
+    setToBearing(bear)
+    if (startDistRef.current === null) startDistRef.current = dist
+    setDistance(dist)
+    if (dist <= (t.geofence_m || 15) && !arrivedRef.current) {
+      arrivedRef.current = true
+      if (t.isWaypoint) { onWaypointReachedRef.current?.() }
+      else { onArrivedRef.current?.(playerLat, playerLon) }
+    }
+  }, [playerLat, playerLon])
+
+  // Device orientation: Safari iOS requires explicit permission; others auto-start
+  useEffect(() => {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    if (isSafari && typeof DeviceOrientationEvent?.requestPermission === 'function') {
       setOrientState('needs-permission')
-    } else if ('DeviceOrientationEvent' in window) {
+    } else if ('DeviceOrientationEvent' in window || 'ondeviceorientation' in window) {
       startOrientListener()
     } else {
       setOrientState('unsupported')
@@ -1355,41 +1591,70 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     return () => { if (orientCleanupRef.current) orientCleanupRef.current() }
   }, [])
 
+  function smoothHeading(newHeading) {
+    const h = headingHistoryRef.current
+    h.push(newHeading)
+    if (h.length > 5) h.shift()
+    if (h.length === 1) return h[0]
+    // Circular mean: adjust values near 0/360 boundary before averaging
+    const ref = h[0]
+    const adjusted = h.map(v => {
+      if (ref > 270 && v < 90) return v + 360
+      if (ref < 90 && v > 270) return v - 360
+      return v
+    })
+    return ((adjusted.reduce((a, b) => a + b, 0) / adjusted.length) % 360 + 360) % 360
+  }
+
   function startOrientListener() {
     setOrientState('calibrating')
-    const hasAbsolute = 'ondeviceorientationabsolute' in window
-    const evtName = hasAbsolute ? 'deviceorientationabsolute' : 'deviceorientation'
     let fired = false
+    let absoluteFired = false
     const timeoutId = setTimeout(() => { if (!fired) setOrientState('unsupported') }, 3000)
 
-    function handler(e) {
+    function handleOrientation(e) {
+      if (e.type === 'deviceorientation' && absoluteFired) return
+
       let heading = null
-      // iOS: webkitCompassHeading is true-north clockwise (most reliable)
       if (e.webkitCompassHeading != null && e.webkitCompassHeading >= 0) {
         heading = e.webkitCompassHeading
       } else if (e.alpha != null) {
-        // deviceorientationabsolute alpha: 0=North, increases clockwise per spec
         heading = (360 - e.alpha + 360) % 360
       }
       if (heading == null) return
+
+      if (e.type === 'deviceorientationabsolute') absoluteFired = true
       if (!fired) { fired = true; clearTimeout(timeoutId); setOrientState('active') }
-      setDeviceHeading(heading)
+      const smoothed = smoothHeading(heading)
+      setDeviceHeading(smoothed)
+      setDbgAlpha(e.alpha != null ? Math.round(e.alpha) : null)
+      setDbgWebkit(e.webkitCompassHeading != null ? Math.round(e.webkitCompassHeading) : null)
     }
 
-    window.addEventListener(evtName, handler, true)
-    orientCleanupRef.current = () => window.removeEventListener(evtName, handler, true)
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true)
+    window.addEventListener('deviceorientation', handleOrientation, true)
+    orientCleanupRef.current = () => {
+      window.removeEventListener('deviceorientationabsolute', handleOrientation, true)
+      window.removeEventListener('deviceorientation', handleOrientation, true)
+    }
   }
 
   async function requestCompassPermission() {
-    try {
-      const result = await DeviceOrientationEvent.requestPermission()
-      if (result === 'granted') {
-        startOrientListener()
-      } else {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const result = await DeviceOrientationEvent.requestPermission()
+        if (result === 'granted') {
+          startOrientListener()
+        } else {
+          setOrientState('denied')
+        }
+      } catch {
         setOrientState('denied')
       }
-    } catch {
-      setOrientState('denied')
+    } else {
+      // Non-Safari: no permission needed, start directly
+      startOrientListener()
     }
   }
 
@@ -1406,68 +1671,152 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   })[cardinalDir()] || 'north'
 
   const gpsStatusText = {
-    searching:   'ACQUIRING GPS…',
-    active:      `GPS ACTIVE · TARGET ~${geofence}m`,
+    searching:   'ACQUIRING GPS',
+    active:      `GPS ACTIVE  TARGET ~${geofence}m`,
     error:       'GPS UNAVAILABLE',
     unavailable: 'GPS NOT SUPPORTED',
   }[gpsStatus]
 
   const distDisplay = distance != null
-    ? distance < 1000
+    ? distance < 80
       ? <>{Math.round(distance)}<span className="compass-unit"> m</span></>
-      : <>{(distance / 1000).toFixed(1)}<span className="compass-unit"> km</span></>
-    : '—'
+      : <>{(distance / 1609.34).toFixed(1)}<span className="compass-unit"> mi</span></>
+    : ''
+
+  // Needle rotates as soon as heading is available, independent of distance
+  const needleRotation = deviceHeading != null ? toBearing - deviceHeading : 0
+  const searching = deviceHeading == null
+  // Green state: needle pointing within 20 degrees of destination
+  const normalisedAngle = (() => {
+    const diff = Math.abs(needleRotation % 360)
+    return diff > 180 ? 360 - diff : diff
+  })()
+  const isFacingDestination = deviceHeading != null && normalisedAngle < 20
+  const onTrack = isFacingDestination && distance != null && gpsStatus === 'active'
+  const journeyPct = startDistRef.current > 0
+    ? Math.min(100, Math.max(0, ((startDistRef.current - (distance || 0)) / startDistRef.current) * 100))
+    : 0
+  const distMi = (distance != null && distance >= 0) ? (distance / 1609.34).toFixed(1) : '--'
+  const destLabel = (distance != null && distance >= 0)
+    ? (target?.isWaypoint ? 'MI TO WAYPOINT' : 'MI TO DESTINATION')
+    : 'CALCULATING...'
 
   return (
     <div className="compass-wrap">
-      {target?.label && (
+      {/* Waypoint / destination badge */}
+      <div style={{
+        background: target?.isWaypoint ? 'linear-gradient(135deg, #F59E0B, #FCD34D)' : '#10B981',
+        color: target?.isWaypoint ? '#000' : '#fff',
+        fontFamily: "'Share Tech Mono', monospace",
+        fontWeight: 800, fontSize: 13, padding: '6px 16px',
+        borderRadius: 20, letterSpacing: 1,
+      }}>
+        {target?.isWaypoint ? (target?.label || 'WAYPOINT') : 'DESTINATION'}
+      </div>
+
+      {/* Film-reel compass ring — 280px */}
+      <div className="compass-arrow-wrap">
+        {/* Outer ring — reactive green state via inline styles */}
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          border: `3px solid ${isFacingDestination ? '#10B981' : '#7C3AED'}`,
+          boxShadow: isFacingDestination
+            ? '0 0 30px rgba(16,185,129,0.4), inset 0 0 24px rgba(16,185,129,0.12)'
+            : '0 0 20px rgba(124,58,237,0.3), inset 0 0 24px rgba(124,58,237,0.12)',
+          transition: 'border-color 0.4s, box-shadow 0.4s',
+        }} />
+
+        {/* Sprocket holes — 16 dark-filled circles via SVG */}
+        <svg style={{ position: 'absolute', inset: 0, width: 280, height: 280 }}>
+          {Array.from({ length: 16 }, (_, i) => {
+            const angle = (i * 22.5 * Math.PI) / 180
+            const cx = 140 + 128 * Math.cos(angle - Math.PI / 2)
+            const cy = 140 + 128 * Math.sin(angle - Math.PI / 2)
+            return <circle key={i} cx={cx} cy={cy} r={5} fill="#0A0A0F" stroke="#5B21B6" strokeWidth={2} />
+          })}
+        </svg>
+
+        {/* Needle — rotates based on bearing; static (north-up) when no data */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          width: 8, height: 140,
+          transformOrigin: 'bottom center',
+          transform: `translate(-50%, -100%) rotate(${needleRotation}deg)`,
+          transition: searching ? 'none' : 'transform 0.5s ease',
+          opacity: orientState === 'needs-permission' ? 0.35 : 1,
+        }}>
+          <div style={{
+            width: 8, height: 140,
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Top half — gold, green when facing destination */}
+            <div style={{
+              width: 8, height: 70, flexShrink: 0,
+              background: isFacingDestination ? '#10B981' : 'linear-gradient(180deg, #FCD34D, #F59E0B)',
+              borderRadius: '4px 4px 0 0',
+              filter: isFacingDestination ? 'drop-shadow(0 0 6px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
+              transition: 'background 0.4s, filter 0.4s',
+            }} />
+            {/* Bottom half — grey counterweight */}
+            <div style={{
+              width: 8, height: 70, flexShrink: 0,
+              background: '#32324A',
+              borderRadius: '0 0 4px 4px',
+            }} />
+          </div>
+        </div>
+
+        {/* Centre pivot */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 16, height: 16, borderRadius: '50%',
+          background: isFacingDestination ? '#10B981' : '#7C3AED',
+          border: '3px solid #9D5FF5',
+          transition: 'background 0.4s',
+          zIndex: 3,
+        }} />
+      </div>
+
+      {/* Distance display */}
+      <div style={{ textAlign: 'center', marginTop: 24 }}>
         <div style={{
           fontFamily: "'Share Tech Mono', monospace",
-          fontSize: 11,
-          letterSpacing: 2,
-          color: target.isWaypoint ? '#F59E0B' : '#10B981',
-          textAlign: 'center',
-          textTransform: 'uppercase',
+          fontSize: 52, fontWeight: 900,
+          color: '#F1F0FF', lineHeight: 1, minHeight: 52,
         }}>
-          {target.label}
+          {distMi}
         </div>
-      )}
-
-      <div className="compass-dist">{distDisplay}</div>
-
-      {distance != null && gpsStatus === 'active' && (
-        <div style={{ fontSize: 13, color: '#6B67A0', fontWeight: 600, textAlign: 'center', marginTop: -8 }}>
-          Head {cardinalFull()}
+        <div style={{
+          fontSize: 11, letterSpacing: 3, marginTop: 4,
+          color: distance != null ? '#6B67A0' : '#32324A',
+        }}>
+          {destLabel}
         </div>
-      )}
+      </div>
 
-      <div className="compass-arrow-wrap">
-        <div className="compass-ring" />
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: `translate(-50%, -100%) rotate(${arrowDeg}deg)`,
-          transformOrigin: 'bottom center',
-          width: 6,
-          height: 70,
-          background: target?.isWaypoint
-            ? `linear-gradient(to top, #F59E0B, #FCD34D)`
-            : `linear-gradient(to top, ${accent}, #F59E0B)`,
-          borderRadius: 3,
-          transition: 'transform 0.1s linear',
-          opacity: orientState === 'needs-permission' ? 0.4 : 1,
-        }} />
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 12,
-          height: 12,
-          borderRadius: '50%',
-          background: target?.isWaypoint ? '#F59E0B' : accent,
-        }} />
+      {/* GPS debug panel — remove after Safari diagnosis */}
+      <div style={{
+        background: '#1C1C26', padding: '8px', borderRadius: '8px',
+        fontFamily: 'monospace', fontSize: '11px', color: '#F59E0B',
+        textAlign: 'left', margin: '8px', width: '100%', maxWidth: 340,
+        boxSizing: 'border-box',
+      }}>
+        <div>playerLat: {String(playerLat)}</div>
+        <div>playerLon: {String(playerLon)}</div>
+        <div>dest.lat: {String(target?.lat)}</div>
+        <div>dest.lon: {String(target?.lon)}</div>
+        <div>currentDistance: {String(distance)}</div>
+        <div>startDistance: {String(startDistRef.current)}</div>
+        <div>watchPosition firing: {String(gpsWatchFiring)}</div>
+      </div>
+
+      {/* On-track label */}
+      {isFacingDestination && <div className="compass-on-track-label">ON TRACK</div>}
+
+      {/* Journey progress bar */}
+      <div className="compass-journey-bar">
+        <div className="compass-journey-fill" style={{ width: `${journeyPct}%` }} />
       </div>
 
       {orientState === 'needs-permission' && (
@@ -1475,18 +1824,56 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           ENABLE COMPASS
         </button>
       )}
-
       {orientState === 'calibrating' && (
-        <div className="compass-calibrating">CALIBRATING COMPASS…</div>
+        <div className="compass-calibrating">CALIBRATING COMPASS</div>
+      )}
+      {distance != null && gpsStatus === 'active' && !onTrack && (
+        <div style={{ fontSize: 12, color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+          HEAD {cardinalDir()}
+        </div>
       )}
 
-      <div className="compass-status">{gpsStatusText}</div>
+      {gpsStatus === 'error' || gpsStatus === 'unavailable' ? (
+        <div style={{ textAlign: 'center' }}>
+          <div className="compass-status">GPS signal needed</div>
+          <div style={{ fontSize: 12, color: '#6B67A0', marginTop: 4, lineHeight: 1.5 }}>
+            Step outside and allow location access
+          </div>
+        </div>
+      ) : gpsStatus === 'searching' ? (
+        <div className="compass-status">ACQUIRING GPS</div>
+      ) : (
+        <div className="compass-status">GPS ACTIVE  ~{geofence}m geofence</div>
+      )}
+
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
+
+      {/* DEBUG PANEL — remove after Safari diagnosis */}
+      <div style={{
+        background: '#1C1C26', padding: '12px', borderRadius: '8px',
+        margin: '12px', fontFamily: 'monospace', fontSize: '12px',
+        color: '#B8B4D8', textAlign: 'left', width: '100%', maxWidth: 340,
+        boxSizing: 'border-box',
+      }}>
+        <div>GPS: {playerLat != null ? `${playerLat.toFixed(4)}, ${playerLon.toFixed(4)}` : 'null'}</div>
+        <div>Accuracy: {dbgAccuracy != null ? `${dbgAccuracy}m` : 'null'}</div>
+        <div>Target: {target?.lat?.toFixed(4)}, {target?.lon?.toFixed(4)}</div>
+        <div>distance: {distance != null ? `${Math.round(distance)}m` : 'null'}</div>
+        <div>alpha (raw): {dbgAlpha != null ? dbgAlpha : 'null'}</div>
+        <div>webkitCompassHeading: {dbgWebkit != null ? dbgWebkit : 'null'}</div>
+        <div>deviceHeading state: {deviceHeading != null ? Math.round(deviceHeading) : 'null'}</div>
+        <div>Bearing to dest: {Math.round(toBearing)}</div>
+        <div>Rotation calc: {deviceHeading != null ? `${Math.round(toBearing)} - ${Math.round(deviceHeading)} = ${Math.round(toBearing - deviceHeading)}deg` : 'no heading'}</div>
+        <div>Needle transform: rotate({Math.round(needleRotation)}deg)</div>
+        <div>searching: {String(searching)}</div>
+        <div>orientState: {orientState}</div>
+        <div>Browser: {navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Other'}</div>
+      </div>
     </div>
   )
 }
 
-// ── Account Prompt ────────────────────────────────────────────────────────
+//  Account Prompt
 function AccountPrompt() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -1504,7 +1891,7 @@ function AccountPrompt() {
         Enter your email to get a magic link and unlock premium hunts.
       </div>
       {sent ? (
-        <div className="account-sent">✓ Magic link sent — check your inbox.</div>
+        <div className="account-sent">Magic link sent  check your inbox.</div>
       ) : (
         <div className="account-email-row">
           <input
@@ -1522,46 +1909,109 @@ function AccountPrompt() {
   )
 }
 
-// ── Arrived Screen ────────────────────────────────────────────────────────
+//  Arrived Screen 
 function ArrivedScreen({ voucher }) {
   const [redeemed, setRedeemed] = useState(false)
+  const [entered, setEntered] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setEntered(true), 60)
+    return () => clearTimeout(t)
+  }, [])
 
   return (
     <div className="arrived-wrap">
-      <div className="arrived-emoji">{'\u{1F389}'}</div>
-      <div className="arrived-title">YOU FOUND IT</div>
-      <div className="arrived-sub">
+      <div style={{ fontSize: 13, color: '#6B67A0', marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>
         You solved the puzzle and walked to the location.
-        <br />
-        Show this screen to claim your reward.
+        <br />Show this screen to claim your reward.
       </div>
 
-      <div className="voucher-card">
-        <div className="voucher-from">
-          {voucher ? `Sponsored by · ${voucher.business_name}` : 'Loading reward…'}
+      {/* Ticket card with spring entrance */}
+      <div style={{
+        background: '#F1F0FF',
+        color: '#121218',
+        borderRadius: 16,
+        overflow: 'hidden',
+        width: '100%',
+        maxWidth: 340,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        transform: entered ? 'translateY(0) scale(1)' : 'translateY(60px) scale(0.92)',
+        opacity: entered ? 1 : 0,
+        transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease',
+      }}>
+        {/* Header band */}
+        <div style={{
+          background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+          color: '#fff',
+          padding: '20px 24px',
+          fontFamily: "'Share Tech Mono', monospace",
+          fontWeight: 900,
+          fontSize: 18,
+          letterSpacing: 2,
+        }}>
+          REWARD UNLOCKED
         </div>
-        {voucher && (
-          <>
-            <div className="voucher-offer">{voucher.voucher_headline}</div>
-            <div className="voucher-detail">{voucher.voucher_detail}</div>
-            <div className="voucher-code">{voucher.voucher_code || '——'}</div>
-          </>
-        )}
+
+        {/* Perforated divider */}
+        <div style={{ borderTop: '2px dashed rgba(124,58,237,0.25)', background: '#F1F0FF' }} />
+
+        {/* Body */}
+        <div style={{ padding: '16px 20px 0', background: '#F1F0FF' }}>
+          <div style={{
+            fontSize: 10, letterSpacing: 2, color: '#9D5FF5',
+            fontFamily: "'Share Tech Mono', monospace", marginBottom: 10,
+          }}>
+            {voucher?.business_name || 'YOUR REWARD'}
+          </div>
+
+          {voucher && (
+            <>
+              <div style={{
+                fontFamily: "'Nunito', sans-serif", fontSize: 22,
+                fontWeight: 800, color: '#121218', marginBottom: 6, lineHeight: 1.2,
+              }}>
+                {voucher.voucher_headline}
+              </div>
+              <div style={{ fontSize: 13, color: '#6B67A0', marginBottom: 16, lineHeight: 1.4 }}>
+                {voucher.voucher_detail}
+              </div>
+            </>
+          )}
+
+          {/* Code box */}
+          <div style={{
+            background: '#121218', color: '#F59E0B',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: 28, fontWeight: 700, letterSpacing: 4,
+            padding: '16px 24px', borderRadius: 8,
+            marginBottom: 20, textAlign: 'center',
+          }}>
+            {voucher?.voucher_code || '---'}
+          </div>
+        </div>
+
+        {/* Redeem button — flush bottom */}
+        <button
+          onClick={() => !redeemed && setRedeemed(true)}
+          style={{
+            background: redeemed ? '#10B981' : '#7C3AED',
+            color: '#fff', width: '100%', padding: '18px 0',
+            fontFamily: "'Share Tech Mono', monospace",
+            fontWeight: 800, fontSize: 13, letterSpacing: 1,
+            border: 'none', cursor: 'pointer',
+            transition: 'background 0.2s',
+          }}
+        >
+          {redeemed ? 'REDEEMED' : 'STAFF: TAP TO REDEEM'}
+        </button>
       </div>
 
-      <button
-        className={`redeem-btn ${redeemed ? 'done' : 'idle'}`}
-        onClick={() => !redeemed && setRedeemed(true)}
-      >
-        {redeemed ? '✓ REDEEMED' : 'STAFF: TAP TO REDEEM'}
-      </button>
-
-      {redeemed && <AccountPrompt />}
+      {redeemed && <div style={{ marginTop: 20, width: '100%' }}><AccountPrompt /></div>}
     </div>
   )
 }
 
-// ── Waypoint helpers ──────────────────────────────────────────────────────
+//  Waypoint helpers 
 function generateWaypoints(startLat, startLon, destLat, destLon, tier) {
   const count = tier === 'premium' ? 2 : tier === 'elite' ? 4 : 0
   if (count === 0) return []
@@ -1587,7 +2037,7 @@ function getPhaseSlots(phase, questions) {
   return questions.slice(2).map(q => q.slot)
 }
 
-// ── App ───────────────────────────────────────────────────────────────────
+//  App 
 export default function App() {
   const [screen, setScreen] = useState('discover')
   const [hunts, setHunts] = useState([])
@@ -1618,9 +2068,60 @@ export default function App() {
 
   async function loadHunts() {
     try {
-      const { data, error } = await supabase.rpc('get_active_hunts')
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select(`
+          id,
+          voucher_headline,
+          puzzle_packs (
+            id, name, emoji, tier, description, accent_color, theme_tag, genre,
+            puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
+          ),
+          businesses ( id, name, location, is_active )
+        `)
+        .eq('status', 'active')
+
       if (error) throw error
-      setHunts(data?.hunts || [])
+
+      const hunts = (data || []).flatMap(c => {
+        const pp = c.puzzle_packs
+        const b  = c.businesses
+        if (!pp || !b || b.is_active === false) return []
+
+        // Pick the first active puzzle for this pack
+        const pz = (pp.puzzles || []).find(p => p.is_active)
+        if (!pz) return []
+
+        // PostgREST returns geography as GeoJSON  may be string or object
+        let lat = 0, lon = 0
+        try {
+          const geo = typeof b.location === 'string' ? JSON.parse(b.location) : b.location
+          if (geo?.coordinates) { lon = geo.coordinates[0]; lat = geo.coordinates[1] }
+        } catch {}
+
+        return [{
+          campaign_id:      c.id,
+          pack_id:          pp.id,
+          puzzle_id:        pz.id,
+          pack_name:        pp.name,
+          pack_emoji:       pp.emoji,
+          pack_tier:        pp.tier,
+          pack_description: pp.description,
+          accent_color:     pp.accent_color,
+          theme_tag:        pp.theme_tag,
+          genre:            pp.genre,
+          coordinate_slots: pz.coordinate_slots,
+          masked_lat:       pz.masked_lat,
+          masked_lon:       pz.masked_lon,
+          is_free_tier:     pp.tier === 'standard',
+          business_name:    b.name,
+          voucher_headline: c.voucher_headline,
+          approx_lat:       lat,
+          approx_lon:       lon,
+        }]
+      })
+
+      setHunts(hunts)
     } catch (err) {
       setHuntsError(err.message)
     } finally {
@@ -1706,7 +2207,7 @@ export default function App() {
       setCompassTarget(null)
 
       // Premium packs: fetch destination once, generate waypoints client-side.
-      // get_puzzle_destination takes only a UUID — no FLOAT8 type issues.
+      // get_puzzle_destination takes only a UUID  no FLOAT8 type issues.
       let wps = []
       if (isPremium) {
         const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
@@ -1776,7 +2277,7 @@ export default function App() {
               })
               setTimeout(() => setScreen('compass'), 600)
             } else {
-              // All waypoints passed and this phase's slots solved — unlock final destination
+              // All waypoints passed and this phase's slots solved  unlock final destination
               const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
               if (coords?.success) {
                 const finalTarget = {
@@ -1826,24 +2327,28 @@ export default function App() {
   }
 
   async function handleSimulateArrival() {
-    if (!activeSession || !compassTarget) return
-    const { data } = await supabase.rpc('confirm_arrival', {
-      p_session_id:  activeSession.id,
-      p_campaign_id: activeSession.campaign_id,
-      p_arrival_lat: compassTarget.lat,
-      p_arrival_lon: compassTarget.lon,
-    })
-    if (data?.success) {
-      setVoucher(data)
-      setScreen('arrived')
-      return
+    try {
+      const { data } = await supabase.rpc('confirm_arrival', {
+        p_session_id:  activeSession?.id,
+        p_campaign_id: activeSession?.campaign_id,
+        p_arrival_lat: compassTarget?.lat ?? 0,
+        p_arrival_lon: compassTarget?.lon ?? 0,
+      })
+      if (data?.success) {
+        setVoucher(data)
+        setScreen('arrived')
+        return
+      }
+      console.warn('[simulate] confirm_arrival responded:', data?.error)
+    } catch (e) {
+      console.warn('[simulate] confirm_arrival threw:', e)
     }
-    console.warn('[simulate] confirm_arrival:', data?.error, '— demo fallback')
+    // Guaranteed demo fallback  always shows voucher screen
     setVoucher({
-      voucher_code:     'MTM-TEST-' + (Math.floor(Math.random() * 9000) + 1000),
+      voucher_code:     'MTM-DEMO-' + (Math.floor(Math.random() * 9000) + 1000),
       voucher_headline: 'You found it!',
       voucher_detail:   'Show this screen to venue staff to claim your reward.',
-      business_name:    'Test Venue',
+      business_name:    activePack?.business_name || 'The Location',
       expires_at:       new Date(Date.now() + 86400000).toISOString(),
     })
     setScreen('arrived')
@@ -1892,14 +2397,14 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <div className="app" style={{ background: '#121218', minHeight: '100vh', color: '#F1F0FF' }}>
+      <div className="app" style={{ background: 'radial-gradient(ellipse at top, #1A0533 0%, #0A0A0F 60%)', backgroundAttachment: 'fixed', minHeight: '100dvh', color: '#F1F0FF' }}>
         {showReset && (
           <div className="reset-overlay">
             <div className="reset-sheet">
-              <div className="reset-icon">{'\u{1F4E1}'}</div>
+              
               <div className="reset-title">SIGNAL LOST</div>
               <div className="reset-body">
-                Too many wrong guesses — coordinate data has been wiped.
+                Too many wrong guesses  coordinate data has been wiped.
                 Restart the pack to try again.
               </div>
               <button className="reset-action" onClick={() => startHunt(activePack)}>
@@ -1922,7 +2427,7 @@ export default function App() {
         {screen === 'puzzles' && activePack && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('discover')}>←</button>
+              <button className="nav-back" onClick={() => setScreen('discover')}></button>
               <span className="nav-pack-name">{activePack.pack_name}</span>
               <span className="nav-count">
                 {Object.keys(solved).length}/{slots.length} solved
@@ -1937,7 +2442,7 @@ export default function App() {
                 borderRadius: '8px', fontSize: '11px', fontWeight: '700',
                 letterSpacing: '0.06em', color: '#F59E0B', textAlign: 'center',
               }}>
-                PHASE {waypointPhase} {'·'} Solve both {phaseSlots.join(' and ')} to proceed
+                PHASE {waypointPhase} {''} Solve both {phaseSlots.join(' and ')} to proceed
               </div>
             )}
             {isMultiSlotPhase && phaseSolvedSlots.length > 0 && phaseUnsolved.length > 0 && (
@@ -1947,7 +2452,7 @@ export default function App() {
                 borderRadius: '8px', fontSize: '13px', fontWeight: '600',
                 color: '#10B981', textAlign: 'center',
               }}>
-                {'✓'} Slot {phaseSolvedSlots.join(', ')} solved {'—'} solve Slot {phaseUnsolved.join(' and ')} to continue
+                {'+'} Slot {phaseSolvedSlots.join(', ')} solved {''} solve Slot {phaseUnsolved.join(' and ')} to continue
               </div>
             )}
             <div>
@@ -1967,8 +2472,8 @@ export default function App() {
         {screen === 'compass' && activePack && compassTarget && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('puzzles')}>←</button>
-              <span className="nav-pack-name">GPS Compass</span>
+              <button className="nav-back" onClick={() => setScreen('puzzles')}></button>
+              <span className="nav-pack-name">{activePack?.pack_name || 'GPS Compass'}</span>
               <span className="nav-count" style={{ color: compassTarget.isWaypoint ? '#F59E0B' : '#10B981' }}>
                 {compassTarget.isWaypoint ? compassTarget.label : 'All slots unlocked'}
               </span>
@@ -1987,7 +2492,7 @@ export default function App() {
                 else handleSimulateArrival()
               }}
             >
-              {compassTarget.isWaypoint ? '↳ SIMULATE WAYPOINT REACH (demo)' : '↳ SIMULATE ARRIVAL (demo only)'}
+              {compassTarget.isWaypoint ? ' SIMULATE WAYPOINT REACH (demo)' : ' SIMULATE ARRIVAL (demo only)'}
             </button>
           </div>
         )}
@@ -1995,7 +2500,7 @@ export default function App() {
         {screen === 'arrived' && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('discover')}>← All Hunts</button>
+              <button className="nav-back" onClick={() => setScreen('discover')}> All Hunts</button>
             </div>
             <ArrivedScreen voucher={voucher} />
           </div>

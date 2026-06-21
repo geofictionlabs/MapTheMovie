@@ -24,7 +24,7 @@ export default class ErrorBoundary extends Component {
           textAlign: 'center', boxSizing: 'border-box',
         }}>
           <div>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🗺</div>
+            <div style={{ fontSize: 48, marginBottom: 16 }}></div>
             <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
               Something went wrong
             </div>

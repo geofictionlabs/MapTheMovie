@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 
-// ── CSS ────────────────────────────────────────────────────────────────────
+//  CSS 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
@@ -21,7 +21,7 @@ body {
   min-height: 100dvh;
 }
 
-/* ── Auth screens ────── */
+/*  Auth screens  */
 .auth-screen {
   min-height: 100dvh;
   display: flex;
@@ -75,7 +75,7 @@ body {
 }
 .auth-sent { font-size: 14px; color: #10B981; margin-top: 12px; }
 
-/* ── Sidebar ─────────── */
+/*  Sidebar  */
 .sidebar {
   width: 220px;
   flex-shrink: 0;
@@ -148,7 +148,7 @@ body {
 .tier-featured { background: rgba(245,158,11,0.12); color: #F59E0B; }
 .tier-sponsored { background: rgba(252,211,77,0.12); color: #FCD34D; }
 
-/* ── Main area ────────── */
+/*  Main area  */
 .dash-main {
   flex: 1;
   padding: 32px 28px;
@@ -171,7 +171,7 @@ body {
   margin-bottom: 12px;
 }
 
-/* ── Stat cards ────────── */
+/*  Stat cards  */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -197,7 +197,7 @@ body {
 .stat-card.gold { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); }
 .stat-card.gold .stat-value { color: #F59E0B; }
 
-/* ── Go Live button ────── */
+/*  Go Live button  */
 .live-panel {
   background: #1C1C26;
   border: 1px solid #32324A;
@@ -247,7 +247,7 @@ body {
 .live-btn.go { background: #10B981; color: #fff; }
 .live-btn.end { background: rgba(239,68,68,0.12); color: #EF4444; border: 1px solid rgba(239,68,68,0.3); }
 
-/* ── Toast ──────────────── */
+/*  Toast  */
 .toast {
   position: fixed;
   bottom: 28px;
@@ -267,7 +267,7 @@ body {
 }
 .toast.visible { transform: translateX(-50%) translateY(0); }
 
-/* ── Card ───────────────── */
+/*  Card  */
 .card {
   background: #1C1C26;
   border: 1px solid #32324A;
@@ -278,7 +278,7 @@ body {
 .card-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
 .card-sub { font-size: 12px; color: #6B67A0; margin-bottom: 16px; }
 
-/* ── Table ──────────────── */
+/*  Table  */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th {
@@ -299,7 +299,7 @@ tr:last-child td { border-bottom: none; }
   color: #F1F0FF;
 }
 
-/* ── Theme grid ─────────── */
+/*  Theme grid  */
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -319,7 +319,7 @@ tr:last-child td { border-bottom: none; }
 .theme-name { font-size: 12px; font-weight: 700; }
 .theme-tag { font-size: 10px; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px; margin-top: 2px; opacity: 0.7; }
 
-/* ── Voucher upload ─────── */
+/*  Voucher upload  */
 .upload-area {
   background: #121218;
   border: 1px dashed #32324A;
@@ -366,7 +366,7 @@ tr:last-child td { border-bottom: none; }
 }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
-/* ── Settings ───────────── */
+/*  Settings  */
 .plan-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -390,9 +390,9 @@ tr:last-child td { border-bottom: none; }
 }
 .plan-price span { font-size: 13px; color: #6B67A0; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 400; }
 .plan-feature { font-size: 12px; color: #6B67A0; margin-bottom: 6px; padding-left: 14px; position: relative; }
-.plan-feature::before { content: '✓'; position: absolute; left: 0; color: #10B981; font-weight: 700; }
+.plan-feature::before { content: '+'; position: absolute; left: 0; color: #10B981; font-weight: 700; }
 
-/* ── Mobile tab bar ─────── */
+/*  Mobile tab bar  */
 .mobile-tabs {
   display: none;
   position: fixed;
@@ -426,7 +426,7 @@ tr:last-child td { border-bottom: none; }
 .tab-btn.active { color: #7C3AED; }
 .tab-btn-icon { font-size: 18px; }
 
-/* ── Pin Drop Modal ────── */
+/*  Pin Drop Modal  */
 .pin-modal {
   position: fixed;
   inset: 0;
@@ -482,7 +482,7 @@ tr:last-child td { border-bottom: none; }
 }
 `
 
-// ── Toast ────────────────────────────────────────────────────────────────
+//  Toast 
 function useToast() {
   const [msg, setMsg] = useState('')
   const [visible, setVisible] = useState(false)
@@ -502,7 +502,7 @@ function useToast() {
   return { showToast, ToastEl }
 }
 
-// ── Live players via Realtime ────────────────────────────────────────────
+//  Live players via Realtime 
 function useLivePlayers(campaignId) {
   const [count, setCount] = useState(0)
 
@@ -536,17 +536,17 @@ function useLivePlayers(campaignId) {
   return count
 }
 
-// ── THEMES config ────────────────────────────────────────────────────────
+//  THEMES config 
 const THEMES = [
-  { id: 'evergreen_80s',   emoji: '🎬', name: '80s Grid',    tag: 'EVERGREEN', bg: '#2D1060', accent: '#7C3AED' },
-  { id: 'christmas',        emoji: '🎄', name: 'Christmas',   tag: 'DEC',       bg: '#064E3B', accent: '#10B981' },
-  { id: 'halloween',        emoji: '🎃', name: 'Halloween',   tag: 'OCT',       bg: '#451A03', accent: '#F97316' },
-  { id: 'valentines',       emoji: '💘', name: 'Valentine\'s', tag: 'FEB',      bg: '#4C0519', accent: '#F43F5E' },
-  { id: 'summer',           emoji: '☀️', name: 'Summer',      tag: 'JUL–AUG',  bg: '#431407', accent: '#F59E0B' },
-  { id: 'easter',           emoji: '🐣', name: 'Easter',      tag: 'APR',       bg: '#164E63', accent: '#06B6D4' },
+  { id: 'evergreen_80s',   emoji: '', name: '80s Grid',    tag: 'EVERGREEN', bg: '#2D1060', accent: '#7C3AED' },
+  { id: 'christmas',        emoji: '', name: 'Christmas',   tag: 'DEC',       bg: '#064E3B', accent: '#10B981' },
+  { id: 'halloween',        emoji: '', name: 'Halloween',   tag: 'OCT',       bg: '#451A03', accent: '#F97316' },
+  { id: 'valentines',       emoji: '', name: 'Valentine\'s', tag: 'FEB',      bg: '#4C0519', accent: '#F43F5E' },
+  { id: 'summer',           emoji: '', name: 'Summer',      tag: 'JULAUG',  bg: '#431407', accent: '#F59E0B' },
+  { id: 'easter',           emoji: '', name: 'Easter',      tag: 'APR',       bg: '#164E63', accent: '#06B6D4' },
 ]
 
-// ── Pin Drop Modal ────────────────────────────────────────────────────────
+//  Pin Drop Modal 
 function PinDropModal({ onConfirm, onCancel }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -567,7 +567,7 @@ function PinDropModal({ onConfirm, onCancel }) {
     mapRef.current = map
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
+      attribution: ' OpenStreetMap',
       maxZoom: 19,
     }).addTo(map)
 
@@ -619,7 +619,7 @@ function PinDropModal({ onConfirm, onCancel }) {
   )
 }
 
-// ── Overview Tab ─────────────────────────────────────────────────────────
+//  Overview Tab 
 function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
@@ -634,7 +634,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         <div className="live-status">
           <div className={`live-dot ${isLive ? 'active' : ''}`} />
           <div>
-            <div className="live-label">{isLive ? '🟢 You are Live' : 'Not Live'}</div>
+            <div className="live-label">{isLive ? 'You are Live' : 'Not Live'}</div>
             <div className="live-hint">
               {isLive
                 ? 'Players are being guided to your location'
@@ -646,7 +646,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
           <button className="live-btn end" onClick={onEndLive}>END SESSION</button>
         ) : (
           <button className="live-btn go" onClick={onGoLive} disabled={gpsLoading}>
-            {gpsLoading ? 'GETTING GPS…' : 'GO LIVE HERE'}
+            {gpsLoading ? 'GETTING GPS' : 'GO LIVE HERE'}
           </button>
         )}
       </div>
@@ -667,7 +667,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         <div className="stat-card">
           <div className="stat-label">ACTIVE PACK</div>
           <div className="stat-value" style={{ fontSize: 16, paddingTop: 6 }}>
-            {activeCampaign?.pack_name || '—'}
+            {activeCampaign?.pack_name || ''}
           </div>
         </div>
       </div>
@@ -695,7 +695,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
                     fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1,
                   }}>SLOT {q.slot}</span>
                   <span style={{ fontSize: 13, color: '#B8B4D8' }}>
-                    {q.movie_emoji} {q.movie_title} ({q.movie_year})
+                    {q.movie_title} ({q.movie_year})
                   </span>
                   <span style={{
                     marginLeft: 'auto',
@@ -711,7 +711,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
               </div>
             ))}
             <div style={{ fontSize: 12, color: '#6B67A0', marginTop: 12, textAlign: 'center' }}>
-              Players type full answers — the coordinate digit is extracted server-side
+              Players type full answers  the coordinate digit is extracted server-side
             </div>
           </div>
         </div>
@@ -732,7 +732,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
               {(redemptions || []).slice(0, 8).map(r => (
                 <tr key={r.id}>
                   <td className="code-cell">{r.voucher_code}</td>
-                  <td>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
+                  <td>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</td>
                   <td>
                     <span style={{
                       background: r.redeemed_at ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
@@ -759,7 +759,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
   )
 }
 
-// ── Vouchers Tab ─────────────────────────────────────────────────────────
+//  Vouchers Tab 
 function VouchersTab({ business, campaigns, showToast }) {
   const [codeText, setCodeText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -781,7 +781,7 @@ function VouchersTab({ business, campaigns, showToast }) {
   async function handleUpload() {
     const codes = codeText.split('\n').map(l => l.trim()).filter(Boolean)
     if (codes.length === 0) return
-    if (!activeCampaign?.pack_id) { showToast('⚠️ No active campaign found'); return }
+    if (!activeCampaign?.pack_id) { showToast('! No active campaign found'); return }
 
     setUploading(true)
     try {
@@ -794,9 +794,9 @@ function VouchersTab({ business, campaigns, showToast }) {
       if (error) throw error
       setCodeText('')
       setExisting(prev => [...rows.map((r, i) => ({ ...r, id: i, claimed_by: null })), ...prev])
-      showToast(`✓ ${codes.length} voucher code${codes.length > 1 ? 's' : ''} uploaded`)
+      showToast(`${codes.length} voucher code${codes.length > 1 ? 's' : ''} uploaded`)
     } catch (err) {
-      showToast('⚠️ Upload failed: ' + err.message)
+      showToast('! Upload failed: ' + err.message)
     } finally {
       setUploading(false)
     }
@@ -808,7 +808,7 @@ function VouchersTab({ business, campaigns, showToast }) {
   return (
     <div>
       <div className="page-title">Voucher Codes</div>
-      <div className="page-sub">Upload elite codes — one code drawn per player on completion</div>
+      <div className="page-sub">Upload elite codes  one code drawn per player on completion</div>
 
       <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 24 }}>
         <div className="stat-card">
@@ -834,7 +834,7 @@ function VouchersTab({ business, campaigns, showToast }) {
         </div>
         <div className="row">
           <button className="btn-primary" onClick={handleUpload} disabled={!codeText.trim() || uploading}>
-            {uploading ? 'UPLOADING…' : 'UPLOAD CODES'}
+            {uploading ? 'UPLOADING' : 'UPLOAD CODES'}
           </button>
           {codeText && (
             <span style={{ fontSize: 12, color: '#6B67A0' }}>
@@ -873,7 +873,7 @@ function VouchersTab({ business, campaigns, showToast }) {
                           {c.claimed_by ? 'CLAIMED' : 'AVAILABLE'}
                         </span>
                       </td>
-                      <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
+                      <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -886,14 +886,14 @@ function VouchersTab({ business, campaigns, showToast }) {
   )
 }
 
-// ── Themes Tab ───────────────────────────────────────────────────────────
+//  Themes Tab 
 function ThemesTab({ business, campaigns, showToast }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const [activeTheme, setActiveTheme] = useState(null)
   const [applying, setApplying] = useState(null)
 
   async function handleApply(theme) {
-    if (!activeCampaign) { showToast('⚠️ No active campaign to update'); return }
+    if (!activeCampaign) { showToast('! No active campaign to update'); return }
 
     setApplying(theme.id)
     try {
@@ -906,7 +906,7 @@ function ThemesTab({ business, campaigns, showToast }) {
 
       // Fall back to just updating campaign accent or description if no pack found
       if (!packs || packs.length === 0) {
-        showToast(`Theme "${theme.name}" — pack not found in DB yet. Add it via migrations.`)
+        showToast(`Theme "${theme.name}"  pack not found in DB yet. Add it via migrations.`)
         setApplying(null)
         return
       }
@@ -920,9 +920,9 @@ function ThemesTab({ business, campaigns, showToast }) {
       if (error) throw error
 
       setActiveTheme(theme.id)
-      showToast(`✓ Theme switched to "${theme.name}" — live within 2 minutes`)
+      showToast(`Theme switched to "${theme.name}"  live within 2 minutes`)
     } catch (err) {
-      showToast('⚠️ Failed: ' + err.message)
+      showToast('! Failed: ' + err.message)
     } finally {
       setApplying(null)
     }
@@ -941,11 +941,11 @@ function ThemesTab({ business, campaigns, showToast }) {
             style={{ background: t.bg }}
             onClick={() => handleApply(t)}
           >
-            <div className="theme-emoji">{t.emoji}</div>
+            
             <div className="theme-name" style={{ color: t.accent }}>{t.name}</div>
             <div className="theme-tag">{t.tag}</div>
             {applying === t.id && (
-              <div style={{ fontSize: 10, marginTop: 6, color: '#F1F0FF' }}>Applying…</div>
+              <div style={{ fontSize: 10, marginTop: 6, color: '#F1F0FF' }}>Applying</div>
             )}
           </div>
         ))}
@@ -954,7 +954,7 @@ function ThemesTab({ business, campaigns, showToast }) {
       <div className="card" style={{ marginTop: 24 }}>
         <div className="card-title">Seasonal Pricing</div>
         <div className="card-sub">
-          Premium seasonal events attract 3× more players. Featured and Sponsored tiers include priority listing during peak periods.
+          Premium seasonal events attract 3 more players. Featured and Sponsored tiers include priority listing during peak periods.
         </div>
         <table style={{ width: '100%' }}>
           <thead>
@@ -966,10 +966,10 @@ function ThemesTab({ business, campaigns, showToast }) {
           </thead>
           <tbody>
             {[
-              ['Christmas', 'Dec 1 – Jan 5', '+25%'],
-              ['Halloween', 'Oct 1 – Nov 1', '+15%'],
-              ['Summer',    'Jul 1 – Aug 31', '+10%'],
-              ['Valentine\'s', 'Feb 7 – Feb 15', '+20%'],
+              ['Christmas', 'Dec 1  Jan 5', '+25%'],
+              ['Halloween', 'Oct 1  Nov 1', '+15%'],
+              ['Summer',    'Jul 1  Aug 31', '+10%'],
+              ['Valentine\'s', 'Feb 7  Feb 15', '+20%'],
             ].map(([event, dates, uplift]) => (
               <tr key={event}>
                 <td style={{ fontWeight: 600 }}>{event}</td>
@@ -984,7 +984,7 @@ function ThemesTab({ business, campaigns, showToast }) {
   )
 }
 
-// ── History Tab ──────────────────────────────────────────────────────────
+//  History Tab 
 function HistoryTab({ redemptions }) {
   const byDay = (redemptions || []).reduce((acc, r) => {
     const day = r.created_at ? r.created_at.slice(0, 10) : 'Unknown'
@@ -1033,8 +1033,8 @@ function HistoryTab({ redemptions }) {
               {(redemptions || []).map(r => (
                 <tr key={r.id}>
                   <td className="code-cell">{r.voucher_code}</td>
-                  <td style={{ color: '#6B67A0' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
-                  <td>{r.redeemed_at ? new Date(r.redeemed_at).toLocaleString() : <span style={{ color: '#32324A' }}>—</span>}</td>
+                  <td style={{ color: '#6B67A0' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : ''}</td>
+                  <td>{r.redeemed_at ? new Date(r.redeemed_at).toLocaleString() : <span style={{ color: '#32324A' }}></span>}</td>
                 </tr>
               ))}
               {(!redemptions || redemptions.length === 0) && (
@@ -1048,21 +1048,21 @@ function HistoryTab({ redemptions }) {
   )
 }
 
-// ── Settings Tab ─────────────────────────────────────────────────────────
+//  Settings Tab 
 function SettingsTab({ business, showToast }) {
   const tier = business?.tier || 'starter'
 
   const PLANS = [
     {
-      id: 'starter', name: 'Starter', price: '£49', period: '/mo',
+      id: 'starter', name: 'Starter', price: '49', period: '/mo',
       features: ['1 active hunt', 'Standard map listing', 'Basic analytics', 'Email support'],
     },
     {
-      id: 'featured', name: 'Featured', price: '£99', period: '/mo',
+      id: 'featured', name: 'Featured', price: '99', period: '/mo',
       features: ['3 active hunts', 'Gold map marker', 'Full analytics + history', 'Priority support', 'Seasonal pack access'],
     },
     {
-      id: 'sponsored', name: 'Sponsored', price: '£249', period: '/mo',
+      id: 'sponsored', name: 'Sponsored', price: '249', period: '/mo',
       features: ['Unlimited hunts', 'Elite map badge', 'Push to all local players', 'Dedicated account manager', 'Co-branded content', 'Custom voucher design'],
     },
   ]
@@ -1088,13 +1088,13 @@ function SettingsTab({ business, showToast }) {
             ))}
             {tier === p.id ? (
               <div style={{ marginTop: 14, fontSize: 11, color: '#10B981', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
-                ✓ CURRENT PLAN
+                {'+'} CURRENT PLAN
               </div>
             ) : (
               <button
                 className="btn-primary"
                 style={{ marginTop: 14, width: '100%' }}
-                onClick={() => showToast('Stripe checkout coming soon — email hello@geofictionlabs.com to upgrade')}
+                onClick={() => showToast('Stripe checkout coming soon  email hello@geofictionlabs.com to upgrade')}
               >
                 UPGRADE
               </button>
@@ -1122,7 +1122,7 @@ function SettingsTab({ business, showToast }) {
 
       <div className="card">
         <div className="card-title">Legal</div>
-        <div className="card-sub">GeoFiction Labs Ltd · hello@geofictionlabs.com</div>
+        <div className="card-sub">GeoFiction Labs Ltd  hello@geofictionlabs.com</div>
         <div className="row">
           <a href="/privacy.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Privacy Policy</a>
           <a href="/terms.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Terms of Service</a>
@@ -1132,7 +1132,7 @@ function SettingsTab({ business, showToast }) {
   )
 }
 
-// ── Dashboard Root ────────────────────────────────────────────────────────
+//  Dashboard Root 
 export default function Dashboard() {
   const [authStep, setAuthStep] = useState('checking')
   const [email, setEmail] = useState('')
@@ -1202,9 +1202,9 @@ export default function Dashboard() {
           const r = payload.new
           setRedemptions(prev => [r, ...prev])
           setTodayCount(prev => prev + 1)
-          showToast(`🎉 Player arrived! Code: ${r.voucher_code}`)
+          showToast(`Player arrived! Code: ${r.voucher_code}`)
           if (Notification.permission === 'granted') {
-            new Notification('MapTheMovie — Player Arrived!', {
+            new Notification('MapTheMovie  Player Arrived!', {
               body: `Voucher: ${r.voucher_code}`,
               icon: '/icon-192.png',
             })
@@ -1284,21 +1284,21 @@ export default function Dashboard() {
   }
 
   const TABS = [
-    { id: 'overview',  icon: '📊', label: 'Overview' },
-    { id: 'vouchers',  icon: '🎟',  label: 'Vouchers' },
-    { id: 'themes',    icon: '🎨', label: 'Themes' },
-    { id: 'history',   icon: '📅', label: 'History' },
-    { id: 'settings',  icon: '⚙️', label: 'Settings' },
+    { id: 'overview',  icon: '', label: 'Overview' },
+    { id: 'vouchers',  icon: '',  label: 'Vouchers' },
+    { id: 'themes',    icon: '', label: 'Themes' },
+    { id: 'history',   icon: '', label: 'History' },
+    { id: 'settings',  icon: '', label: 'Settings' },
   ]
 
-  // ── Auth screens ──
+  //  Auth screens 
   if (authStep === 'checking') {
     return (
       <>
         <style>{CSS}</style>
         <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
           <div style={{ color: '#6B67A0', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2 }}>
-            Loading…
+            Loading
           </div>
         </div>
       </>
@@ -1312,7 +1312,7 @@ export default function Dashboard() {
         <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
           <div className="auth-card">
             <div className="auth-logo">MAP<span>MOVIE</span></div>
-            <div className="auth-sub">Business Dashboard · GeoFiction Labs</div>
+            <div className="auth-sub">Business Dashboard  GeoFiction Labs</div>
             <div className="auth-title" style={{ marginBottom: 20 }}>Sign In</div>
 
             {emailSent ? (
@@ -1376,7 +1376,7 @@ export default function Dashboard() {
         <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
           <div className="auth-card">
             <div className="auth-logo">MAP<span>MOVIE</span></div>
-            <div style={{ fontSize: 40, margin: '16px 0' }}>🗺</div>
+            
             <div className="auth-title">No Business Account</div>
             <p style={{ fontSize: 13, color: '#6B67A0', margin: '10px 0 20px', lineHeight: 1.6 }}>
               Your account isn't linked to a business yet. Contact us to get set up.
@@ -1403,7 +1403,7 @@ export default function Dashboard() {
     )
   }
 
-  // ── Dashboard ──
+  //  Dashboard 
   return (
     <>
       <style>{CSS}</style>
