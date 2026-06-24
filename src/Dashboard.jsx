@@ -3,14 +3,30 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 
-//  CSS 
+const DS = {
+  bg: '#080810',
+  card: '#0E0E1A',
+  cardAlt: '#121218',
+  border: '#1E1E2E',
+  borderMid: '#32324A',
+  purple: '#7C3AED',
+  purpleLight: '#9D5FF5',
+  gold: '#F59E0B',
+  green: '#10B981',
+  red: '#EF4444',
+  text: '#F1F0FF',
+  textSub: '#B8B4D8',
+  textMuted: '#6B67A0',
+}
+
+//  CSS
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #121218;
+  background: #080810;
   color: #F1F0FF;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   min-height: 100dvh;
@@ -30,8 +46,8 @@ body {
   padding: 24px;
 }
 .auth-card {
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 24px;
   padding: 40px 32px;
   max-width: 400px;
@@ -46,12 +62,12 @@ body {
   letter-spacing: 3px;
   margin-bottom: 6px;
 }
-.auth-sub { font-size: 13px; color: #8888BB; margin-bottom: 28px; }
+.auth-sub { font-size: 13px; color: #6B67A0; margin-bottom: 28px; }
 .auth-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .auth-input {
   width: 100%;
   background: #121218;
-  border: 1px solid #32324A;
+  border: 1px solid #1E1E2E;
   border-radius: 10px;
   color: #F1F0FF;
   font-family: 'Space Grotesk', system-ui, sans-serif;
@@ -63,7 +79,7 @@ body {
 .auth-input:focus { border-color: #7C3AED; }
 .auth-btn {
   width: 100%;
-  background: #7C3AED;
+  background: linear-gradient(135deg, #7C3AED, #9D5FF5);
   border: none;
   border-radius: 12px;
   color: #fff;
@@ -79,8 +95,8 @@ body {
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: #1C1C26;
-  border-right: 1px solid #32324A;
+  background: #0E0E1A;
+  border-right: 1px solid #1E1E2E;
   display: flex;
   flex-direction: column;
   padding: 24px 0;
@@ -97,7 +113,7 @@ body {
   color: #7C3AED;
   letter-spacing: 2px;
   padding: 0 20px 24px;
-  border-bottom: 1px solid #32324A;
+  border-bottom: 1px solid #1E1E2E;
 }
 .sidebar-logo span { color: #F59E0B; }
 .sidebar-biz {
@@ -105,9 +121,9 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: #B8B4D8;
-  border-bottom: 1px solid #32324A;
+  border-bottom: 1px solid #1E1E2E;
 }
-.sidebar-biz small { display: block; font-size: 11px; color: #8888BB; font-weight: 400; margin-top: 2px; }
+.sidebar-biz small { display: block; font-size: 11px; color: #6B67A0; font-weight: 400; margin-top: 2px; }
 .sidebar-nav { flex: 1; padding: 12px 0; }
 .nav-item {
   display: flex;
@@ -116,7 +132,7 @@ body {
   padding: 11px 20px;
   font-size: 13px;
   font-weight: 600;
-  color: #8888BB;
+  color: #6B67A0;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: all 0.15s;
@@ -127,12 +143,12 @@ body {
   width: 100%;
   text-align: left;
 }
-.nav-item:hover { color: #F1F0FF; background: #252533; }
-.nav-item.active { color: #7C3AED; border-left-color: #7C3AED; background: #252533; }
+.nav-item:hover { color: #F1F0FF; background: #121218; }
+.nav-item.active { color: #7C3AED; border-left-color: #7C3AED; background: #121218; }
 .nav-icon { font-size: 16px; }
 .sidebar-footer {
   padding: 16px 20px 0;
-  border-top: 1px solid #32324A;
+  border-top: 1px solid #1E1E2E;
 }
 .tier-badge {
   display: inline-block;
@@ -144,9 +160,9 @@ body {
   font-weight: 700;
   text-transform: uppercase;
 }
-.tier-starter { background: rgba(124,58,237,0.12); color: #7C3AED; }
-.tier-featured { background: rgba(245,158,11,0.12); color: #F59E0B; }
-.tier-sponsored { background: rgba(252,211,77,0.12); color: #FCD34D; }
+.tier-starter { background: rgba(124,58,237,0.1); color: #7C3AED; }
+.tier-featured { background: rgba(245,158,11,0.1); color: #F59E0B; }
+.tier-sponsored { background: rgba(252,211,77,0.1); color: #FCD34D; }
 
 /*  Main area  */
 .dash-main {
@@ -161,11 +177,11 @@ body {
   color: #F1F0FF;
   margin-bottom: 6px;
 }
-.page-sub { font-size: 13px; color: #8888BB; margin-bottom: 28px; }
+.page-sub { font-size: 13px; color: #6B67A0; margin-bottom: 28px; }
 .section-label {
   font-size: 10px;
-  letter-spacing: 2px;
-  color: #8888BB;
+  letter-spacing: 4px;
+  color: #7C3AED;
   text-transform: uppercase;
   font-family: 'Share Tech Mono', monospace;
   margin-bottom: 12px;
@@ -179,28 +195,47 @@ body {
   margin-bottom: 28px;
 }
 .stat-card {
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 16px;
   padding: 18px 16px;
+  position: relative;
+  overflow: hidden;
 }
-.stat-label { font-size: 11px; color: #8888BB; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: #1E1E2E;
+}
+.stat-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #6B67A0;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
 .stat-value {
   font-family: 'Nunito', sans-serif;
-  font-size: 30px;
+  font-size: 36px;
   font-weight: 900;
   color: #F1F0FF;
+  line-height: 1;
 }
-.stat-unit { font-size: 14px; color: #8888BB; font-family: 'Space Grotesk', system-ui, sans-serif; }
-.stat-card.accent { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.06); }
+.stat-unit { font-size: 14px; color: #6B67A0; font-family: 'Space Grotesk', system-ui, sans-serif; }
+.stat-card.accent { border-color: rgba(124,58,237,0.3); background: rgba(124,58,237,0.05); }
+.stat-card.accent::before { background: #7C3AED; }
 .stat-card.accent .stat-value { color: #9D5FF5; }
-.stat-card.gold { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); }
+.stat-card.gold { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.05); }
+.stat-card.gold::before { background: #F59E0B; }
 .stat-card.gold .stat-value { color: #F59E0B; }
 
 /*  Go Live button  */
 .live-panel {
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 18px;
   padding: 22px 20px;
   margin-bottom: 24px;
@@ -219,7 +254,7 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #32324A;
+  background: #1E1E2E;
   flex-shrink: 0;
 }
 .live-dot.active {
@@ -232,7 +267,7 @@ body {
   50%      { box-shadow: 0 0 14px #10B981; }
 }
 .live-label { font-weight: 700; font-size: 15px; }
-.live-hint { font-size: 12px; color: #8888BB; margin-top: 2px; }
+.live-hint { font-size: 12px; color: #6B67A0; margin-top: 2px; }
 .live-btn {
   border: none;
   border-radius: 12px;
@@ -244,8 +279,16 @@ body {
   font-weight: 700;
   transition: all 0.2s;
 }
-.live-btn.go { background: linear-gradient(135deg, #F59E0B, #FCD34D); color: #121218; }
-.live-btn.end { background: rgba(239,68,68,0.12); color: #EF4444; border: 1px solid rgba(239,68,68,0.3); }
+.live-btn.go {
+  background: linear-gradient(135deg, #7C3AED, #9D5FF5);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+}
+.live-btn.end {
+  background: #10B981;
+  color: #fff;
+  box-shadow: 0 0 30px rgba(16,185,129,0.4);
+}
 
 /*  Toast  */
 .toast {
@@ -253,8 +296,8 @@ body {
   bottom: 28px;
   left: 50%;
   transform: translateX(-50%) translateY(100px);
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 14px;
   padding: 14px 22px;
   font-size: 13px;
@@ -263,20 +306,20 @@ body {
   transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   max-width: 360px;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .toast.visible { transform: translateX(-50%) translateY(0); }
 
 /*  Card  */
 .card {
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 18px;
   padding: 22px 20px;
   margin-bottom: 18px;
 }
 .card-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
-.card-sub { font-size: 12px; color: #8888BB; margin-bottom: 16px; }
+.card-sub { font-size: 12px; color: #6B67A0; margin-bottom: 16px; }
 
 /*  Table  */
 .table-wrap { overflow-x: auto; }
@@ -286,17 +329,18 @@ th {
   padding: 8px 10px;
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: #8888BB;
+  color: #6B67A0;
   font-family: 'Share Tech Mono', monospace;
-  border-bottom: 1px solid #32324A;
+  border-bottom: 1px solid #1E1E2E;
 }
-td { padding: 10px; border-bottom: 1px solid #1C1C26; color: #B8B4D8; }
+td { padding: 10px; border-bottom: 1px solid #0E0E1A; color: #B8B4D8; }
+tr:nth-child(even) td { background: #121218; }
 tr:last-child td { border-bottom: none; }
 .code-cell {
   font-family: 'Share Tech Mono', monospace;
   font-size: 13px;
   letter-spacing: 2px;
-  color: #F1F0FF;
+  color: #F59E0B;
 }
 
 /*  Theme grid  */
@@ -313,7 +357,7 @@ tr:last-child td { border-bottom: none; }
   transition: all 0.15s;
   text-align: center;
 }
-.theme-tile:hover { filter: brightness(1.1); }
+.theme-tile:hover { filter: brightness(1.15); transform: translateY(-1px); }
 .theme-tile.active { border-color: #F1F0FF; }
 .theme-emoji { font-size: 28px; margin-bottom: 6px; }
 .theme-name { font-size: 12px; font-weight: 700; }
@@ -322,7 +366,7 @@ tr:last-child td { border-bottom: none; }
 /*  Voucher upload  */
 .upload-area {
   background: #121218;
-  border: 1px dashed #32324A;
+  border: 1px dashed #1E1E2E;
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 14px;
@@ -341,7 +385,7 @@ tr:last-child td { border-bottom: none; }
 }
 .upload-textarea::placeholder { color: #32324A; }
 .btn-primary {
-  background: #7C3AED;
+  background: linear-gradient(135deg, #7C3AED, #9D5FF5);
   border: none;
   border-radius: 10px;
   color: #fff;
@@ -354,8 +398,8 @@ tr:last-child td { border-bottom: none; }
 }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 .btn-secondary {
-  background: #252533;
-  border: 1px solid #32324A;
+  background: #121218;
+  border: 1px solid #1E1E2E;
   border-radius: 10px;
   color: #B8B4D8;
   font-family: 'Share Tech Mono', monospace;
@@ -374,14 +418,14 @@ tr:last-child td { border-bottom: none; }
   margin-bottom: 20px;
 }
 .plan-card {
-  background: #1C1C26;
-  border: 1px solid #32324A;
+  background: #0E0E1A;
+  border: 1px solid #1E1E2E;
   border-radius: 16px;
   padding: 20px 16px;
 }
 .plan-card.current {
   border-color: #7C3AED;
-  box-shadow: 0 0 0 1px #7C3AED, inset 0 0 0 100px rgba(124,58,237,0.05);
+  box-shadow: 0 0 0 1px #7C3AED, inset 0 0 0 100px rgba(124,58,237,0.04);
 }
 .plan-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
 .plan-price {
@@ -391,8 +435,8 @@ tr:last-child td { border-bottom: none; }
   color: #7C3AED;
   margin-bottom: 12px;
 }
-.plan-price span { font-size: 13px; color: #8888BB; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 400; }
-.plan-feature { font-size: 12px; color: #8888BB; margin-bottom: 6px; padding-left: 14px; position: relative; }
+.plan-price span { font-size: 13px; color: #6B67A0; font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 400; }
+.plan-feature { font-size: 12px; color: #6B67A0; margin-bottom: 6px; padding-left: 14px; position: relative; }
 .plan-feature::before { content: '+'; position: absolute; left: 0; color: #10B981; font-weight: 700; }
 
 /*  Mobile tab bar  */
@@ -402,8 +446,8 @@ tr:last-child td { border-bottom: none; }
   bottom: 0;
   left: 0;
   right: 0;
-  background: #1C1C26;
-  border-top: 1px solid #32324A;
+  background: #0E0E1A;
+  border-top: 1px solid #1E1E2E;
   z-index: 100;
   padding: 8px 0 env(safe-area-inset-bottom, 8px);
 }
@@ -415,7 +459,7 @@ tr:last-child td { border-bottom: none; }
   flex: 1;
   background: none;
   border: none;
-  color: #8888BB;
+  color: #6B67A0;
   font-size: 10px;
   font-weight: 600;
   padding: 6px 4px;
@@ -433,7 +477,7 @@ tr:last-child td { border-bottom: none; }
 .pin-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.82);
+  background: rgba(0,0,0,0.88);
   z-index: 2000;
   display: flex;
   flex-direction: column;
@@ -441,12 +485,12 @@ tr:last-child td { border-bottom: none; }
   justify-content: flex-end;
 }
 .pin-modal-sheet {
-  background: #1C1C26;
+  background: #0E0E1A;
   border-radius: 24px 24px 0 0;
   width: 100%;
   max-width: 520px;
   overflow: hidden;
-  border: 1px solid #32324A;
+  border: 1px solid #1E1E2E;
   border-bottom: none;
 }
 .pin-map-wrap {
@@ -464,18 +508,18 @@ tr:last-child td { border-bottom: none; }
   align-items: center;
   gap: 10px;
   margin: 14px 0;
-  color: #32324A;
+  color: #1E1E2E;
   font-size: 12px;
 }
 .auth-divider::before,
 .auth-divider::after {
   content: '';
   flex: 1;
-  border-top: 1px solid #32324A;
+  border-top: 1px solid #1E1E2E;
 }
 .auth-error {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.25);
   border-radius: 8px;
   color: #EF4444;
   font-size: 13px;
@@ -485,7 +529,34 @@ tr:last-child td { border-bottom: none; }
 }
 `
 
-//  Toast 
+//  Logo component
+function Logo({ size = 'md' }) {
+  const fontSize = size === 'sm' ? 15 : size === 'lg' ? 22 : 18
+  const iconSize = size === 'sm' ? 22 : size === 'lg' ? 32 : 26
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{
+        width: iconSize, height: iconSize,
+        background: DS.purple, borderRadius: 7,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <svg width={Math.round(iconSize * 0.54)} height={Math.round(iconSize * 0.54)} viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="5.5" r="3.5" fill="#F1F0FF"/>
+          <path d="M 3.5 7.5 Q 7 12 10.5 7.5 Z" fill="#F1F0FF"/>
+          <circle cx="7" cy="5.5" r="1.4" fill="#7C3AED"/>
+        </svg>
+      </div>
+      <span style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 900, fontSize, color: '#F1F0FF', lineHeight: 1 }}>
+        Map
+        <span style={{ color: DS.purple, fontSize: Math.round(fontSize * 0.6), letterSpacing: 3, margin: '0 3px', fontFamily: 'Share Tech Mono, monospace' }}>THE</span>
+        <span style={{ color: DS.gold }}>Movie</span>
+      </span>
+    </div>
+  )
+}
+
+//  Toast
 function useToast() {
   const [msg, setMsg] = useState('')
   const [visible, setVisible] = useState(false)
@@ -505,7 +576,7 @@ function useToast() {
   return { showToast, ToastEl }
 }
 
-//  Live players via Realtime 
+//  Live players via Realtime
 function useLivePlayers(campaignId) {
   const [count, setCount] = useState(0)
 
@@ -539,7 +610,7 @@ function useLivePlayers(campaignId) {
   return count
 }
 
-//  THEMES config 
+//  THEMES config
 const THEMES = [
   { id: 'evergreen_80s',   emoji: '', name: '80s Grid',    tag: 'EVERGREEN', bg: '#2D1060', accent: '#7C3AED' },
   { id: 'christmas',        emoji: '', name: 'Christmas',   tag: 'DEC',       bg: '#064E3B', accent: '#10B981' },
@@ -549,7 +620,7 @@ const THEMES = [
   { id: 'easter',           emoji: '', name: 'Easter',      tag: 'APR',       bg: '#164E63', accent: '#06B6D4' },
 ]
 
-//  Pin Drop Modal 
+//  Pin Drop Modal
 function PinDropModal({ onConfirm, onCancel }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -601,12 +672,12 @@ function PinDropModal({ onConfirm, onCancel }) {
     <div className="pin-modal">
       <div className="pin-modal-sheet">
         <div style={{ padding: '16px 20px 4px', fontWeight: 700, fontSize: 15 }}>Drop a Pin</div>
-        <div style={{ fontSize: 12, color: '#8888BB', padding: '0 20px 12px' }}>
+        <div style={{ fontSize: 12, color: DS.textMuted, padding: '0 20px 12px' }}>
           Tap the map or drag the pin to set your exact location
         </div>
         <div ref={containerRef} className="pin-map-wrap" />
         <div className="pin-modal-footer">
-          <div style={{ fontSize: 11, color: '#8888BB', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+          <div style={{ fontSize: 11, color: DS.textMuted, textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
             {latLng.lat.toFixed(5)}, {latLng.lng.toFixed(5)}
           </div>
           <button
@@ -629,7 +700,7 @@ function PinDropModal({ onConfirm, onCancel }) {
   )
 }
 
-//  Overview Tab 
+//  Overview Tab
 function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview, onGoToSettings }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
@@ -694,14 +765,14 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
       </div>
 
       {!business?.redemption_pin_hash && (
-        <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, color: '#F59E0B', marginBottom: 4 }}>VOUCHERS UNSECURED</div>
-            <div style={{ fontSize: 13, color: '#B8B4D8' }}>Set up your staff PIN to secure voucher redemptions</div>
+            <div style={{ fontSize: 12, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, color: DS.gold, marginBottom: 4 }}>VOUCHERS UNSECURED</div>
+            <div style={{ fontSize: 13, color: DS.textSub }}>Set up your staff PIN to secure voucher redemptions</div>
           </div>
           <button
             onClick={onGoToSettings}
-            style={{ background: '#F59E0B', border: 'none', borderRadius: 8, color: '#121218', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ background: DS.gold, border: 'none', borderRadius: 8, color: '#121218', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             SET UP PIN
           </button>
@@ -712,41 +783,41 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         <div style={{ marginBottom: 24 }}>
           <div className="section-label">Your Hunt Questions</div>
           <div className="card" style={{ padding: '16px 20px', marginBottom: 8 }}>
-            <div style={{ fontSize: 13, color: '#B8B4D8', marginBottom: 16, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: DS.textSub, marginBottom: 16, lineHeight: 1.5 }}>
               Players solve these questions to build your GPS coordinates and find you.
               Each correct answer contributes one digit to the location.
             </div>
             {puzzlePreview.map((q, i) => (
               <div key={i} style={{
-                background: '#121218',
-                border: '1px solid #32324A',
+                background: DS.cardAlt,
+                border: `1px solid ${DS.border}`,
                 borderRadius: 10,
                 padding: '12px 14px',
                 marginBottom: i < puzzlePreview.length - 1 ? 10 : 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <span style={{
-                    background: '#7C3AED', color: '#fff',
+                    background: DS.purple, color: '#fff',
                     borderRadius: 4, padding: '2px 7px',
                     fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1,
                   }}>SLOT {q.slot}</span>
-                  <span style={{ fontSize: 13, color: '#B8B4D8' }}>
+                  <span style={{ fontSize: 13, color: DS.textSub }}>
                     {q.movie_title} ({q.movie_year})
                   </span>
                   <span style={{
                     marginLeft: 'auto',
-                    background: 'rgba(245,158,11,0.12)', color: '#F59E0B',
+                    background: 'rgba(245,158,11,0.1)', color: DS.gold,
                     borderRadius: 4, padding: '2px 7px',
                     fontSize: 11, fontFamily: "'Share Tech Mono', monospace",
                   }}>DIGIT {q.digit}</span>
                 </div>
-                <div style={{ fontSize: 14, color: '#F1F0FF', lineHeight: 1.4 }}>{q.question_text}</div>
+                <div style={{ fontSize: 14, color: DS.text, lineHeight: 1.4 }}>{q.question_text}</div>
                 {q.extraction_note && (
-                  <div style={{ fontSize: 11, color: '#8888BB', marginTop: 4 }}>{q.extraction_note}</div>
+                  <div style={{ fontSize: 11, color: DS.textMuted, marginTop: 4 }}>{q.extraction_note}</div>
                 )}
               </div>
             ))}
-            <div style={{ fontSize: 12, color: '#8888BB', marginTop: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: DS.textMuted, marginTop: 12, textAlign: 'center' }}>
               Players type full answers  the coordinate digit is extracted server-side
             </div>
           </div>
@@ -772,7 +843,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
                   <td>
                     <span style={{
                       background: r.redeemed_at ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-                      color: r.redeemed_at ? '#10B981' : '#F59E0B',
+                      color: r.redeemed_at ? DS.green : DS.gold,
                       padding: '3px 8px',
                       borderRadius: 6,
                       fontSize: 10,
@@ -785,7 +856,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
                 </tr>
               ))}
               {(!redemptions || redemptions.length === 0) && (
-                <tr><td colSpan={3} style={{ textAlign: 'center', color: '#32324A', padding: 24 }}>No redemptions yet</td></tr>
+                <tr><td colSpan={3} style={{ textAlign: 'center', color: DS.borderMid, padding: 24 }}>No redemptions yet</td></tr>
               )}
             </tbody>
           </table>
@@ -849,7 +920,7 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
       <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 24 }}>
         <div className="stat-card">
           <div className="stat-label">AVAILABLE</div>
-          <div className="stat-value" style={{ color: '#10B981' }}>{unclaimed}</div>
+          <div className="stat-value" style={{ color: DS.green }}>{unclaimed}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">CLAIMED</div>
@@ -873,7 +944,7 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
             {uploading ? 'UPLOADING' : 'UPLOAD CODES'}
           </button>
           {codeText && (
-            <span style={{ fontSize: 12, color: '#8888BB' }}>
+            <span style={{ fontSize: 12, color: DS.textMuted }}>
               {codeText.split('\n').filter(l => l.trim()).length} code(s) ready
             </span>
           )}
@@ -899,8 +970,8 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
                       <td className="code-cell">{c.code}</td>
                       <td>
                         <span style={{
-                          background: c.claimed_by ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-                          color: c.claimed_by ? '#EF4444' : '#10B981',
+                          background: c.claimed_by ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
+                          color: c.claimed_by ? DS.red : DS.green,
                           padding: '2px 8px',
                           borderRadius: 6,
                           fontSize: 10,
@@ -934,7 +1005,7 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
             <tbody>
               {(redemptions || []).length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', color: '#8888BB', padding: '28px 16px', fontSize: 13 }}>
+                  <td colSpan={4} style={{ textAlign: 'center', color: DS.textMuted, padding: '28px 16px', fontSize: 13 }}>
                     No redemptions yet - players will appear here when they arrive
                   </td>
                 </tr>
@@ -951,10 +1022,11 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
                     <td>
                       <span style={{
                         background: r.redeemed_at ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-                        color: r.redeemed_at ? '#10B981' : '#F59E0B',
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        fontSize: 10,
+                        color: r.redeemed_at ? DS.green : DS.gold,
+                        border: r.redeemed_at ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(245,158,11,0.3)',
+                        borderRadius: 20,
+                        padding: '2px 10px',
+                        fontSize: 11,
                         fontFamily: "'Share Tech Mono', monospace",
                         letterSpacing: 1,
                       }}>
@@ -972,7 +1044,7 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
   )
 }
 
-//  Themes Tab 
+//  Themes Tab
 function ThemesTab({ business, campaigns, showToast }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const [activeTheme, setActiveTheme] = useState(null)
@@ -1060,7 +1132,7 @@ function ThemesTab({ business, campaigns, showToast }) {
             title={d.desc}
             style={{
               flex: 1,
-              background: selectedDiff === d.id ? d.color + '22' : '#1C1C26',
+              background: selectedDiff === d.id ? d.color + '22' : DS.card,
               color: d.color,
               border: `2px solid ${selectedDiff === d.id ? d.color : d.color + '44'}`,
               borderRadius: 10,
@@ -1077,7 +1149,7 @@ function ThemesTab({ business, campaigns, showToast }) {
           </button>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: '#8888BB', marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: DS.textMuted, marginBottom: 16 }}>
         {selectedDiff === 'casual' && 'Mainstream films. Hints always visible. 25m arrival radius.'}
         {selectedDiff === 'classic' && 'Mixed difficulty. Hints available on request. 15m arrival radius.'}
         {selectedDiff === 'expert' && 'Deep cuts only. No hints. 10m arrival radius. Signal Points start at 5.'}
@@ -1086,7 +1158,7 @@ function ThemesTab({ business, campaigns, showToast }) {
         onClick={handleSaveDiff}
         disabled={savingDiff}
         style={{
-          background: savingDiff ? '#32324A' : 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
+          background: savingDiff ? DS.border : 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
           color: '#fff',
           border: 'none',
           borderRadius: 10,
@@ -1130,7 +1202,7 @@ function ThemesTab({ business, campaigns, showToast }) {
             key={g.id}
             onClick={() => setActiveGenre(activeGenre === g.id ? null : g.id)}
             style={{
-              background: activeGenre === g.id ? g.accent : '#1C1C26',
+              background: activeGenre === g.id ? g.accent : DS.card,
               color: activeGenre === g.id ? '#121218' : g.accent,
               border: `1px solid ${g.accent}`,
               borderRadius: 12,
@@ -1170,8 +1242,8 @@ function ThemesTab({ business, campaigns, showToast }) {
             ].map(([event, dates, uplift]) => (
               <tr key={event}>
                 <td style={{ fontWeight: 600 }}>{event}</td>
-                <td style={{ color: '#8888BB' }}>{dates}</td>
-                <td style={{ color: '#F59E0B', fontFamily: "'Share Tech Mono', monospace" }}>{uplift}</td>
+                <td style={{ color: DS.textMuted }}>{dates}</td>
+                <td style={{ color: DS.gold, fontFamily: "'Share Tech Mono', monospace" }}>{uplift}</td>
               </tr>
             ))}
           </tbody>
@@ -1212,7 +1284,7 @@ function HistoryTab({ redemptions }) {
             <tbody>
               {days.length === 0 && (
                 <tr>
-                  <td colSpan={3} style={{ textAlign: 'center', color: '#8888BB', padding: '28px 16px', fontSize: 13 }}>
+                  <td colSpan={3} style={{ textAlign: 'center', color: DS.textMuted, padding: '28px 16px', fontSize: 13 }}>
                     No campaign history yet
                   </td>
                 </tr>
@@ -1225,8 +1297,8 @@ function HistoryTab({ redemptions }) {
                   <td style={{ color: '#9D5FF5', fontWeight: 700 }}>{stats.players}</td>
                   <td>
                     <span style={{
-                      background: stats.redeemed > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(50,50,74,0.5)',
-                      color: stats.redeemed > 0 ? '#10B981' : '#8888BB',
+                      background: stats.redeemed > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(30,30,46,0.5)',
+                      color: stats.redeemed > 0 ? DS.green : DS.textMuted,
                       padding: '3px 8px',
                       borderRadius: 6,
                       fontSize: 11,
@@ -1332,10 +1404,10 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
 
   const inputStyle = {
     width: '100%',
-    background: '#121218',
-    border: '1px solid #32324A',
+    background: DS.cardAlt,
+    border: `1px solid ${DS.border}`,
     borderRadius: 10,
-    color: '#F1F0FF',
+    color: DS.text,
     fontFamily: "'Space Grotesk', system-ui, sans-serif",
     fontSize: 14,
     padding: '11px 14px',
@@ -1350,14 +1422,14 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
 
       <div className="section-label">Business Details</div>
       <div className="card">
-        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Business name</div>
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Business name</div>
         <input
           style={inputStyle}
           value={bizName}
           onChange={e => setBizName(e.target.value)}
           placeholder="Your business name"
         />
-        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Contact email</div>
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Contact email</div>
         <input
           style={inputStyle}
           type="email"
@@ -1365,15 +1437,15 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
           onChange={e => setContactEmail(e.target.value)}
           placeholder="contact@yourbusiness.com"
         />
-        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Subscription tier</div>
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Subscription tier</div>
         <div style={{
-          background: '#121218',
-          border: '1px solid #32324A',
+          background: DS.cardAlt,
+          border: `1px solid ${DS.border}`,
           borderRadius: 10,
           padding: '11px 14px',
           marginBottom: 16,
           fontSize: 14,
-          color: '#F59E0B',
+          color: DS.gold,
           fontFamily: "'Share Tech Mono', monospace",
           letterSpacing: 1,
         }}>
@@ -1408,11 +1480,11 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
         <div className="card-title">Voucher Security</div>
         <div className="card-sub">Set a 4-digit PIN that staff enter to confirm voucher redemptions</div>
         {pinConfigured && (
-          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#10B981', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+          <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: DS.green, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
             PIN CONFIGURED
           </div>
         )}
-        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>New PIN (4 digits)</div>
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>New PIN (4 digits)</div>
         <input
           style={inputStyle}
           type="password"
@@ -1422,7 +1494,7 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
           onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
           placeholder="----"
         />
-        <div style={{ marginBottom: 6, fontSize: 12, color: '#8888BB' }}>Confirm PIN</div>
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Confirm PIN</div>
         <input
           style={inputStyle}
           type="password"
@@ -1433,10 +1505,10 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
           placeholder="----"
         />
         {pinError && (
-          <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{pinError}</div>
+          <div style={{ color: DS.red, fontSize: 13, marginBottom: 10 }}>{pinError}</div>
         )}
         {pinSuccess && (
-          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#10B981', lineHeight: 1.5 }}>
+          <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: DS.green, lineHeight: 1.5 }}>
             PIN saved — voucher redemptions are now secured
           </div>
         )}
@@ -1467,7 +1539,7 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
               <div key={f} className="plan-feature">{f}</div>
             ))}
             {tier === p.id ? (
-              <div style={{ marginTop: 14, fontSize: 11, color: '#10B981', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+              <div style={{ marginTop: 14, fontSize: 11, color: DS.green, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
                 + CURRENT PLAN
               </div>
             ) : (
@@ -1483,14 +1555,14 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
         ))}
       </div>
 
-      <div className="section-label" style={{ color: '#EF4444' }}>Danger Zone</div>
-      <div className="card" style={{ border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.04)' }}>
-        <div className="card-title" style={{ color: '#EF4444' }}>End Active Sessions</div>
+      <div className="section-label" style={{ color: DS.red }}>Danger Zone</div>
+      <div className="card" style={{ border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.03)' }}>
+        <div className="card-title" style={{ color: DS.red }}>End Active Sessions</div>
         <div className="card-sub">Ending your session removes you from the player map immediately.</div>
         <div className="row">
           <button
             className="btn-secondary"
-            style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}
+            style={{ color: DS.red, borderColor: 'rgba(239,68,68,0.25)' }}
             onClick={async () => {
               if (!business?.id) return
               await supabase
@@ -1505,7 +1577,7 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
           </button>
           <button
             className="btn-secondary"
-            style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}
+            style={{ color: DS.red, borderColor: 'rgba(239,68,68,0.25)' }}
             onClick={handleSignOut}
           >
             SIGN OUT
@@ -1517,15 +1589,15 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
         <div className="card-title">Legal</div>
         <div className="card-sub">GeoFiction Labs Ltd - hello@geofictionlabs.com</div>
         <div className="row">
-          <a href="/privacy.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Privacy Policy</a>
-          <a href="/terms.html" style={{ color: '#7C3AED', fontSize: 13, textDecoration: 'none' }}>Terms of Service</a>
+          <a href="/privacy.html" style={{ color: DS.purple, fontSize: 13, textDecoration: 'none' }}>Privacy Policy</a>
+          <a href="/terms.html" style={{ color: DS.purple, fontSize: 13, textDecoration: 'none' }}>Terms of Service</a>
         </div>
       </div>
     </div>
   )
 }
 
-//  Dashboard Root 
+//  Dashboard Root
 export default function Dashboard() {
   const [authStep, setAuthStep] = useState('checking')
   const [email, setEmail] = useState('')
@@ -1684,13 +1756,13 @@ export default function Dashboard() {
     { id: 'settings',  icon: '', label: 'Settings' },
   ]
 
-  //  Auth screens 
+  //  Auth screens
   if (authStep === 'checking') {
     return (
       <>
         <style>{CSS}</style>
-        <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
-          <div style={{ color: '#8888BB', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2 }}>
+        <div className="auth-screen" style={{ background: DS.bg, minHeight: '100vh' }}>
+          <div style={{ color: DS.textMuted, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 2 }}>
             Loading
           </div>
         </div>
@@ -1702,10 +1774,10 @@ export default function Dashboard() {
     return (
       <>
         <style>{CSS}</style>
-        <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="auth-screen" style={{ background: DS.bg, minHeight: '100vh', flexDirection: 'column', justifyContent: 'center' }}>
           <div className="auth-card">
-            <div className="auth-logo">
-              <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+            <div className="auth-logo" style={{ marginBottom: 16 }}>
+              <Logo size="lg" />
             </div>
             <div className="auth-sub">Business Portal</div>
             <div className="auth-title" style={{ marginBottom: 20 }}>Sign In</div>
@@ -1713,12 +1785,12 @@ export default function Dashboard() {
             {emailSent ? (
               <div className="auth-sent">
                 Magic link sent! Check your inbox.
-                <div style={{ marginTop: 10, fontSize: 12, color: '#8888BB' }}>
+                <div style={{ marginTop: 10, fontSize: 12, color: DS.textMuted }}>
                   No email? Check spam or contact hello@geofictionlabs.com
                 </div>
                 <button
                   className="auth-btn"
-                  style={{ marginTop: 16, background: 'transparent', border: '1px solid #32324A', color: '#B8B4D8' }}
+                  style={{ marginTop: 16, background: 'transparent', border: `1px solid ${DS.border}`, color: DS.textSub }}
                   onClick={() => setEmailSent(false)}
                 >
                   BACK
@@ -1751,7 +1823,7 @@ export default function Dashboard() {
 
                 <button
                   className="auth-btn"
-                  style={{ background: 'transparent', border: '1px solid #32324A', color: '#B8B4D8' }}
+                  style={{ background: 'transparent', border: `1px solid ${DS.border}`, color: DS.textSub }}
                   onClick={handleLoginMagicLink}
                 >
                   SEND MAGIC LINK
@@ -1759,7 +1831,7 @@ export default function Dashboard() {
               </>
             )}
           </div>
-          <div style={{ marginTop: 24, fontSize: 12, color: '#8888BB', textAlign: 'center' }}>
+          <div style={{ marginTop: 24, fontSize: 12, color: DS.textMuted, textAlign: 'center' }}>
             GeoFiction Labs Ltd
           </div>
         </div>
@@ -1771,21 +1843,21 @@ export default function Dashboard() {
     return (
       <>
         <style>{CSS}</style>
-        <div className="auth-screen" style={{ background: '#121218', minHeight: '100vh' }}>
+        <div className="auth-screen" style={{ background: DS.bg, minHeight: '100vh' }}>
           <div className="auth-card">
-            <div className="auth-logo">
-              <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+            <div className="auth-logo" style={{ marginBottom: 16 }}>
+              <Logo size="lg" />
             </div>
 
             <div className="auth-title">No Business Account</div>
-            <p style={{ fontSize: 13, color: '#8888BB', margin: '10px 0 20px', lineHeight: 1.6 }}>
+            <p style={{ fontSize: 13, color: DS.textMuted, margin: '10px 0 20px', lineHeight: 1.6 }}>
               Your account isn't linked to a business yet. Contact us to get set up.
             </p>
             <a
               href="mailto:hello@geofictionlabs.com"
               style={{
                 display: 'block',
-                background: '#7C3AED',
+                background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)',
                 color: '#fff',
                 borderRadius: 12,
                 padding: '14px',
@@ -1803,15 +1875,15 @@ export default function Dashboard() {
     )
   }
 
-  //  Dashboard 
+  //  Dashboard
   return (
     <>
       <style>{CSS}</style>
-      <div className="dash-root" style={{ background: '#121218', minHeight: '100vh', color: '#F1F0FF' }}>
+      <div className="dash-root" style={{ background: DS.bg, minHeight: '100vh', color: DS.text }}>
         {/* Sidebar */}
         <div className="sidebar">
           <div className="sidebar-logo">
-            <span style={{color:'#F1F0FF'}}>Map</span><span style={{color:'#9D5FF5', fontSize:'0.6em', letterSpacing:'3px', margin:'0 4px'}}>THE</span><span style={{color:'#F59E0B'}}>Movie</span>
+            <Logo size="sm" />
           </div>
           <div className="sidebar-biz">
             {business?.name || 'My Business'}
@@ -1834,10 +1906,10 @@ export default function Dashboard() {
             ))}
           </nav>
           <div className="sidebar-footer">
-            <div style={{ fontSize: 11, color: '#8888BB', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: DS.textMuted, marginBottom: 8 }}>
               GeoFiction Labs Ltd
             </div>
-            <div style={{ fontSize: 11, color: '#32324A', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
+            <div style={{ fontSize: 11, color: DS.border, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
               v1.0.0
             </div>
           </div>
