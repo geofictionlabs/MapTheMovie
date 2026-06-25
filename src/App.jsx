@@ -2300,15 +2300,33 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const headingHistoryRef = useRef([])
-  const targetRef = useRef(target)
+  const [debugTargetOverride, setDebugTargetOverride] = useState(null)
+  const [showDebug, setShowDebug] = useState(() => window.location.search.includes('debug=true'))
+  const tapTimeRef = useRef([])
+  const [manualLat, setManualLat] = useState('')
+  const [manualLon, setManualLon] = useState('')
+
+  const effectiveTarget = debugTargetOverride ?? target
+
+  const targetRef = useRef(effectiveTarget)
   const onArrivedRef = useRef(onArrived)
   const onWaypointReachedRef = useRef(onWaypointReached)
-  useEffect(() => { targetRef.current = target }, [target])
+  useEffect(() => { targetRef.current = effectiveTarget }, [effectiveTarget])
   useEffect(() => { onArrivedRef.current = onArrived }, [onArrived])
   useEffect(() => { onWaypointReachedRef.current = onWaypointReached }, [onWaypointReached])
 
   const accent = hexAccent(hunt?.accent_color)
-  const geofence = target?.geofence_m || 15
+  const geofence = effectiveTarget?.geofence_m || 15
+
+  function handleDebugTap() {
+    const now = Date.now()
+    tapTimeRef.current = tapTimeRef.current.filter(t => now - t < 2000)
+    tapTimeRef.current.push(now)
+    if (tapTimeRef.current.length >= 5) {
+      setShowDebug(true)
+      tapTimeRef.current = []
+    }
+  }
 
   // GPS polling — getCurrentPosition every 5 seconds (Safari-compatible, no watchPosition)
   useEffect(() => {
@@ -2319,13 +2337,13 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           const lat = pos.coords.latitude
           const lon = pos.coords.longitude
           setPlayerPos({ lat, lon })
-          if (target?.lat) {
+          if (effectiveTarget?.lat) {
             const R = 6371000
-            const dLat = (target.lat - lat) * Math.PI / 180
-            const dLon = (target.lon - lon) * Math.PI / 180
+            const dLat = (effectiveTarget.lat - lat) * Math.PI / 180
+            const dLon = (effectiveTarget.lon - lon) * Math.PI / 180
             const a = Math.sin(dLat / 2) ** 2 +
               Math.cos(lat * Math.PI / 180) *
-              Math.cos(target.lat * Math.PI / 180) *
+              Math.cos(effectiveTarget.lat * Math.PI / 180) *
               Math.sin(dLon / 2) ** 2
             const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
             setDistance(dist)
@@ -2339,7 +2357,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     getPosition()
     intervalRef.current = setInterval(getPosition, 5000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [target])
+  }, [effectiveTarget])
 
   // Bearing + arrival detection whenever position or distance updates
   useEffect(() => {
@@ -2471,15 +2489,19 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
   return (
     <div className="compass-wrap">
-      {/* Waypoint / destination badge */}
-      <div style={{
-        background: target?.isWaypoint ? 'linear-gradient(135deg, #F59E0B, #FCD34D)' : '#10B981',
-        color: target?.isWaypoint ? '#000' : '#fff',
-        fontFamily: "'Share Tech Mono', monospace",
-        fontWeight: 800, fontSize: 13, padding: '6px 16px',
-        borderRadius: 20, letterSpacing: 1,
-      }}>
-        {target?.isWaypoint ? (target?.label || 'WAYPOINT') : 'DESTINATION'}
+      {/* Waypoint / destination badge — tap 5× quickly to open debug panel */}
+      <div
+        onClick={handleDebugTap}
+        style={{
+          background: effectiveTarget?.isWaypoint ? 'linear-gradient(135deg, #F59E0B, #FCD34D)' : '#10B981',
+          color: effectiveTarget?.isWaypoint ? '#000' : '#fff',
+          fontFamily: "'Share Tech Mono', monospace",
+          fontWeight: 800, fontSize: 13, padding: '6px 16px',
+          borderRadius: 20, letterSpacing: 1,
+          cursor: 'default', userSelect: 'none',
+        }}
+      >
+        {effectiveTarget?.isWaypoint ? (effectiveTarget?.label || 'WAYPOINT') : 'DESTINATION'}
       </div>
 
       {/* Film-reel compass ring — 280px */}
@@ -2599,6 +2621,111 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       )}
 
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
+
+      {showDebug && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)',
+          zIndex: 9000, overflowY: 'auto', padding: '20px 16px 48px',
+          fontFamily: "'Share Tech Mono', monospace",
+        }}>
+          <div style={{ maxWidth: 380, margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ color: '#7C3AED', fontSize: 11, letterSpacing: 3 }}>&#9724; DEBUG PANEL</div>
+              <button
+                onClick={() => setShowDebug(false)}
+                style={{ background: 'none', border: '1px solid #32324A', borderRadius: 6, color: '#B8B4D8', padding: '4px 14px', cursor: 'pointer', fontSize: 11, letterSpacing: 1, fontFamily: "'Share Tech Mono', monospace" }}
+              >CLOSE</button>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              {[
+                ['YOUR LAT',   playerPos?.lat?.toFixed(6) ?? '--'],
+                ['YOUR LON',   playerPos?.lon?.toFixed(6) ?? '--'],
+                ['TARGET LAT', effectiveTarget?.lat?.toFixed(6) ?? '--'],
+                ['TARGET LON', effectiveTarget?.lon?.toFixed(6) ?? '--'],
+                ['DISTANCE',   distance != null ? distance.toFixed(1) + ' m' : '--'],
+                ['GEOFENCE',   (effectiveTarget?.geofence_m || 15) + ' m'],
+                ['BEARING',    toBearing.toFixed(1) + '°'],
+                ['HEADING',    deviceHeading != null ? deviceHeading.toFixed(1) + '°' : '--'],
+                ['DIFF',       deviceHeading != null ? (((toBearing - deviceHeading) % 360 + 360) % 360).toFixed(1) + '°' : '--'],
+              ].map(([label, val]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1E1E2E' }}>
+                  <span style={{ color: '#6B67A0', fontSize: 11, letterSpacing: 1 }}>{label}</span>
+                  <span style={{ color: '#F1F0FF', fontSize: 11 }}>{val}</span>
+                </div>
+              ))}
+            </div>
+
+            {debugTargetOverride && (
+              <div style={{ marginBottom: 16, padding: '8px 12px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: 11, color: '#F59E0B', letterSpacing: 1 }}>
+                TARGET OVERRIDDEN
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={() => {
+                  if (!playerPos) return
+                  arrivedRef.current = false
+                  setDistance(null)
+                  setStartDist(null)
+                  setDebugTargetOverride({ ...effectiveTarget, lat: playerPos.lat, lon: playerPos.lon })
+                }}
+                style={{ background: 'linear-gradient(135deg,#7C3AED,#9D5FF5)', border: 'none', borderRadius: 10, color: '#fff', padding: '13px', fontSize: 12, letterSpacing: 1.5, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
+              >SET WAYPOINT TO MY LOCATION</button>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={manualLat}
+                  onChange={e => setManualLat(e.target.value)}
+                  placeholder="LAT"
+                  style={{ flex: 1, background: '#121218', border: '1px solid #1E1E2E', borderRadius: 8, color: '#F1F0FF', fontFamily: "'Share Tech Mono', monospace", fontSize: 12, padding: '10px', outline: 'none' }}
+                />
+                <input
+                  value={manualLon}
+                  onChange={e => setManualLon(e.target.value)}
+                  placeholder="LON"
+                  style={{ flex: 1, background: '#121218', border: '1px solid #1E1E2E', borderRadius: 8, color: '#F1F0FF', fontFamily: "'Share Tech Mono', monospace", fontSize: 12, padding: '10px', outline: 'none' }}
+                />
+                <button
+                  onClick={() => {
+                    const lat = parseFloat(manualLat)
+                    const lon = parseFloat(manualLon)
+                    if (!isNaN(lat) && !isNaN(lon)) {
+                      arrivedRef.current = false
+                      setDistance(null)
+                      setStartDist(null)
+                      setDebugTargetOverride({ ...effectiveTarget, lat, lon })
+                    }
+                  }}
+                  style={{ background: '#0E0E1A', border: '1px solid #1E1E2E', borderRadius: 8, color: '#F1F0FF', fontFamily: "'Share Tech Mono', monospace", fontSize: 12, padding: '10px 14px', cursor: 'pointer' }}
+                >SET</button>
+              </div>
+
+              <button
+                onClick={() => {
+                  arrivedRef.current = false
+                  if (effectiveTarget?.isWaypoint) onWaypointReachedRef.current?.()
+                  else onArrivedRef.current?.(playerPos?.lat ?? effectiveTarget?.lat, playerPos?.lon ?? effectiveTarget?.lon)
+                }}
+                style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 10, color: '#10B981', padding: '13px', fontSize: 12, letterSpacing: 1.5, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
+              >SIMULATE ARRIVAL</button>
+
+              <button
+                onClick={() => onWaypointReachedRef.current?.()}
+                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, color: '#F59E0B', padding: '13px', fontSize: 12, letterSpacing: 1.5, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
+              >NEXT WAYPOINT</button>
+
+              {debugTargetOverride && (
+                <button
+                  onClick={() => { setDebugTargetOverride(null); setManualLat(''); setManualLon(''); setDistance(null); setStartDist(null); arrivedRef.current = false }}
+                  style={{ background: 'none', border: '1px solid #32324A', borderRadius: 10, color: '#6B67A0', padding: '10px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
+                >RESET TARGET OVERRIDE</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
