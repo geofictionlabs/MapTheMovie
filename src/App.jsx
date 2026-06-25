@@ -1319,7 +1319,6 @@ function PrizePoolCard({ pool, onTap }) {
   }, [pool.ends_at])
 
   const poolAmt  = fmtPounds(pool.pool_amount_pence, pool.pool_amount)
-  const entryFee = fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)
   const players  = (pool.player_count ?? 0).toLocaleString('en-GB')
 
   return (
@@ -1427,7 +1426,7 @@ function PrizePoolCard({ pool, onTap }) {
             cursor: 'pointer',
           }}
         >
-          ENTER NOW &mdash; {entryFee}
+          REGISTER INTEREST
         </button>
       </div>
     </div>
@@ -1446,12 +1445,7 @@ function PrizePoolScreen({ pool, onBack }) {
   }, [pool.ends_at])
 
   const poolAmt   = fmtPounds(pool.pool_amount_pence, pool.pool_amount)
-  const entryFee  = fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)
   const players   = (pool.player_count ?? 0).toLocaleString('en-GB')
-  const feeNum    = pool.entry_fee_pence != null ? pool.entry_fee_pence / 100 : pool.entry_fee ?? 1.99
-  const builtFrom = pool.player_count
-    ? `${players} entries x ${fmtEntryFee(pool.entry_fee_pence, pool.entry_fee)}`
-    : null
 
   function handleNotify(e) {
     e.preventDefault()
@@ -1520,11 +1514,6 @@ function PrizePoolScreen({ pool, onBack }) {
             lineHeight: 1,
             marginBottom: 8,
           }}>{poolAmt}</div>
-          {builtFrom && (
-            <div style={{ fontSize: 12, color: '#7A6830', fontFamily: "'Share Tech Mono', monospace" }}>
-              Built from {builtFrom}
-            </div>
-          )}
         </div>
 
         {/* Stats */}
@@ -1536,7 +1525,7 @@ function PrizePoolScreen({ pool, onBack }) {
         }}>
           {[
             { label: 'PLAYERS', value: players },
-            { label: 'ENTRY FEE', value: entryFee },
+            { label: 'ENTRY', value: 'FREE' },
             { label: 'TIME LEFT', value: countdown },
             { label: 'WINNER', value: '1 PLACE' },
           ].map(({ label, value }) => (
