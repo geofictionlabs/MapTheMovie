@@ -74,9 +74,9 @@ function fmtEntryFee(pence, fallbackPounds) {
 }
 
 function fmtDistance(m) {
-  const mi = m / 1609.34
-  if (mi < 0.05) return `${Math.round(m)} m`
-  return `${mi.toFixed(1)} mi`
+  const km = m / 1000
+  if (km < 0.05) return `${Math.round(m)} m`
+  return `${km.toFixed(1)} km`
 }
 
 // accent_color stored without '#' in DB
@@ -2482,9 +2482,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const journeyPct = startDist > 0
     ? Math.min(100, Math.max(0, ((startDist - (distance || 0)) / startDist) * 100))
     : 0
-  const distMi = (distance != null && distance >= 0) ? (distance / 1609.34).toFixed(1) : '--'
+  const distMi = (distance != null && distance >= 0) ? (distance / 1000).toFixed(1) : '--'
   const destLabel = (distance != null && distance >= 0)
-    ? (target?.isWaypoint ? 'MI TO WAYPOINT' : 'MI TO DESTINATION')
+    ? (target?.isWaypoint ? 'KM TO WAYPOINT' : 'KM TO DESTINATION')
     : 'CALCULATING...'
 
   return (
