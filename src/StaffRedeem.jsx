@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { supabase } from './lib/supabase';
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const D = {
   bg:       '#06060E',
@@ -295,11 +300,11 @@ export default function StaffRedeem() {
 
             <input
               type="text"
-              placeholder="MTM-0000"
+              placeholder="MTM-XXXX-0000"
               value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               onKeyDown={e => e.key === 'Enter' && validateCode()}
-              maxLength={8}
+              maxLength={16}
               style={{
                 width: '100%', padding: '18px',
                 background: D.card, border: `1px solid ${D.border}`,
