@@ -65,54 +65,70 @@ export default function StaffRedeem() {
     }
   };
 
-  // ── VALIDATE VOUCHER ───────────────────────────────────────
+  // ── VALIDATE VOUCHER via RPC (bypasses RLS) ────────────────
   const validateCode = async () => {
     if (code.length < 4) return;
     setState(STATES.LOADING);
 
     try {
-      // Look up redemption by code
-      const { data: redemption } = await supabase
-        .from('redemptions')
-        .select(`
-          id, voucher_code, redeemed_at, created_at,
-          hunt_sessions(
-            id,
-            campaigns(name, voucher_headline),
-            businesses(name, id)
-          )
-        `)
-        .eq('voucher_code', code.toUpperCase())
-        .maybeSingle();
+      const { data, error } = await supabase
+        .rpc('validate_voucher_code', { p_code: code.toUpperCase() });
 
-      if (!redemption) {
+      if (error || !data) {
         setState(STATES.INVALID);
         return;
       }
 
-      if (redemption.redeemed_at) {
-        setState(STATES.USED);
-        setVoucherData(redemption);
+      if (!data.success) {
+        if (data.error === 'already_redeemed') {
+          setVoucherData({ 
+            voucher_code: code.toUpperCase(),
+            redeemed_at: data.redeemed_at,
+            campaigns: null,
+          });
+          setState(STATES.USED);
+        } else {
+          setState(STATES.INVALID);
+        }
         return;
       }
 
-      setVoucherData(redemption);
+      // Shape data to match what the UI expects
+      setVoucherData({
+        id: data.redemption_id,
+        voucher_code: data.voucher_code,
+        created_at: data.created_at,
+        expires_at: data.expires_at,
+        campaigns: {
+          name: data.hunt_name,
+          voucher_headline: data.reward,
+          businesses: {
+            name: data.business_name,
+            id: data.business_id,
+          }
+        }
+      });
       setState(STATES.VALID);
     } catch (err) {
       setState(STATES.INVALID);
     }
   };
 
-  // ── CONFIRM REDEMPTION ─────────────────────────────────────
+  // ── CONFIRM REDEMPTION via RPC ────────────────────────────
   const confirmRedemption = async () => {
-    if (!voucherData?.id) return;
+    if (!voucherData?.voucher_code) return;
     setState(STATES.LOADING);
 
     try {
-      await supabase
-        .from('redemptions')
-        .update({ redeemed_at: new Date().toISOString() })
-        .eq('id', voucherData.id);
+      const { data, error } = await supabase
+        .rpc('confirm_redemption', { 
+          p_code: voucherData.voucher_code 
+        });
+
+      if (error || !data?.success) {
+        setState(STATES.INVALID);
+        return;
+      }
 
       setState(STATES.CONFIRMED);
     } catch (err) {
@@ -300,7 +316,7 @@ export default function StaffRedeem() {
 
             <input
               type="text"
-              placeholder="MTM-0000"
+              placeholder="MTM-TWYD-8905"
               value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               onKeyDown={e => e.key === 'Enter' && validateCode()}
@@ -318,17 +334,17 @@ export default function StaffRedeem() {
 
             <button
               onClick={validateCode}
-              disabled={code.length < 4}
+              disabled={code.length < 3}
               style={{
                 width: '100%', padding: '16px',
-                background: code.length >= 4
+                background: code.length >= 3
                   ? `linear-gradient(135deg, ${D.purple}, ${D.purpleL})`
                   : D.card,
-                color: code.length >= 4 ? '#FFF' : D.textDim,
-                border: `1px solid ${code.length >= 4 ? 'transparent' : D.border}`,
+                color: code.length >= 3 ? '#FFF' : D.textDim,
+                border: `1px solid ${code.length >= 3 ? 'transparent' : D.border}`,
                 borderRadius: '12px', fontSize: '14px',
                 fontFamily: D.mono, letterSpacing: '3px',
-                cursor: code.length >= 4 ? 'pointer' : 'not-allowed',
+                cursor: code.length >= 3 ? 'pointer' : 'not-allowed',
                 transition: 'all .2s',
               }}
             >VALIDATE CODE</button>
@@ -391,17 +407,9 @@ export default function StaffRedeem() {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: D.textMuted }}>Hunt</span>
                   <span style={{ fontSize: '13px', color: D.text }}>
-                    {voucherData.hunt_sessions?.campaigns?.name || 'Unknown Hunt'}
+                    {voucherData.campaigns?.name || 'Unknown Hunt'}
                   </span>
                 </div>
-                {voucherData.hunt_sessions?.campaigns?.voucher_headline && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '13px', color: D.textMuted }}>Reward</span>
-                    <span style={{ fontSize: '13px', color: D.text }}>
-                      {voucherData.hunt_sessions.campaigns.voucher_headline}
-                    </span>
-                  </div>
-                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: D.textMuted }}>Completed at</span>
                   <span style={{ fontFamily: D.mono, fontSize: '13px', color: D.text }}>
@@ -411,7 +419,7 @@ export default function StaffRedeem() {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: D.textMuted }}>Business</span>
                   <span style={{ fontSize: '13px', color: D.text }}>
-                    {voucherData.hunt_sessions?.businesses?.name || '—'}
+                    {voucherData.campaigns?.businesses?.name || '—'}
                   </span>
                 </div>
               </div>
