@@ -84,7 +84,14 @@ const THEMES = {
 };
 
 function getTheme(hunt) {
-  const genre = (hunt?.genre || hunt?.theme_tag || 'general').toLowerCase();
+  const genre = (
+    hunt?.genre ||
+    hunt?.theme_tag ||
+    hunt?.pack_genre ||
+    hunt?.puzzle_packs?.genre ||
+    hunt?.content_type ||
+    'general'
+  ).toLowerCase();
   return THEMES[genre] || THEMES.general;
 }
 
@@ -122,10 +129,12 @@ function Particles({ color, count = 12 }) {
 }
 
 // ── DIFFICULTY VISUAL ─────────────────────────────────────────
-function DifficultyBar({ level, accent }) {
+function DifficultyBar({ level }) {
   const levels = { casual: 1, classic: 2, expert: 3, cipher: 4 };
   const filled = levels[level?.toLowerCase()] || 2;
   const labels = { 1: 'CASUAL', 2: 'CLASSIC', 3: 'EXPERT', 4: 'CIPHER' };
+  const colors = { 1: '#9D5FF5', 2: '#F59E0B', 3: '#EF4444', 4: '#10B981' };
+  const color = colors[filled];
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -134,7 +143,7 @@ function DifficultyBar({ level, accent }) {
           <div key={i} style={{
             width: '16px', height: '4px',
             borderRadius: '2px',
-            background: i <= filled ? accent : 'rgba(255,255,255,0.1)',
+            background: i <= filled ? color : 'rgba(255,255,255,0.1)',
             transition: 'background .3s',
           }} />
         ))}
@@ -142,7 +151,7 @@ function DifficultyBar({ level, accent }) {
       <span style={{
         fontFamily: "'Share Tech Mono', monospace",
         fontSize: '9px', letterSpacing: '1px',
-        color: accent, opacity: 0.8,
+        color: color, opacity: 0.8,
       }}>{labels[filled]}</span>
     </div>
   );
@@ -200,6 +209,9 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
         borderRadius: '20px',
         overflow: 'hidden',
         cursor: 'pointer',
+        border: hunt.has_prize
+          ? '2px solid rgba(245,158,11,0.6)'
+          : '1px solid rgba(255,255,255,0.08)',
         transform: pressed
           ? 'scale(0.97)'
           : hovered
@@ -208,7 +220,9 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
         transition: pressed ? 'transform 0.1s' : 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
         boxShadow: hovered
           ? `0 20px 60px ${theme.glow}, 0 0 0 1px ${theme.accent}40`
-          : `0 4px 20px rgba(0,0,0,0.4)`,
+          : hunt.has_prize
+            ? `0 4px 20px rgba(0,0,0,0.4), 0 0 30px rgba(245,158,11,0.2)`
+            : `0 4px 20px rgba(0,0,0,0.4)`,
         animation: `cardReveal 0.6s ease ${index * 0.1}s both`,
       }}
     >
@@ -376,7 +390,7 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
 
         {/* Difficulty */}
         <div style={{ marginBottom: '20px' }}>
-          <DifficultyBar level={hunt.difficulty} accent={theme.accent} />
+          <DifficultyBar level={hunt.difficulty} />
         </div>
 
         {/* Destination mystery */}
@@ -400,9 +414,9 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
               color: theme.accent,
               letterSpacing: '3px',
             }}>
-              {/* Show fuzzy coordinates */}
-              {hunt.masked_lat || '51.???'}° N &nbsp;
-              {hunt.masked_lon || '0.???'}° E
+              {/* Show fuzzy coordinates — replace slot letters with ? */}
+              {hunt.masked_lat ? hunt.masked_lat.replace(/[A-Z]/g, '?') : '51.???'}° N &nbsp;
+              {hunt.masked_lon ? hunt.masked_lon.replace(/[A-Z]/g, '?') : '0.???'}° E
             </div>
           </div>
           <div style={{
