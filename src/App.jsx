@@ -2305,6 +2305,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const tapTimeRef = useRef([])
   const [manualLat, setManualLat] = useState('')
   const [manualLon, setManualLon] = useState('')
+  const [showStuckModal, setShowStuckModal] = useState(false)
+  const [stuckReason, setStuckReason] = useState('')
+  const [skipCount, setSkipCount] = useState(
+    parseInt(localStorage.getItem('mtm_skip_count') || '0')
+  )
+  const MAX_SKIPS = 2
 
   const effectiveTarget = debugTargetOverride ?? target
 
@@ -2621,6 +2627,153 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       )}
 
       {compassMsg && <div className="compass-msg-box">{compassMsg}</div>}
+
+      {!showStuckModal && (
+        <div style={{marginTop:'24px',textAlign:'center'}}>
+          <button
+            onClick={() => setShowStuckModal(true)}
+            style={{
+              background:'transparent',
+              border:'1px solid #32325A',
+              color:'#6B67A0',
+              padding:'8px 20px',
+              borderRadius:'20px',
+              fontSize:'12px',
+              fontFamily:"'Share Tech Mono', monospace",
+              letterSpacing:'2px',
+              cursor:'pointer',
+            }}
+          >I'M STUCK</button>
+        </div>
+      )}
+
+      {showStuckModal && (
+        <div style={{
+          position:'fixed',inset:0,
+          background:'rgba(6,6,14,0.95)',
+          display:'flex',alignItems:'center',
+          justifyContent:'center',
+          zIndex:200,padding:'24px',
+        }}>
+          <div style={{
+            background:'#0E0E1A',
+            border:'1px solid #1E1E2E',
+            borderRadius:'16px',
+            padding:'28px 24px',
+            width:'100%',maxWidth:'360px',
+          }}>
+            <div style={{
+              fontFamily:"'Share Tech Mono', monospace",
+              fontSize:'10px',color:'#F59E0B',
+              letterSpacing:'3px',marginBottom:'12px',
+            }}>REPORT OBSTACLE</div>
+            <div style={{
+              fontSize:'18px',fontWeight:700,
+              color:'#F1F0FF',marginBottom:'8px',
+            }}>Can't reach the waypoint?</div>
+            <div style={{
+              fontSize:'13px',color:'#6B67A0',
+              marginBottom:'20px',lineHeight:1.5,
+            }}>
+              Skipping removes compass guidance.
+              You still need to physically arrive
+              at the destination to claim your reward.
+              {skipCount >= MAX_SKIPS && (
+                <span style={{color:'#EF4444',display:'block',marginTop:'8px'}}>
+                  Maximum skips reached for this hunt.
+                </span>
+              )}
+            </div>
+
+            {skipCount < MAX_SKIPS && (
+              <>
+                <div style={{
+                  fontFamily:"'Share Tech Mono', monospace",
+                  fontSize:'10px',color:'#6B67A0',
+                  letterSpacing:'2px',marginBottom:'10px',
+                }}>WHY ARE YOU STUCK?</div>
+
+                {[
+                  'Road or path is closed',
+                  'Building works blocking route',
+                  'Private land / no access',
+                  'Safety concern',
+                  'Other reason',
+                ].map(reason => (
+                  <div
+                    key={reason}
+                    onClick={() => setStuckReason(reason)}
+                    style={{
+                      padding:'10px 14px',
+                      borderRadius:'8px',
+                      border:`1px solid ${stuckReason===reason?'#7C3AED':'#1E1E2E'}`,
+                      background:stuckReason===reason?'rgba(124,58,237,0.1)':'transparent',
+                      color:stuckReason===reason?'#F1F0FF':'#6B67A0',
+                      fontSize:'14px',
+                      cursor:'pointer',
+                      marginBottom:'8px',
+                      transition:'all .2s',
+                    }}
+                  >{reason}</div>
+                ))}
+
+                <button
+                  disabled={!stuckReason}
+                  onClick={async () => {
+                    try {
+                      await supabase.from('obstacle_reports').insert({
+                        hunt_name: hunt?.name || 'Unknown',
+                        reason: stuckReason,
+                        skip_number: skipCount + 1,
+                        reported_at: new Date().toISOString(),
+                      })
+                    } catch(e) {}
+                    const newCount = skipCount + 1
+                    setSkipCount(newCount)
+                    localStorage.setItem('mtm_skip_count', newCount.toString())
+                    // Deduct signal point (signal points are server-managed via validate_answer RPC)
+                    setShowStuckModal(false)
+                    setStuckReason('')
+                    alert('No problem — find your own way to the destination. The geofence will trigger when you arrive.')
+                  }}
+                  style={{
+                    width:'100%',
+                    padding:'14px',
+                    background: stuckReason
+                      ? 'linear-gradient(135deg,#F59E0B,#D97706)'
+                      : '#1E1E2E',
+                    color: stuckReason ? '#000' : '#32325A',
+                    border:'none',
+                    borderRadius:'10px',
+                    fontSize:'14px',
+                    fontFamily:"'Share Tech Mono', monospace",
+                    letterSpacing:'2px',
+                    cursor: stuckReason ? 'pointer' : 'not-allowed',
+                    marginTop:'8px',
+                    fontWeight:700,
+                  }}
+                >SKIP THIS WAYPOINT</button>
+              </>
+            )}
+
+            <button
+              onClick={() => { setShowStuckModal(false); setStuckReason('') }}
+              style={{
+                width:'100%',padding:'12px',
+                background:'transparent',
+                border:'1px solid #1E1E2E',
+                color:'#6B67A0',
+                borderRadius:'10px',
+                fontSize:'13px',
+                fontFamily:"'Share Tech Mono', monospace",
+                letterSpacing:'1px',
+                cursor:'pointer',
+                marginTop:'8px',
+              }}
+            >CANCEL — I'LL FIND A WAY</button>
+          </div>
+        </div>
+      )}
 
       {showDebug && (
         <div style={{
@@ -3317,6 +3470,7 @@ export default function App() {
       setRealCoords(null)
       setVoucher(null)
       localStorage.removeItem('mtm_active_reward')
+      localStorage.removeItem('mtm_skip_count')
       setCompassMsg(null)
       setWaypointPhase(0)
       setCompassTarget(null)
