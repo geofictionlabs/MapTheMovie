@@ -3371,7 +3371,7 @@ export default function App() {
   async function loadPrefs() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user || !user.email) return
       setPrefsUserId(user.id)
       const { data } = await supabase
         .from('profiles')
@@ -3689,7 +3689,7 @@ export default function App() {
             hunts={hunts}
             onSelect={startHunt}
             loading={huntsLoading || starting}
-            prizePool={prizePool}
+            prizePool={Math.floor((prizePool?.pool_amount_pence || 0) / 100)}
             playerCount={0}
           />
         )}
