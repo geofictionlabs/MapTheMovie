@@ -8,6 +8,7 @@ import StaffRedeem from './StaffRedeem.jsx'
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx'
 import Terms from './pages/Terms.jsx'
 import SalesDeck from './SalesDeck.jsx'
+import BusinessSignup from './BusinessSignup.jsx'
 import ErrorBoundary from './ErrorBoundary.jsx'
 
 const path = window.location.pathname
@@ -23,7 +24,9 @@ const Root = path.startsWith('/dashboard')
           ? Terms
           : path === '/sales'
             ? SalesDeck
-            : App
+            : path === '/business'
+              ? BusinessSignup
+              : App
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
