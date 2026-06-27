@@ -3067,7 +3067,13 @@ export default function App() {
   const [accessGranted, setAccessGranted] = useState(
     localStorage.getItem('mtm_access') === 'MAPTEST2026'
   )
-  const [screen, setScreen] = useState('discover')
+  const [screen, setScreen] = useState(() => {
+    try {
+      const s = localStorage.getItem('mtm_active_reward')
+      if (s) { const r = JSON.parse(s); if (r.expiresAt > Date.now()) return 'arrived' }
+    } catch {}
+    return 'discover'
+  })
   const [hunts, setHunts] = useState([])
   const [huntsLoading, setHuntsLoading] = useState(true)
   const [huntsError, setHuntsError] = useState(null)
@@ -3079,7 +3085,13 @@ export default function App() {
   const [solved, setSolved] = useState({})
   const [signalPoints, setSignalPoints] = useState(10)
   const [realCoords, setRealCoords] = useState(null)
-  const [voucher, setVoucher] = useState(null)
+  const [voucher, setVoucher] = useState(() => {
+    try {
+      const s = localStorage.getItem('mtm_active_reward')
+      if (s) { const r = JSON.parse(s); if (r.expiresAt > Date.now()) return r.voucher }
+    } catch {}
+    return null
+  })
   const [showReset, setShowReset] = useState(false)
   const [starting, setStarting] = useState(false)
   const [compassMsg, setCompassMsg] = useState(null)
@@ -3299,6 +3311,7 @@ export default function App() {
       setShowReset(false)
       setRealCoords(null)
       setVoucher(null)
+      localStorage.removeItem('mtm_active_reward')
       setCompassMsg(null)
       setWaypointPhase(0)
       setCompassTarget(null)
@@ -3468,6 +3481,7 @@ export default function App() {
 
       setVoucher(data)
       setScreen('arrived')
+      try { localStorage.setItem('mtm_active_reward', JSON.stringify({ voucher: data, expiresAt: Date.now() + 30 * 60 * 1000 })) } catch {}
     },
     [activeSession, screen]
   )
@@ -3661,7 +3675,7 @@ export default function App() {
         {screen === 'arrived' && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('discover')}> All Hunts</button>
+              <button className="nav-back" onClick={() => { localStorage.removeItem('mtm_active_reward'); setScreen('discover') }}> All Hunts</button>
             </div>
             <ArrivedScreen voucher={voucher} />
           </div>
