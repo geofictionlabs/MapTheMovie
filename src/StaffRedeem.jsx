@@ -1,10 +1,5 @@
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from './lib/supabase';
 
 const D = {
   bg:       '#06060E',
@@ -71,8 +66,10 @@ export default function StaffRedeem() {
     setState(STATES.LOADING);
 
     try {
+      console.log('Calling RPC with code:', code.toUpperCase());
       const { data, error } = await supabase
         .rpc('validate_voucher_code', { p_code: code.toUpperCase() });
+      console.log('RPC result:', data, error);
 
       if (error || !data) {
         setState(STATES.INVALID);
