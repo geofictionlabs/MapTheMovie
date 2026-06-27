@@ -3294,7 +3294,7 @@ export default function App() {
           voucher_headline,
           difficulty,
           puzzle_packs (
-            id, name, emoji, tier, description, accent_color, theme_tag, genre, coordinate_slots,
+            id, name, emoji, tier, description, accent_color, theme_tag,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
           ),
           businesses ( id, name, location, is_active )
@@ -3329,9 +3329,9 @@ export default function App() {
           pack_description: pp.description,
           accent_color:     pp.accent_color,
           theme_tag:        pp.theme_tag,
-          genre:            pp.genre,
+          genre:            pp.theme_tag,
           coordinate_slots: pz.coordinate_slots,
-          puzzle_packs:     { genre: pp.genre, coordinate_slots: pp.coordinate_slots },
+          puzzle_packs:     { genre: pp.theme_tag, coordinate_slots: pz.coordinate_slots },
           masked_lat:       pz.masked_lat,
           masked_lon:       pz.masked_lon,
           is_free_tier:     pp.tier === 'standard',
