@@ -68,11 +68,6 @@ function fmtPounds(pence, fallbackPounds) {
   return '£0'
 }
 
-function fmtEntryFee(pence, fallbackPounds) {
-  if (pence != null) return '£' + (pence / 100).toFixed(2)
-  if (fallbackPounds != null) return '£' + parseFloat(fallbackPounds).toFixed(2)
-  return '£1.99'
-}
 
 function fmtDistance(m) {
   const km = m / 1000
@@ -3690,7 +3685,7 @@ export default function App() {
               hunts={hunts}
               onSelect={startHunt}
               loading={huntsLoading || starting}
-              prizePool={Math.floor((prizePool?.pool_amount_pence || 0) / 100)}
+              prizePool={prizePool?.prize_amount_gbp || 0}
               playerCount={0}
             />
             <div style={{ position: 'fixed', bottom: 24, right: 16, zIndex: 50 }}>
