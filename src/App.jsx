@@ -2316,7 +2316,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   useEffect(() => { onWaypointReachedRef.current = onWaypointReached }, [onWaypointReached])
 
   const accent = hexAccent(hunt?.accent_color)
-  const geofence = effectiveTarget?.geofence_m || 15
+  const geofence = effectiveTarget?.geofence_m ?? diffGeofence(hunt?.difficulty)
 
   function handleDebugTap() {
     const now = Date.now()
@@ -2991,9 +2991,14 @@ function ArrivedScreen({ voucher }) {
         </div>
       )}
 
-      <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>
-        You solved the puzzle and walked to the location.
-        <br />Show this screen to claim your reward.
+      <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '11px', color: '#7C3AED', letterSpacing: '3px', marginBottom: '8px', textAlign: 'center' }}>
+        YOU HAVE ARRIVED AT
+      </div>
+      <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: '24px', color: '#F1F0FF', marginBottom: '6px', textAlign: 'center' }}>
+        {voucher?.business_name || 'YOUR DESTINATION'}
+      </div>
+      <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 20, textAlign: 'center' }}>
+        Show this screen to claim your reward
       </div>
 
       <div style={{
@@ -3009,7 +3014,7 @@ function ArrivedScreen({ voucher }) {
         <div style={{ borderTop: '2px dashed rgba(124,58,237,0.25)', background: '#F1F0FF' }} />
         <div style={{ padding: '16px 20px 0', background: '#F1F0FF' }}>
           <div style={{ fontSize: 10, letterSpacing: 2, color: '#9D5FF5', fontFamily: "'Share Tech Mono', monospace", marginBottom: 10 }}>
-            {voucher?.business_name || 'YOUR REWARD'}
+            YOUR REWARD
           </div>
           {voucher && (
             <>
