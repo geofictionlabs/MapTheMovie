@@ -3685,13 +3685,31 @@ export default function App() {
         )}
 
         {screen === 'discover' && (
-          <HuntSelectionScreen
-            hunts={hunts}
-            onSelect={startHunt}
-            loading={huntsLoading || starting}
-            prizePool={Math.floor((prizePool?.pool_amount_pence || 0) / 100)}
-            playerCount={0}
-          />
+          <>
+            <HuntSelectionScreen
+              hunts={hunts}
+              onSelect={startHunt}
+              loading={huntsLoading || starting}
+              prizePool={Math.floor((prizePool?.pool_amount_pence || 0) / 100)}
+              playerCount={0}
+            />
+            <div style={{ position: 'fixed', bottom: 24, right: 16, zIndex: 50 }}>
+              <button
+                onClick={() => window.location.href = '/passport'}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #1E1E2E',
+                  color: '#6B67A0',
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontSize: '11px',
+                  fontFamily: "'Share Tech Mono', monospace",
+                  letterSpacing: '2px',
+                  cursor: 'pointer',
+                }}
+              >🎬 MY PASSPORT</button>
+            </div>
+          </>
         )}
 
         {screen === 'prefs' && (
