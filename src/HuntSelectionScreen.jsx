@@ -6,6 +6,8 @@
 
 import { useState, useEffect, useRef } from "react";
 
+const maskCoord = (raw) => raw ? String(raw).replace(/[0-9a-zA-Z]/g, '?') : '??.??????';
+
 // ── THEME DEFINITIONS ─────────────────────────────────────────
 // Each theme has its own visual identity
 const THEMES = {
@@ -84,7 +86,12 @@ const THEMES = {
 };
 
 function getTheme(hunt) {
-  const genre = (hunt?.genre || hunt?.theme_tag || 'general').toLowerCase();
+  const genre = (
+    hunt?.puzzle_packs?.genre ||
+    hunt?.genre ||
+    hunt?.theme_tag ||
+    'general'
+  ).toLowerCase();
   return THEMES[genre] || THEMES.general;
 }
 
@@ -181,7 +188,7 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
 
   const distance = hunt.distance_metres;
   const wt = walkTime(distance);
-  const slots = hunt.coordinate_slots?.length || 12;
+  const slots = hunt.puzzle_packs?.coordinate_slots ?? hunt.coordinate_slots ?? 12;
   const isLive = hunt.is_live || true;
 
   return (
@@ -401,8 +408,8 @@ function HuntCard({ hunt, onSelect, index, isActive }) {
               letterSpacing: '3px',
             }}>
               {/* Show fuzzy coordinates */}
-              {hunt.masked_lat || '51.???'}° N &nbsp;
-              {hunt.masked_lon || '0.???'}° E
+              {maskCoord(hunt.masked_lat)}° N &nbsp;
+              {maskCoord(hunt.masked_lon)}° E
             </div>
           </div>
           <div style={{
