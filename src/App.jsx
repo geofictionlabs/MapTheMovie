@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
+import HuntSelectionScreen from './HuntSelectionScreen'
 
 // ── Question variety helpers ──────────────────────────────────────────────────
 // Persist seen question IDs per user in localStorage so repeated play sessions
@@ -3684,16 +3685,12 @@ export default function App() {
         )}
 
         {screen === 'discover' && (
-          <HuntDiscovery
+          <HuntSelectionScreen
             hunts={hunts}
+            onSelect={startHunt}
             loading={huntsLoading || starting}
-            error={huntsError}
-            onStart={startHunt}
-            userPos={userPos}
             prizePool={prizePool}
-            onPrizePool={pool => { setActivePrizePool(pool); setScreen('prizepool') }}
-            prefs={prefs}
-            onPrefs={() => setScreen('prefs')}
+            playerCount={0}
           />
         )}
 
