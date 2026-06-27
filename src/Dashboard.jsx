@@ -1669,7 +1669,19 @@ export default function Dashboard() {
     setCampaigns(dash.campaigns || [])
     setRedemptions(dash.redemptions || [])
     setTodayCount(dash.today_count || 0)
-    setIsLive(!!dash.live_session)
+
+    // Verify live status directly — RPC live_session can be stale
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: liveRow } = await supabase
+      .from('live_business_sessions')
+      .select('id')
+      .eq('business_id', myBiz.business_id)
+      .eq('is_live', true)
+      .is('session_end', null)
+      .gte('created_at', today)
+      .maybeSingle()
+    setIsLive(!!liveRow)
+
     setAuthStep('dashboard')
 
     // Realtime: new redemptions
@@ -1742,16 +1754,25 @@ export default function Dashboard() {
   async function handleGoLive() {
     if (!navigator.geolocation) { setShowPinDrop(true); return }
     setGpsLoading(true)
+
+    // Hard fallback: if GPS hasn't resolved after 6s, open pin drop regardless
+    const fallbackTimer = setTimeout(() => {
+      setGpsLoading(false)
+      setShowPinDrop(true)
+    }, 6000)
+
     navigator.geolocation.getCurrentPosition(
       async pos => {
+        clearTimeout(fallbackTimer)
         setGpsLoading(false)
         await goLiveWithCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)
       },
       () => {
+        clearTimeout(fallbackTimer)
         setGpsLoading(false)
         setShowPinDrop(true)
       },
-      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
+      { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
     )
   }
 
