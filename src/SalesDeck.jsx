@@ -21,6 +21,7 @@ const D = {
   body:     "'Space Grotesk', sans-serif",
 };
 
+const PASS = 'KENTPITCH2026';
 
 const SCREENS = [
   'hook', 'problem', 'solution',
@@ -778,10 +779,14 @@ function ScreenClose({ }) {
 
 // ── MAIN SALES DECK ───────────────────────────────────────
 export default function SalesDeck() {
+  const [authed, setAuthed]   = useState(false);
+  const [pw, setPw]           = useState('');
+  const [pwErr, setPwErr]     = useState(false);
   const [screen, setScreen]   = useState(0);
   const [stats, setStats]     = useState({ hunts:6, trivia:130, businesses:8, redemptions:1, sessions:6 });
 
   useEffect(() => {
+    if (!authed) return;
     Promise.all([
       supabase.from('businesses').select('id',{count:'exact',head:true}),
       supabase.from('campaigns').select('id',{count:'exact',head:true}),
@@ -794,10 +799,72 @@ export default function SalesDeck() {
         trivia: trivia.count || s.trivia,
       }));
     });
-  }, []);
+  }, [authed]);
 
   const next = () => setScreen(s => Math.min(s+1, SCREENS.length-1));
   const prev = () => setScreen(s => Math.max(s-1, 0));
+
+  // Auth
+  if (!authed) {
+    return (
+      <div style={{
+        background:D.bg,minHeight:'100vh',
+        display:'flex',alignItems:'center',justifyContent:'center',
+        fontFamily:D.body,
+      }}>
+        <div style={{width:'320px',textAlign:'center'}}>
+          <div style={{
+            width:'56px',height:'56px',
+            background:`linear-gradient(135deg,${D.purple},${D.purpleL})`,
+            borderRadius:'14px',margin:'0 auto 24px',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            boxShadow:`0 0 40px rgba(124,58,237,0.3)`,
+          }}>
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="11" r="7" fill="#F1F0FF"/>
+              <path d="M 7 15 Q 14 25 21 15 Z" fill="#F1F0FF"/>
+              <circle cx="14" cy="11" r="3" fill="#7C3AED"/>
+            </svg>
+          </div>
+          <div style={{fontFamily:D.mono,fontSize:'10px',color:D.purple,letterSpacing:'4px',marginBottom:'8px'}}>MAPTHEMOVIE</div>
+          <div style={{fontFamily:D.display,fontWeight:900,fontSize:'24px',color:D.text,marginBottom:'4px'}}>Sales Platform</div>
+          <div style={{fontFamily:D.mono,fontSize:'10px',color:D.textDim,letterSpacing:'2px',marginBottom:'40px'}}>STAFF ACCESS ONLY</div>
+          <input
+            type="password" placeholder="Access code"
+            value={pw}
+            onChange={e => { setPw(e.target.value.toUpperCase()); setPwErr(false); }}
+            onKeyDown={e => {
+              if (e.key==='Enter') {
+                if (pw===PASS) setAuthed(true);
+                else { setPwErr(true); setPw(''); }
+              }
+            }}
+            style={{
+              width:'100%',padding:'14px',
+              background:D.card,
+              border:`1px solid ${pwErr?'#EF4444':D.border}`,
+              borderRadius:'10px',color:D.text,
+              fontSize:'16px',fontFamily:D.mono,
+              letterSpacing:'4px',textAlign:'center',
+              outline:'none',marginBottom:'12px',
+              boxSizing:'border-box',
+            }}
+          />
+          {pwErr && <div style={{color:'#EF4444',fontSize:'12px',fontFamily:D.mono,marginBottom:'12px'}}>INCORRECT CODE</div>}
+          <button
+            onClick={() => { if(pw===PASS) setAuthed(true); else { setPwErr(true); setPw(''); }}}
+            style={{
+              width:'100%',padding:'14px',
+              background:`linear-gradient(135deg,${D.purple},${D.purpleL})`,
+              color:'#FFF',border:'none',borderRadius:'10px',
+              fontSize:'14px',fontFamily:D.mono,letterSpacing:'3px',
+              cursor:'pointer',
+            }}
+          >ENTER</button>
+        </div>
+      </div>
+    );
+  }
 
   const screenNames = ['Hook','Problem','Solution','How It Works','Stats','Dashboard','Pricing','Q&A','Close'];
 
