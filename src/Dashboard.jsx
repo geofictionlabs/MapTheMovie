@@ -625,7 +625,9 @@ function PinDropModal({ onConfirm, onCancel }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
-  const [latLng, setLatLng] = useState({ lat: 51.3781, lng: 0.5439 })
+  const DEFAULT_LAT = 51.3733
+  const DEFAULT_LNG = 0.5297
+  const [latLng, setLatLng] = useState({ lat: DEFAULT_LAT, lng: DEFAULT_LNG })
 
   useEffect(() => {
     const timerId = setTimeout(() => {
@@ -638,7 +640,7 @@ function PinDropModal({ onConfirm, onCancel }) {
         iconAnchor: [10, 10],
       })
 
-      const map = L.map(containerRef.current).setView([51.3781, 0.5439], 14)
+      const map = L.map(containerRef.current).setView([DEFAULT_LAT, DEFAULT_LNG], 14)
       mapRef.current = map
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -646,7 +648,7 @@ function PinDropModal({ onConfirm, onCancel }) {
         maxZoom: 19,
       }).addTo(map)
 
-      const marker = L.marker([51.3781, 0.5439], { draggable: true, icon: pinIcon }).addTo(map)
+      const marker = L.marker([DEFAULT_LAT, DEFAULT_LNG], { draggable: true, icon: pinIcon }).addTo(map)
       markerRef.current = marker
 
       marker.on('dragend', () => {
@@ -660,7 +662,21 @@ function PinDropModal({ onConfirm, onCancel }) {
       })
 
       map.invalidateSize()
-    }, 150)
+
+      // Try to centre on browser location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            const { latitude: lat, longitude: lng } = pos.coords
+            map.setView([lat, lng], 16)
+            marker.setLatLng([lat, lng])
+            setLatLng({ lat, lng })
+          },
+          () => {},
+          { timeout: 5000, maximumAge: 60000, enableHighAccuracy: false }
+        )
+      }
+    }, 400)
 
     return () => {
       clearTimeout(timerId)
@@ -675,7 +691,7 @@ function PinDropModal({ onConfirm, onCancel }) {
         <div style={{ fontSize: 12, color: DS.textMuted, padding: '0 20px 12px' }}>
           Tap the map or drag the pin to set your exact location
         </div>
-        <div ref={containerRef} className="pin-map-wrap" />
+        <div ref={containerRef} className="pin-map-wrap" style={{ width: '100%', height: '350px' }} />
         <div className="pin-modal-footer">
           <div style={{ fontSize: 11, color: DS.textMuted, textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
             {latLng.lat.toFixed(5)}, {latLng.lng.toFixed(5)}
@@ -1714,11 +1730,13 @@ export default function Dashboard() {
     if (Notification.permission !== 'granted') Notification.requestPermission()
 
     // Load puzzle preview for this location
-    const { data: previewData } = await supabase.rpc('build_puzzle_for_location', {
-      p_lat: lat,
-      p_lon: lon,
-    })
-    if (previewData?.success) setPuzzlePreview(previewData.questions || [])
+    if (lat && lon && lat !== 0 && lon !== 0) {
+      const { data: previewData } = await supabase.rpc('build_puzzle_for_location', {
+        p_lat: lat,
+        p_lon: lon,
+      })
+      if (previewData?.success) setPuzzlePreview(previewData.questions || [])
+    }
   }
 
   async function handleGoLive() {
