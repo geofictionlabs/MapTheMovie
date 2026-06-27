@@ -78,7 +78,7 @@ export default function StaffRedeem() {
           id, voucher_code, redeemed_at, created_at,
           hunt_sessions(
             id,
-            puzzle_packs(name, difficulty_level),
+            campaigns(name, voucher_headline),
             businesses(name, id)
           )
         `)
@@ -300,7 +300,7 @@ export default function StaffRedeem() {
 
             <input
               type="text"
-              placeholder="MTM-XXXX-0000"
+              placeholder="MTM-0000"
               value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               onKeyDown={e => e.key === 'Enter' && validateCode()}
@@ -391,9 +391,17 @@ export default function StaffRedeem() {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: D.textMuted }}>Hunt</span>
                   <span style={{ fontSize: '13px', color: D.text }}>
-                    {voucherData.hunt_sessions?.puzzle_packs?.name || 'Unknown Hunt'}
+                    {voucherData.hunt_sessions?.campaigns?.name || 'Unknown Hunt'}
                   </span>
                 </div>
+                {voucherData.hunt_sessions?.campaigns?.voucher_headline && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '13px', color: D.textMuted }}>Reward</span>
+                    <span style={{ fontSize: '13px', color: D.text }}>
+                      {voucherData.hunt_sessions.campaigns.voucher_headline}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', color: D.textMuted }}>Completed at</span>
                   <span style={{ fontFamily: D.mono, fontSize: '13px', color: D.text }}>
