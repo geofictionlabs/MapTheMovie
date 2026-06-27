@@ -717,7 +717,7 @@ function PinDropModal({ onConfirm, onCancel }) {
 }
 
 //  Overview Tab
-function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, puzzlePreview, onGoToSettings }) {
+function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, onForceEnd, puzzlePreview, onGoToSettings }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
   const weekTotal = redemptions?.length || 0
@@ -753,11 +753,23 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         {isLive ? (
           <button className="live-btn end" onClick={onEndLive}>END SESSION</button>
         ) : (
-          <button className="live-btn go" onClick={onGoLive} disabled={gpsLoading}>
-            {gpsLoading ? 'GETTING GPS' : 'GO LIVE HERE'}
+          <button className="live-btn go" onClick={onGoLive}>
+            GO LIVE HERE
           </button>
         )}
       </div>
+
+      {import.meta.env.DEV && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, fontFamily: "'Share Tech Mono', monospace", color: '#EF4444', letterSpacing: 1 }}>DEV</span>
+          <button
+            onClick={onForceEnd}
+            style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, color: '#EF4444', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, padding: '6px 12px', cursor: 'pointer' }}
+          >
+            FORCE END ALL SESSIONS
+          </button>
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card accent">
@@ -1751,29 +1763,8 @@ export default function Dashboard() {
     }
   }
 
-  async function handleGoLive() {
-    if (!navigator.geolocation) { setShowPinDrop(true); return }
-    setGpsLoading(true)
-
-    // Hard fallback: if GPS hasn't resolved after 6s, open pin drop regardless
-    const fallbackTimer = setTimeout(() => {
-      setGpsLoading(false)
-      setShowPinDrop(true)
-    }, 6000)
-
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        clearTimeout(fallbackTimer)
-        setGpsLoading(false)
-        await goLiveWithCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)
-      },
-      () => {
-        clearTimeout(fallbackTimer)
-        setGpsLoading(false)
-        setShowPinDrop(true)
-      },
-      { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
-    )
+  function handleGoLive() {
+    setShowPinDrop(true)
   }
 
   async function handleEndLive() {
@@ -1782,9 +1773,19 @@ export default function Dashboard() {
       .from('live_business_sessions')
       .update({ session_end: new Date().toISOString(), is_live: false })
       .eq('business_id', business.id)
-      .is('session_end', null)
+      .eq('is_live', true)
     setIsLive(false)
     showToast('Session ended.')
+  }
+
+  async function handleForceEndAll() {
+    if (!business?.id) return
+    await supabase
+      .from('live_business_sessions')
+      .update({ session_end: new Date().toISOString(), is_live: false })
+      .eq('business_id', business.id)
+    setIsLive(false)
+    showToast('All sessions force-closed.')
   }
 
   const TABS = [
@@ -1966,6 +1967,7 @@ export default function Dashboard() {
               gpsLoading={gpsLoading}
               onGoLive={handleGoLive}
               onEndLive={handleEndLive}
+              onForceEnd={handleForceEndAll}
               puzzlePreview={puzzlePreview}
               onGoToSettings={() => setTab('settings')}
             />
