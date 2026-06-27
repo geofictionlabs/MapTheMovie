@@ -3294,7 +3294,7 @@ export default function App() {
           voucher_headline,
           difficulty,
           puzzle_packs (
-            id, name, emoji, tier, description, accent_color, theme_tag, genre,
+            id, name, emoji, tier, description, accent_color, theme_tag, genre, coordinate_slots,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
           ),
           businesses ( id, name, location, is_active )
@@ -3331,6 +3331,7 @@ export default function App() {
           theme_tag:        pp.theme_tag,
           genre:            pp.genre,
           coordinate_slots: pz.coordinate_slots,
+          puzzle_packs:     { genre: pp.genre, coordinate_slots: pp.coordinate_slots },
           masked_lat:       pz.masked_lat,
           masked_lon:       pz.masked_lon,
           is_free_tier:     pp.tier === 'standard',
@@ -3368,17 +3369,6 @@ export default function App() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user || !user.email) return
       setPrefsUserId(user.id)
-      const { data } = await supabase
-        .from('profiles')
-        .select('preferred_difficulty, preferred_categories, preferred_genres')
-        .eq('id', user.id)
-        .maybeSingle()
-      if (!data) return
-      setPrefs({
-        difficulty: data.preferred_difficulty || 'classic',
-        categories: data.preferred_categories || ['food_drink', 'attractions', 'entertainment', 'sport', 'outdoor'],
-        genres:     data.preferred_genres     || ['any'],
-      })
     } catch {}
   }
 
