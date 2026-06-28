@@ -3194,7 +3194,7 @@ function ArrivedScreen({ voucher }) {
 
 //  Waypoint helpers 
 function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficulty) {
-  const count = tier === 'premium' ? 2 : tier === 'elite' ? 4 : 0
+  const count = tier === 'casual' ? 3 : tier === 'classic' ? 4 : tier === 'expert' ? 5 : tier === 'cipher' ? 6 : 3
   if (count === 0) return []
   const pts = []
   for (let i = 1; i <= count; i++) {
@@ -3204,9 +3204,7 @@ function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficult
       lat:        startLat + (destLat - startLat) * f,
       lon:        startLon + (destLon - startLon) * f,
       geofence_m: diffGeofence(difficulty),
-      unlocks_slots: tier === 'premium'
-        ? (i === 1 ? ['B'] : ['C', 'D'])
-        : (i === 1 ? ['B'] : i === 2 ? ['C'] : i === 3 ? ['D'] : ['E']),
+      unlocks_slots: [`${String.fromCharCode(65 + i)}`],
     })
   }
   return pts
@@ -3449,7 +3447,7 @@ export default function App() {
           p_question_ids: questionIds,
         }).then(() => {}).catch(() => {})
       }
-      const isPremium = puzzleData?.pack_tier === 'premium' || puzzleData?.pack_tier === 'elite'
+      const isPremium = true
 
       setActivePack(hunt)
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
