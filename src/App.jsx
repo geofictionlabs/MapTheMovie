@@ -3211,9 +3211,8 @@ function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficult
 }
 
 function getPhaseSlots(phase, questions) {
-  if (phase === 0) return questions.slice(0, 1).map(q => q.slot)
-  if (phase === 1) return questions.slice(1, 2).map(q => q.slot)
-  return questions.slice(2).map(q => q.slot)
+  const q = questions[phase]
+  return q ? [q.slot] : []
 }
 
 //  App 
@@ -3518,7 +3517,7 @@ export default function App() {
           const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
 
           if (phaseDone) {
-            if (waypointPhase < waypoints.length) {
+            if (waypointPhase < waypoints.length && waypointPhase < activeQuestions.length - 1) {
               const wp = waypoints[waypointPhase]
               setCompassTarget({
                 lat: wp.lat, lon: wp.lon,
