@@ -1704,7 +1704,9 @@ function PreferencesScreen({ initialPrefs, userId, onBack, onSaved }) {
         preferred_genres:     genres,
       }
       if (userId) {
-        await supabase.from('profiles').update(payload).eq('id', userId)
+        try {
+          await supabase.from('profiles').update(payload).eq('id', userId)
+        } catch (_) {}
       }
       onSaved({ difficulty, categories, genres })
       setSaved(true)
@@ -3393,10 +3395,12 @@ export default function App() {
     const { data, error } = await supabase.auth.signInAnonymously()
     if (error) throw new Error('Sign-in failed: ' + error.message)
 
-    await supabase.from('profiles').upsert(
-      { id: data.user.id },
-      { onConflict: 'id' }
-    )
+    try {
+      await supabase.from('profiles').upsert(
+        { id: data.user.id },
+        { onConflict: 'id' }
+      )
+    } catch (_) {}
     return data.user
   }
 
