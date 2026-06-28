@@ -6,8 +6,13 @@
 import { useState, useEffect, useRef } from "react";
 
 // ── COORD MASKER ──────────────────────────────────────────────
-const maskCoord = (raw) =>
-  raw ? String(raw).replace(/[0-9a-zA-Z]/g, '?') : '??.??????';
+const maskCoord = (raw) => {
+  if (!raw) return '??.??????';
+  const s = String(raw);
+  const dot = s.indexOf('.');
+  if (dot === -1) return '?'.repeat(s.length);
+  return s.slice(0, dot + 1) + '?'.repeat(s.length - dot - 1);
+};
 
 // ── THEME DEFINITIONS ─────────────────────────────────────────
 const THEMES = {
