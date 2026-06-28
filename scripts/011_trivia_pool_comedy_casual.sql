@@ -57,7 +57,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('comedy', 1, 7, 'The Full Monty', 1997, '🩲', 'What year was The Full Monty released? Take units digit.', 1997, 'Take the units digit of the year', 'Released in 1997. Take the last digit.', 'e.g. 7'),
 
 -- DIGIT 8
-('comedy', 1, 8, 'Ghostbusters', 1984, '👻', 'What year was Ghostbusters released? Take units digit.', 1984, 'Take the units digit of the year', 'Released in 1984. Take the last digit.', 'e.g. 4'),
+('comedy', 1, 8, 'Ghostbusters', 1984, '👻', 'How many letters are in the word LAUGHTER?', 8, 'Your answer is the digit', 'Count the letters in LAUGHTER. L-A-U-G-H-T-E-R.', 'e.g. 8'),
 ('comedy', 1, 8, 'Home Alone', 1990, '🏠', 'How many booby traps does Kevin set? Take units digit.', 8, 'Your answer is the digit', 'Eight traps set for the Wet Bandits.', 'e.g. 8'),
 ('comedy', 1, 8, 'Mrs Doubtfire', 1993, '👴', 'How many letters are in DOUBTFIRE?', 9, 'Subtract 1 from your answer', 'Count the letters in DOUBTFIRE. Subtract 1.', 'e.g. 8'),
 ('comedy', 1, 8, 'The Full Monty', 1997, '🩲', 'How many men are in the strip troupe?', 6, 'Add 2 to your answer', 'Six men in the group. Add 2.', 'e.g. 8'),
