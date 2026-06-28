@@ -58,7 +58,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 
 -- DIGIT 8
 ('horror', 1, 8, 'Halloween', 1978, '🎃', 'How many letters are in HALLOWEEN?', 9, 'Subtract 1 from your answer', 'Count the letters in HALLOWEEN. Subtract 1.', 'e.g. 8'),
-('horror', 1, 8, 'A Nightmare on Elm Street', 1984, '💤', 'What year was A Nightmare on Elm Street released? Take units digit.', 1984, 'Take the units digit of the year', 'Released in 1984. Take the last digit.', 'e.g. 4'),
+('horror', 1, 8, 'Poltergeist', 1982, '👻', 'How many letters are in POLTERGEIST?', 11, 'Add the digits: 1+1 then multiply by 4', 'Eleven letters. Add the digits then multiply by 4.', 'e.g. 8'),
 ('horror', 1, 8, 'The Shining', 1980, '🪓', 'How many letters are in OVERLOOK?', 8, 'Your answer is the digit', 'Count the letters in OVERLOOK.', 'e.g. 8'),
 ('horror', 1, 8, 'Hereditary', 2018, '👸', 'What year was Hereditary released? Take units digit.', 2018, 'Take the units digit of the year', 'Released in 2018. Take the last digit.', 'e.g. 8'),
 ('horror', 1, 8, 'The Conjuring', 2013, '🪬', 'How many letters are in CONJURING?', 9, 'Subtract 1 from your answer', 'Count the letters in CONJURING. Subtract 1.', 'e.g. 8'),
