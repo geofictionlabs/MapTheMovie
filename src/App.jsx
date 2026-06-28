@@ -3299,7 +3299,7 @@ export default function App() {
             id, name, emoji, tier, description, accent_color, theme_tag,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
           ),
-          businesses ( id, name, location, is_active )
+          businesses ( id, name, is_active )
         `)
         .eq('status', 'active')
 
