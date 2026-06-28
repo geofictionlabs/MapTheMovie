@@ -59,7 +59,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 -- DIGIT 8
 ('action', 1, 8, 'Die Hard', 1988, '🏢', 'What year was Die Hard released? Take units digit.', 1988, 'Take the units digit of the year', 'Released in 1988. Take the last digit.', 'e.g. 8'),
 ('action', 1, 8, 'Rambo', 1982, '🏹', 'How many letters are in STALLONE?', 8, 'Your answer is the digit', 'Count the letters in STALLONE.', 'e.g. 8'),
-('action', 1, 8, 'Mad Max Fury Road', 2015, '🛞', 'How many letters are in FURY ROAD?', 8, 'Your answer is the digit', 'Count the letters in FURY ROAD including the space.', 'e.g. 8'),
+('action', 1, 8, 'Mad Max Fury Road', 2015, '🛞', 'How many letters are in FURY ROAD? Count letters only not the space.', 8, 'Your answer is the digit', 'F-U-R-Y-R-O-A-D. Eight letters. Do not count the space.', 'e.g. 8'),
 ('action', 1, 8, 'Lethal Weapon', 1987, '🔫', 'How many letters are in LETHAL?', 6, 'Add 2 to your answer', 'Count the letters in LETHAL. Add 2.', 'e.g. 8'),
 ('action', 1, 8, 'The Raid', 2011, '🥋', 'How many floors does the team need to fight through?', 15, 'Add the digits: 1+5 then add 2', 'Fifteen floors. Add the digits then add 2.', 'e.g. 8'),
 
