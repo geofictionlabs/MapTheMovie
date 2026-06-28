@@ -3637,11 +3637,7 @@ export default function App() {
   const slots = activePack?.coordinate_slots || []
 
   const visibleQuestions = waypointsMode
-    ? activeQuestions.filter((_, i) => {
-        if (waypointPhase === 0) return i === 0
-        if (waypointPhase === 1) return i === 1
-        return i >= 2
-      })
+    ? activeQuestions.filter((_, i) => i === waypointPhase)
     : activeQuestions
 
   const phaseSlots        = waypointsMode ? getPhaseSlots(waypointPhase, activeQuestions) : []
