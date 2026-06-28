@@ -19,7 +19,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('scifi', 1, 2, 'Terminator 2', 1991, '🤖', 'What number Terminator film is Judgment Day?', 2, 'Your answer is the digit', 'It is in the title. Terminator 2.', 'e.g. 2'),
 ('scifi', 1, 2, 'Aliens', 1986, '👾', 'Aliens is the second film in the franchise. What number is it?', 2, 'Your answer is the digit', 'Alien then Aliens. Second film.', 'e.g. 2'),
 ('scifi', 1, 2, 'The Matrix', 1999, '💊', 'How many pills does Morpheus offer Neo?', 2, 'Your answer is the digit', 'Red pill or blue pill. Two choices.', 'e.g. 2'),
-('scifi', 1, 2, 'Blade Runner 2049', 2017, '🌧️', 'What number is in the title of Blade Runner 2049? Take units digit.', 2049, 'Take the units digit of the number in the title', 'Two zero four nine. Take the last digit.', 'e.g. 9'),
+('scifi', 1, 2, 'Blade Runner 2049', 2017, '🌧️', 'What number sequel is Blade Runner 2049?', 2, 'Your answer is the digit', 'The second Blade Runner film. Direct sequel.', 'e.g. 2'),
 
 -- DIGIT 3
 ('scifi', 1, 3, 'Star Wars', 1977, '⭐', 'How many Star Wars films are in the original trilogy?', 3, 'Your answer is the digit', 'A New Hope, Empire Strikes Back, Return of the Jedi.', 'e.g. 3'),
@@ -39,7 +39,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('scifi', 1, 5, 'The Fifth Element', 1997, '🔥', 'What number element is the Fifth Element?', 5, 'Your answer is the digit', 'It is in the title.', 'e.g. 5'),
 ('scifi', 1, 5, 'Star Wars', 1977, '⭐', 'How many Star Wars films are in the sequel trilogy?', 3, 'Add 2 to your answer', 'Three sequel films. Add 2.', 'e.g. 5'),
 ('scifi', 1, 5, 'Interstellar', 2014, '⏰', 'How many dimensions does the tesseract have? Take units digit.', 5, 'Your answer is the digit', 'Five dimensional space. Single digit.', 'e.g. 5'),
-('scifi', 1, 5, 'The Hitchhikers Guide', 2005, '🌌', 'What is the answer to life the universe and everything? Take units digit.', 42, 'Take the units digit', 'Forty two. The famous answer. Take the last digit.', 'e.g. 2'),
+('scifi', 1, 5, 'The Hitchhikers Guide', 2005, '🌌', 'How many books are in the Hitchhikers Guide trilogy?', 5, 'Your answer is the digit', 'Famously an inaccurate trilogy. Five books total.', 'e.g. 5'),
 ('scifi', 1, 5, 'Minority Report', 2002, '👁️', 'How many PreCogs are in the PreCrime program?', 3, 'Add 2 to your answer', 'Three PreCogs. Add 2.', 'e.g. 5'),
 
 -- DIGIT 6
@@ -47,7 +47,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('scifi', 1, 6, 'Alien', 1979, '👾', 'How many letters are in ALIEN?', 5, 'Add 1 to your answer', 'Count the letters in ALIEN. Add 1.', 'e.g. 6'),
 ('scifi', 1, 6, 'The Martian', 2015, '🪐', 'How many crew members are in the Ares 3 mission?', 6, 'Your answer is the digit', 'Six crew members on the mission.', 'e.g. 6'),
 ('scifi', 1, 6, 'Guardians of the Galaxy', 2014, '🚀', 'How many Infinity Stones are there?', 6, 'Your answer is the digit', 'Space, Mind, Reality, Power, Time, Soul.', 'e.g. 6'),
-('scifi', 1, 6, 'I Robot', 2004, '🤖', 'What year was I Robot released? Take units digit.', 2004, 'Take the units digit of the year', 'Released in 2004. Take the last digit.', 'e.g. 4'),
+('scifi', 1, 6, 'I Robot', 2004, '🤖', 'How many letters are in the word ROBOTS?', 6, 'Your answer is the digit', 'Count the letters in ROBOTS.', 'e.g. 6'),
 
 -- DIGIT 7
 ('scifi', 1, 7, 'Alien', 1979, '👾', 'How many crew members are on the Nostromo?', 7, 'Your answer is the digit', 'Seven crew members face one alien.', 'e.g. 7'),
@@ -61,7 +61,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('scifi', 1, 8, 'District 9', 2009, '👽', 'How many letters are in DISTRICT?', 8, 'Your answer is the digit', 'Count the letters in DISTRICT.', 'e.g. 8'),
 ('scifi', 1, 8, 'The Martian', 2015, '🪐', 'How many letters are in MARTIAN?', 7, 'Add 1 to your answer', 'Count the letters in MARTIAN. Add 1.', 'e.g. 8'),
 ('scifi', 1, 8, 'Stargate', 1994, '🌀', 'How many letters are in STARGATE?', 8, 'Your answer is the digit', 'Count the letters in STARGATE.', 'e.g. 8'),
-('scifi', 1, 8, 'Robocop', 1987, '🤖', 'How many directives does Robocop have? Take units digit then add 5.', 4, 'Subtract 1 from your answer then double', 'Four directives. Subtract 1 then double.', 'e.g. 8'),
+('scifi', 1, 8, 'Robocop', 1987, '🤖', 'How many letters are in ROBOCOP?', 7, 'Add 1 to your answer', 'Count the letters in ROBOCOP. Add 1.', 'e.g. 8'),
 
 -- DIGIT 9
 ('scifi', 1, 9, 'Star Wars', 1977, '⭐', 'How many Star Wars main saga films are there in total?', 9, 'Your answer is the digit', 'Episodes one through nine.', 'e.g. 9'),
