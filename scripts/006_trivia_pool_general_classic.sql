@@ -58,10 +58,10 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 
 -- DIGIT 8
 ('general', 2, 8, 'The Hateful Eight', 2015, '🤠', 'How many strangers are trapped together?', 8, 'Your answer is the digit', 'It is in the title.', 'e.g. 8'),
-('general', 2, 8, 'Once Upon a Time in Hollywood', 2019, '🎬', 'What year is Once Upon a Time in Hollywood set? Take units digit.', 1969, 'Take the units digit of the year the film is set', 'Set in the late 60s. Take the last digit of that year.', 'e.g. 9'),
+('general', 2, 8, 'Beethoven', 1992, '🐕', 'How many Beethoven dog films were made in the original run?', 4, 'Double your answer', 'Four films in the original series. Double it.', 'e.g. 8'),
 ('general', 2, 8, 'Inglourious Basterds', 2009, '🎖️', 'How many scalps does Aldo Raine demand from each soldier?', 100, 'Take the hundreds digit', 'One hundred scalps each. Take the first digit.', 'e.g. 1'),
 ('general', 2, 8, 'The Grand Budapest Hotel', 2014, '🏨', 'How many Academy Awards did The Grand Budapest Hotel win?', 4, 'Double your answer', 'Won four Oscars. Double it.', 'e.g. 8'),
-('general', 2, 8, 'Whiplash', 2014, '🥁', 'How many Academy Awards did Whiplash win?', 3, 'Subtract 1 then double', 'Won three Oscars. Subtract 1 then double.', 'e.g. 4'),
+('general', 2, 8, 'The Hateful Eight', 2015, '🤠', 'Quentin Tarantino said The Hateful Eight was his what numbered film? Take units digit.', 8, 'Your answer is the digit', 'He counted it as his eighth film.', 'e.g. 8'),
 
 -- DIGIT 9
 ('general', 2, 9, 'District 9', 2009, '👽', 'What number district is it?', 9, 'Your answer is the digit', 'It is in the title.', 'e.g. 9'),
