@@ -47,7 +47,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 ('romance', 1, 6, 'Love Actually', 2003, '❤️', 'How many letters are in ROMANCE?', 7, 'Subtract 1 from your answer', 'Count the letters in ROMANCE. Subtract 1.', 'e.g. 6'),
 ('romance', 1, 6, 'Notting Hill', 1999, '📚', 'How many letters are in NOTTING?', 7, 'Subtract 1 from your answer', 'Count the letters in NOTTING. Subtract 1.', 'e.g. 6'),
 ('romance', 1, 6, 'Dirty Dancing', 1987, '💃', 'How many letters are in DANCING?', 7, 'Subtract 1 from your answer', 'Count the letters in DANCING. Subtract 1.', 'e.g. 6'),
-('romance', 1, 6, 'Sleepless in Seattle', 1993, '🌧️', 'How many letters are in SLEEPY? Subtract 1.', 6, 'Subtract 1 from letters in SLEEPY then add 1', 'Count letters in SLEEPY then manipulate.', 'e.g. 6'),
+('romance', 1, 6, 'Sleepless in Seattle', 1993, '🌧️', 'How many letters are in the word SLEEPY?', 6, 'Your answer is the digit', 'Count the letters in SLEEPY. S-L-E-E-P-Y.', 'e.g. 6'),
 
 -- DIGIT 7
 ('romance', 1, 7, 'The Notebook', 2004, '🏠', 'How many years does Noah wait for Allie?', 7, 'Your answer is the digit', 'Seven long years of waiting.', 'e.g. 7'),
