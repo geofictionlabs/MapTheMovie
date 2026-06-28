@@ -37,7 +37,7 @@ INSERT INTO trivia_pool (genre, difficulty, coordinate_digit, movie_title, movie
 
 -- DIGIT 5
 ('general', 1, 5, 'The Jackson Five', 1977, '🎵', 'How many brothers are in The Jackson Five?', 5, 'Your answer is the digit', 'It is in the name.', 'e.g. 5'),
-('general', 1, 5, 'Ocean Eleven', 2001, '🎰', 'Danny Ocean recruits how many people for his heist team?', 11, 'Add the digits of your answer: 1+1', 'Eleven people. Add the two digits together.', 'e.g. 2'),
+('general', 1, 5, 'The Fifth Element', 1997, '🔥', 'What number element is in the title of The Fifth Element?', 5, 'Your answer is the digit', 'It is in the title.', 'e.g. 5'),
 ('general', 1, 5, 'Snow White', 1937, '🍎', 'How many dwarfs are in Snow White?', 7, 'Subtract 2 from your answer', 'Seven dwarfs. Subtract 2.', 'e.g. 5'),
 ('general', 1, 5, 'Fast and Furious', 2001, '🚗', 'How many letters are in the word FURIOUS?', 7, 'Subtract 2 from your answer', 'Count the letters. Then subtract 2.', 'e.g. 5'),
 ('general', 1, 5, 'Kung Fu Panda', 2008, '🐼', 'How many members are in the Furious Five plus Po?', 6, 'Subtract 1 from your answer', 'The Furious Five plus Po makes six. Subtract 1.', 'e.g. 5'),
