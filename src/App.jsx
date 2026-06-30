@@ -3192,13 +3192,26 @@ function ArrivedScreen({ voucher }) {
   )
 }
 
-//  Waypoint helpers 
+//  Waypoint helpers
+const TIER_COUNT   = { casual: 3, classic: 4, expert: 5, cipher: 6 }
+const TIER_SPACING = { casual: 400, classic: 550, expert: 800, cipher: 1600 } // metres between waypoints
+const DIFF_TO_TIER = { 1: 'casual', 2: 'classic', 3: 'expert', 4: 'cipher' }
+
 function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficulty) {
-  const count = tier === 'casual' ? 3 : tier === 'classic' ? 4 : tier === 'expert' ? 5 : tier === 'cipher' ? 6 : 3
+  const count = TIER_COUNT[tier] || 3
   if (count === 0) return []
+
+  const totalDist     = haversineMetres(startLat, startLon, destLat, destLon)
+  const targetSpacing = TIER_SPACING[tier] || 400
+  // Place waypoints at exact target intervals from start when all fit before the destination
+  // (with >=50 m remaining). Fall back to equal fractions on short routes.
+  const useTargetSpacing = count * targetSpacing < totalDist - 50
+
   const pts = []
   for (let i = 1; i <= count; i++) {
-    const f = i / (count + 1)
+    const f = useTargetSpacing
+      ? (i * targetSpacing) / totalDist
+      : i / (count + 1)
     pts.push({
       index:      i,
       lat:        startLat + (destLat - startLat) * f,
@@ -3472,10 +3485,11 @@ export default function App() {
             p_session_id: session.id,
           })
           if (destData?.success) {
+            const huntTier = DIFF_TO_TIER[puzzleData.difficulty] || hunt.difficulty || 'classic'
             wps = generateWaypoints(
               startPos.lat, startPos.lon,
               parseFloat(destData.real_lat), parseFloat(destData.real_lon),
-              puzzleData.pack_tier,
+              huntTier,
               hunt.difficulty || 'classic',
             )
           }
