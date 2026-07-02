@@ -104,7 +104,7 @@ CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film 
 
 Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.
 
-Do all your thinking before you output anything. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself.
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself.
 
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
@@ -141,14 +141,22 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 
   const aiData = await aiResponse.json();
   const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
-  const clean = text.replace(/```json|```/g, '').trim();
+
+  // Extract JSON object from wherever it appears — handles reasoning preamble
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return new Response(
+      JSON.stringify({ error: 'Could not parse AI response', raw: text }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
   let parsed: any;
   try {
-    parsed = JSON.parse(clean);
+    parsed = JSON.parse(match[0]);
   } catch {
     return new Response(
-      JSON.stringify({ error: 'Could not parse AI response', raw: clean }),
+      JSON.stringify({ error: 'Could not parse AI response', raw: match[0] }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
