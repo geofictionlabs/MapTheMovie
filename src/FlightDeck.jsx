@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './lib/supabase';
+import CommandCenter from './components/CommandCenter.jsx';
 
 // ── DESIGN TOKENS ──────────────────────────────────────────
 const D = {
@@ -240,6 +241,7 @@ export default function FlightDeck() {
   const [pw,       setPw]       = useState('');
   const [pwErr,    setPwErr]    = useState(false);
   const [tab,      setTab]      = useState('overview');
+  const [isAdmin,  setIsAdmin]  = useState(false);
   const [data,     setData]     = useState({
     totalPlayers:    0,
     totalBusinesses: 0,
@@ -255,6 +257,12 @@ export default function FlightDeck() {
     alerts:          [],
   });
   const [loading, setLoading] = useState(false);
+
+  // Check platform admin status after password auth
+  useEffect(() => {
+    if (!authed) { setIsAdmin(false); return; }
+    supabase.rpc('is_platform_admin').then(({ data }) => setIsAdmin(!!data));
+  }, [authed]);
 
   // Load data from Supabase
   useEffect(() => {
@@ -395,12 +403,13 @@ export default function FlightDeck() {
 
   // ── TABS ───────────────────────────────────────────────────
   const tabs = [
-    { id: 'overview',   label: 'OVERVIEW'   },
-    { id: 'businesses', label: 'BUSINESSES' },
-    { id: 'players',    label: 'PLAYERS'    },
-    { id: 'revenue',    label: 'REVENUE'    },
-    { id: 'platform',   label: 'PLATFORM'   },
-    { id: 'alerts',     label: 'ALERTS'     },
+    { id: 'overview',        label: 'OVERVIEW'        },
+    { id: 'businesses',      label: 'BUSINESSES'      },
+    { id: 'players',         label: 'PLAYERS'         },
+    { id: 'revenue',         label: 'REVENUE'         },
+    { id: 'platform',        label: 'PLATFORM'        },
+    { id: 'alerts',          label: 'ALERTS'          },
+    ...(isAdmin ? [{ id: 'command-center', label: 'COMMAND CENTER' }] : []),
   ];
 
   const tierPrices = { starter: 49, featured: 99, sponsored: 249 };
@@ -741,6 +750,9 @@ export default function FlightDeck() {
             </div>
           </div>
         )}
+
+        {/* ── COMMAND CENTER TAB ── */}
+        {tab === 'command-center' && isAdmin && <CommandCenter />}
 
         {/* ── ALERTS TAB ── */}
         {!loading && tab === 'alerts' && (
