@@ -104,6 +104,8 @@ CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film 
 
 Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.
 
+Do all your thinking before you output anything. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself.
+
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
   "question_text": "...",
@@ -151,6 +153,15 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     );
   }
 
+  // Sanitise correct_answer — must be a plain integer, never AI reasoning text.
+  const correctAnswer = parseInt(String(parsed.correct_answer), 10);
+  if (isNaN(correctAnswer)) {
+    return new Response(
+      JSON.stringify({ error: 'AI returned a non-integer correct_answer', raw: parsed.correct_answer }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   // coordinate_digit is always required_digit — the AI cannot override this value.
   return new Response(
     JSON.stringify({
@@ -158,7 +169,7 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       movie_title:      parsed.movie_title,
       movie_year:       parsed.movie_year ?? null,
       movie_emoji:      parsed.movie_emoji || '🎬',
-      correct_answer:   parsed.correct_answer,
+      correct_answer:   correctAnswer,
       coordinate_digit: required_digit,
       extraction_note:  parsed.extraction_note,
       hint_text:        parsed.hint_text,
