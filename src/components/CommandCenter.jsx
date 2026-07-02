@@ -14,7 +14,55 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, X, RefreshCw, Trash2, Save, Check, Loader2, Shield } from 'lucide-react';
+function Spinner({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'cc-spin 1s linear infinite', display: 'block', ...s }}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+function ShieldIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+function XIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+function RefreshIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M23 4v6h-6" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  );
+}
+function TrashIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+    </svg>
+  );
+}
+function SaveIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
+    </svg>
+  );
+}
+function CheckIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
 import { supabase } from '../lib/supabase';
 import { generateTriviaQuestion } from '../lib/triviaApi';
 
@@ -235,7 +283,8 @@ export default function CommandCenter() {
   if (!adminChecked) {
     return (
       <div style={{ background: COLORS.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 size={24} className="animate-spin" style={{ color: COLORS.textDim }} />
+        <style>{`@keyframes cc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <Spinner size={24} style={{ color: COLORS.textDim }} />
       </div>
     );
   }
@@ -243,7 +292,7 @@ export default function CommandCenter() {
   if (!isAdmin) {
     return (
       <div style={{ background: COLORS.bg, minHeight: '100vh', color: COLORS.textBright, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 24px', textAlign: 'center' }}>
-        <Shield size={28} style={{ color: COLORS.textDim }} />
+        <ShieldIcon size={28} style={{ color: COLORS.textDim }} />
         <p style={{ color: COLORS.textDim, fontSize: 14, margin: 0 }}>
           This area is restricted to GeoFiction Labs owners.
         </p>
@@ -255,11 +304,12 @@ export default function CommandCenter() {
 
   return (
     <div style={{ background: COLORS.bg, minHeight: '100vh', color: COLORS.textBright, width: '100%' }}>
+      <style>{`@keyframes cc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <Shield size={20} style={{ color: COLORS.gold }} />
+          <ShieldIcon size={20} style={{ color: COLORS.gold }} />
           <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', margin: 0 }}>
             Command Center
           </h1>
@@ -340,7 +390,7 @@ export default function CommandCenter() {
                     onClick={() => setPendingPin(null)}
                     style={{ padding: '8px 12px', borderRadius: 6, background: COLORS.bg, border: `1px solid ${COLORS.border}`, color: COLORS.textDim, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   >
-                    <X size={16} />
+                    <XIcon size={16} />
                   </button>
                 </div>
               </div>
@@ -385,14 +435,14 @@ export default function CommandCenter() {
                     title="Regenerate trivia"
                     style={{ padding: 6, borderRadius: 4, background: COLORS.bg, border: `1px solid ${COLORS.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   >
-                    <RefreshCw size={13} style={{ color: COLORS.textDim }} />
+                    <RefreshIcon size={13} style={{ color: COLORS.textDim }} />
                   </button>
                   <button
                     onClick={() => removeWaypoint(w.id)}
                     title="Remove waypoint"
                     style={{ padding: 6, borderRadius: 4, background: COLORS.bg, border: `1px solid ${COLORS.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   >
-                    <Trash2 size={13} style={{ color: '#F43F5E' }} />
+                    <TrashIcon size={13} style={{ color: '#F43F5E' }} />
                   </button>
                 </div>
               </div>
@@ -400,7 +450,7 @@ export default function CommandCenter() {
               {/* States */}
               {w.loading && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: COLORS.textDim }}>
-                  <Loader2 size={13} className="animate-spin" />
+                  <Spinner size={13} />
                   Generating trivia...
                 </div>
               )}
@@ -453,11 +503,11 @@ export default function CommandCenter() {
           }}
         >
           {saving ? (
-            <Loader2 size={16} className="animate-spin" />
+            <Spinner size={16} />
           ) : savedBanner ? (
-            <Check size={16} />
+            <CheckIcon size={16} />
           ) : (
-            <Save size={16} />
+            <SaveIcon size={16} />
           )}
           {saving ? 'Saving...' : savedBanner ? 'Hunt Saved' : 'Save Hunt'}
         </button>
