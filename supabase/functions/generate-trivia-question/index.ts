@@ -33,6 +33,11 @@ function tierGuidance(tier: string) {
 }
 
 Deno.serve(async (req) => {
+  console.log('[gtq] request received', req.method);
+  console.log('[gtq] env check — ANTHROPIC_API_KEY set:', !!Deno.env.get('ANTHROPIC_API_KEY'));
+  console.log('[gtq] env check — SUPABASE_URL set:', !!Deno.env.get('SUPABASE_URL'));
+  console.log('[gtq] env check — SERVICE_ROLE_KEY set:', !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -115,6 +120,7 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   "hint_text": "..."
 }`;
 
+  console.log('[gtq] calling Anthropic — required_digit:', required_digit, 'tier:', tier);
   const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
