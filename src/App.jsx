@@ -81,6 +81,27 @@ function hexAccent(raw) {
   return raw.startsWith('#') ? raw : '#' + raw
 }
 
+// Placeholder genre detection — there is no authored `genre` column on
+// puzzle_packs yet (theme_tag is seasonal, not a movie genre). Matches
+// pack text against keywords for each of HuntSelectionScreen's 8 THEMES.
+// Replace with real authored data once Command Center has a genre picker.
+const GENRE_KEYWORDS = {
+  horror:        ['horror', 'scream', 'nightmare', 'haunt', 'blood', 'zombie', 'ghost', 'curse'],
+  scifi:         ['sci-fi', 'scifi', 'space', 'alien', 'future', 'robot', 'galaxy', 'cyber'],
+  action:        ['action', 'chase', 'explosion', 'heist', 'spy', 'mission', 'agent'],
+  romance:       ['romance', 'love', 'heart', 'valentine', 'wedding', 'romcom'],
+  comedy:        ['comedy', 'laugh', 'funny', 'sitcom', 'comic'],
+  thriller:      ['thriller', 'suspense', 'conspiracy', 'noir', 'mystery'],
+  evergreen_80s: ['80s', 'nostalgia', 'retro', 'arcade', 'neon'],
+}
+function detectGenre(name, description, tagline) {
+  const text = [name, description, tagline].filter(Boolean).join(' ').toLowerCase()
+  for (const [genre, words] of Object.entries(GENRE_KEYWORDS)) {
+    if (words.some(w => text.includes(w))) return genre
+  }
+  return 'general'
+}
+
 //  CSS 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
@@ -522,8 +543,8 @@ body {
   transition: width 0.4s ease;
 }
 
-/*  Signal bar  */
-.signal-bar {
+/*  Takes bar (director's-slate lives system)  */
+.takes-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -533,24 +554,41 @@ body {
   border: 1px solid #32324A;
   border-radius: 12px;
 }
-.signal-label {
+.takes-label {
   font-family: 'Share Tech Mono', monospace;
   font-size: 10px;
   letter-spacing: 1.5px;
   color: #8888BB;
 }
-.signal-pips { display: flex; gap: 3px; flex: 1; }
-.signal-pip {
+.takes-pips { display: flex; gap: 3px; flex: 1; }
+.takes-pip {
   flex: 1;
-  height: 12px;
-  border-radius: 4px;
+  height: 14px;
+  border-radius: 3px;
   background: #252533;
-  transition: background 0.2s;
+  position: relative;
+  overflow: hidden;
+  transform-origin: center;
+  transition: background 0.25s;
 }
-.signal-count {
+.takes-pip-stripe {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: repeating-linear-gradient(115deg, rgba(0,0,0,0.4) 0 3px, transparent 3px 6px);
+}
+.takes-count {
   font-family: 'Share Tech Mono', monospace;
   font-size: 12px;
   color: #B8B4D8;
+}
+@keyframes slateClap {
+  0%   { transform: scaleY(1); opacity: 1; }
+  35%  { transform: scaleY(0.25); opacity: 0.7; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .takes-pip { animation: none !important; }
 }
 
 /*  Puzzle card  */
@@ -2099,25 +2137,48 @@ function CoordDisplay({ hunt, solved }) {
 }
 
 //  Signal Bar 
-function SignalBar({ points, accent }) {
-  const MAX = 10
-  const warn = points <= 3
+function TakesBar({ points, max, accent }) {
+  const warn = points <= Math.ceil(max * 0.3)
   const barColor = warn ? '#EF4444' : accent
+  const prevPointsRef = useRef(points)
+  const [burnedIndex, setBurnedIndex] = useState(null)
+
+  // Identify which specific pip just burned (the last active one before
+  // this decrease) so only that one plays the clap animation, not the
+  // whole bar re-animating on every wrong answer.
+  useEffect(() => {
+    if (points < prevPointsRef.current) {
+      const burned = prevPointsRef.current - 1
+      setBurnedIndex(burned)
+      const t = setTimeout(() => setBurnedIndex(null), 400)
+      prevPointsRef.current = points
+      return () => clearTimeout(t)
+    }
+    prevPointsRef.current = points
+  }, [points])
 
   return (
-    <div className="signal-bar">
-      <span className="signal-label">SIGNAL</span>
-      <div className="signal-pips">
-        {Array.from({ length: MAX }, (_, i) => (
-          <div
-            key={i}
-            className="signal-pip"
-            style={{ background: i < points ? barColor : '#252533' }}
-          />
-        ))}
+    <div className="takes-bar">
+      <span className="takes-label">TAKES</span>
+      <div className="takes-pips">
+        {Array.from({ length: max }, (_, i) => {
+          const active = i < points
+          return (
+            <div
+              key={i}
+              className="takes-pip"
+              style={{
+                background: active ? barColor : '#252533',
+                animation: i === burnedIndex ? 'slateClap 0.4s ease' : 'none',
+              }}
+            >
+              <div className="takes-pip-stripe" style={{ opacity: active ? 0.55 : 0.3 }} />
+            </div>
+          )
+        })}
       </div>
-      <span className="signal-count" style={{ color: warn ? '#EF4444' : '#B8B4D8' }}>
-        {points}/{MAX}
+      <span className="takes-count" style={{ color: warn ? '#EF4444' : '#B8B4D8' }}>
+        TAKE {points} OF {max}
       </span>
     </div>
   )
@@ -2174,7 +2235,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent, difficulty 
       setInput('')
     } else if (result.signal_points_remaining === 0) {
       setStatus('idle')
-      setMsg('Signal lost.')
+      setMsg('Out of takes.')
     } else {
       setStatus('wrong')
       const left = result.attempts_remaining
@@ -2290,6 +2351,11 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const [playerPos, setPlayerPos] = useState(null)
   const [distance, setDistance] = useState(null)
   const [startDist, setStartDist] = useState(null)
+  // null | 'denied' | 'unavailable' — set from getCurrentPosition's error
+  // callback. Only surfaced in the UI before a first fix (see gpsStatus
+  // below) so a later transient failure doesn't wipe an already-showing
+  // distance/flicker the screen every 5s poll.
+  const [geoError, setGeoError] = useState(null)
   const intervalRef = useRef(null)
   const [toBearing, setToBearing] = useState(0)
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
@@ -2338,6 +2404,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       if (!navigator.geolocation) return
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          setGeoError(null)
           const lat = pos.coords.latitude
           const lon = pos.coords.longitude
           setPlayerPos({ lat, lon })
@@ -2354,7 +2421,11 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
             setStartDist(prev => prev ?? dist)
           }
         },
-        () => {},
+        (err) => {
+          // code 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+          // (common on iOS Safari under enableHighAccuracy, especially indoors)
+          setGeoError(err.code === 1 ? 'denied' : 'unavailable')
+        },
         { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
       )
     }
@@ -2391,7 +2462,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   function smoothHeading(newHeading) {
     const h = headingHistoryRef.current
     h.push(newHeading)
-    if (h.length > 5) h.shift()
+    if (h.length > 8) h.shift()
     if (h.length === 1) return h[0]
     // Circular mean: adjust values near 0/360 boundary before averaging
     const ref = h[0]
@@ -2412,8 +2483,18 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     function handleOrientation(e) {
       if (e.type === 'deviceorientation' && absoluteFired) return
 
+      // webkitCompassHeading is WebKit-only and, when present, is always a
+      // number: a real 0-360 heading, or -1 while the compass is uncalibrated
+      // (common on older/interference-prone hardware, e.g. iPhone 8). On -1,
+      // hold the last known good heading rather than falling through to
+      // alpha — alpha on a plain (non-absolute) deviceorientation event is a
+      // different, non-north-referenced frame, and switching between the two
+      // mid-walk is what causes the needle to appear to spin wildly. Only
+      // fall back to alpha when webkitCompassHeading doesn't exist at all
+      // (non-WebKit browsers).
       let heading = null
-      if (e.webkitCompassHeading != null && e.webkitCompassHeading >= 0) {
+      if (typeof e.webkitCompassHeading === 'number') {
+        if (e.webkitCompassHeading < 0) return // uncalibrated — hold last good heading
         heading = e.webkitCompassHeading
       } else if (e.alpha != null) {
         heading = (360 - e.alpha + 360) % 360
@@ -2465,12 +2546,15 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     S:'south', SW:'south-west', W:'west', NW:'north-west',
   })[cardinalDir()] || 'north'
 
-  const gpsStatus = playerPos ? 'active' : 'searching'
+  // Once a fix has ever landed, stay 'active' even through a later transient
+  // error — otherwise a single dropped poll every 5s would flicker the
+  // screen back to an error message despite still having a usable position.
+  const gpsStatus = playerPos ? 'active' : (geoError || 'searching')
   const gpsStatusText = {
     searching:   'ACQUIRING GPS',
     active:      `GPS ACTIVE  TARGET ~${geofence}m`,
-    error:       'GPS UNAVAILABLE',
-    unavailable: 'GPS NOT SUPPORTED',
+    denied:      'GPS PERMISSION DENIED',
+    unavailable: 'GPS UNAVAILABLE',
   }[gpsStatus]
 
   // Needle rotates as soon as heading is available, independent of distance
@@ -2611,11 +2695,13 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         </div>
       )}
 
-      {gpsStatus === 'error' || gpsStatus === 'unavailable' ? (
+      {gpsStatus === 'denied' || gpsStatus === 'unavailable' ? (
         <div style={{ textAlign: 'center' }}>
           <div className="compass-status">GPS signal needed</div>
           <div style={{ fontSize: 12, color: '#8888BB', marginTop: 4, lineHeight: 1.5 }}>
-            Step outside and allow location access
+            {gpsStatus === 'denied'
+              ? 'Location access is off — enable it for this site in Settings and reload'
+              : 'Step outside for a clearer signal'}
           </div>
         </div>
       ) : gpsStatus === 'searching' ? (
@@ -3197,6 +3283,11 @@ const TIER_COUNT   = { casual: 3, classic: 4, expert: 5, cipher: 6 }
 const TIER_SPACING = { casual: 400, classic: 550, expert: 800, cipher: 1600 } // metres between waypoints
 const DIFF_TO_TIER = { 1: 'casual', 2: 'classic', 3: 'expert', 4: 'cipher' }
 
+// TAKES (formerly "signal points") starting budget by difficulty. Single
+// source of truth used both for the hunt_sessions INSERT (server-side
+// truth) and the client's initial display, so they can never disagree.
+const STARTING_TAKES = { casual: 10, classic: 10, expert: 7, cipher: 5 }
+
 function generateWaypoints(startLat, startLon, destLat, destLon, tier, difficulty) {
   const count = TIER_COUNT[tier] || 3
   if (count === 0) return []
@@ -3250,6 +3341,7 @@ export default function App() {
   const [activeQuestions, setActiveQuestions] = useState([])
   const [solved, setSolved] = useState({})
   const [signalPoints, setSignalPoints] = useState(10)
+  const [maxSignalPoints, setMaxSignalPoints] = useState(10)
   const [realCoords, setRealCoords] = useState(null)
   const [voucher, setVoucher] = useState(() => {
     try {
@@ -3271,12 +3363,44 @@ export default function App() {
   const [activePrizePool, setActivePrizePool] = useState(null)
   const [prefs, setPrefs] = useState({ difficulty: 'classic', categories: ['food_drink', 'attractions', 'entertainment', 'sport', 'outdoor'], genres: ['any'] })
   const [prefsUserId, setPrefsUserId] = useState(null)
+  const [hydrated, setHydrated] = useState(false)
+
+  // Save-on-change: whenever mid-hunt state changes, persist enough to resume
+  // after an interruption (phone call, backgrounded app, closed browser, dead
+  // battery). Cleared automatically once the player leaves puzzles/compass
+  // (arrival, restart, or navigating back to discover).
+  // Gated on `hydrated` — otherwise this effect's initial run (activeSession
+  // still null) clears mtm_hunt_progress before restoreHuntProgress() gets a
+  // chance to read it.
+  useEffect(() => {
+    if (!hydrated) return
+    if (activeSession && (screen === 'puzzles' || screen === 'compass')) {
+      try {
+        localStorage.setItem('mtm_hunt_progress', JSON.stringify({
+          session_id:    activeSession.id,
+          campaign_id:   activeSession.campaign_id,
+          pack:          activePack,
+          solved,
+          signalPoints,
+          waypointsMode,
+          waypoints,
+          waypointPhase,
+          compassTarget,
+          screen,
+          savedAt: Date.now(),
+        }))
+      } catch {}
+    } else {
+      try { localStorage.removeItem('mtm_hunt_progress') } catch {}
+    }
+  }, [hydrated, activeSession, activePack, solved, signalPoints, waypointsMode, waypoints, waypointPhase, compassTarget, screen])
 
   useEffect(() => {
     loadHunts()
     loadPrizePool()
     loadPrefs()
     registerSW()
+    restoreHuntProgress()
   }, [])
 
   useEffect(() => {
@@ -3299,6 +3423,7 @@ export default function App() {
 
   async function loadHunts() {
     try {
+      const nowIso = new Date().toISOString()
       const { data, error } = await supabase
         .from('campaigns')
         .select(`
@@ -3306,12 +3431,14 @@ export default function App() {
           voucher_headline,
           difficulty,
           puzzle_packs (
-            id, name, emoji, tier, description, accent_color, theme_tag,
+            id, name, emoji, tier, description, tagline, accent_color, theme_tag,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
           ),
           businesses ( id, name, is_active )
         `)
         .eq('status', 'active')
+        .lte('starts_at', nowIso)
+        .gte('ends_at', nowIso)
 
       if (error) throw error
 
@@ -3331,6 +3458,13 @@ export default function App() {
           if (geo?.coordinates) { lon = geo.coordinates[0]; lat = geo.coordinates[1] }
         } catch {}
 
+        // No `genre` column exists on puzzle_packs today (theme_tag is
+        // seasonal — christmas/halloween/etc — not a movie genre). Until
+        // there's a real authored genre field + Command Center picker,
+        // detect one from the pack's own text so genre theming has
+        // something real to key off. See CLAUDE.md known follow-ups.
+        const genre = detectGenre(pp.name, pp.description, pp.tagline)
+
         return [{
           campaign_id:      c.id,
           pack_id:          pp.id,
@@ -3339,11 +3473,13 @@ export default function App() {
           pack_emoji:       pp.emoji,
           pack_tier:        pp.tier,
           pack_description: pp.description,
+          description:      pp.description,
+          tagline:          pp.tagline,
           accent_color:     pp.accent_color,
           theme_tag:        pp.theme_tag,
-          genre:            pp.theme_tag,
+          genre,
           coordinate_slots: pz.coordinate_slots,
-          puzzle_packs:     { genre: pp.theme_tag, coordinate_slots: pz.coordinate_slots },
+          puzzle_packs:     { genre, coordinate_slots: pz.coordinate_slots },
           masked_lat:       pz.masked_lat,
           masked_lon:       pz.masked_lon,
           is_free_tier:     pp.tier === 'standard',
@@ -3399,19 +3535,133 @@ export default function App() {
   }
 
   async function ensureAuth() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) return user
+    const { data: { user: existingUser } } = await supabase.auth.getUser()
 
-    const { data, error } = await supabase.auth.signInAnonymously()
-    if (error) throw new Error('Sign-in failed: ' + error.message)
+    let user = existingUser
+    if (!user) {
+      const { data, error } = await supabase.auth.signInAnonymously()
+      if (error) throw new Error('Sign-in failed: ' + error.message)
+      user = data.user
+    }
+
+    // Always ensure a profiles row exists, not just on fresh sign-in — an
+    // existing session (anonymous or otherwise) can still be missing its
+    // profiles row if the insert never ran or failed previously.
+    const { error: profileErr } = await supabase.from('profiles').upsert(
+      { id: user.id },
+      { onConflict: 'id' }
+    )
+    if (profileErr) {
+      console.error('Failed to create/update profile row for user', user.id, profileErr)
+    }
+
+    return user
+  }
+
+  // Resume a hunt interrupted mid-play. Re-validates the session and campaign
+  // server-side before trusting anything from localStorage — never resumes a
+  // dead hunt.
+  // Wrapper ensures `hydrated` flips true once the restore attempt finishes,
+  // on every exit path (success, discard, or error) — see the save-effect above.
+  async function restoreHuntProgress() {
+    try {
+      await restoreHuntProgressInner()
+    } finally {
+      setHydrated(true)
+    }
+  }
+
+  async function restoreHuntProgressInner() {
+    console.log('[restore] restoreHuntProgress() called, voucher =', voucher)
+
+    // mtm_active_reward already won the race in the `screen` initializer above
+    if (voucher) {
+      console.log('[restore] bailing: a valid mtm_active_reward voucher already won')
+      return
+    }
+
+    let saved
+    try {
+      const raw = localStorage.getItem('mtm_hunt_progress')
+      console.log('[restore] localStorage mtm_hunt_progress raw =', raw)
+      if (!raw) return
+      saved = JSON.parse(raw)
+      console.log('[restore] parsed saved =', saved)
+    } catch (err) {
+      console.log('[restore] bailing: failed to parse mtm_hunt_progress', err)
+      return
+    }
+
+    if (!saved?.session_id || !saved?.pack) {
+      console.log('[restore] bailing: saved payload missing session_id or pack, discarding')
+      localStorage.removeItem('mtm_hunt_progress')
+      return
+    }
 
     try {
-      await supabase.from('profiles').upsert(
-        { id: data.user.id },
-        { onConflict: 'id' }
-      )
-    } catch (_) {}
-    return data.user
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      console.log('[restore] current supabase auth user =', authUser?.id)
+
+      const { data: session, error: sessionErr } = await supabase
+        .from('hunt_sessions')
+        .select('*')
+        .eq('id', saved.session_id)
+        .eq('status', 'active')
+        .single()
+      console.log('[restore] hunt_sessions lookup -> session =', session, 'error =', sessionErr)
+      if (sessionErr || !session) throw new Error('session not active: ' + JSON.stringify(sessionErr))
+
+      const { data: campaign, error: campaignErr } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('id', saved.campaign_id)
+        .eq('status', 'active')
+        .single()
+      console.log('[restore] campaigns lookup -> campaign =', campaign, 'error =', campaignErr)
+      if (campaignErr || !campaign) throw new Error('campaign not active: ' + JSON.stringify(campaignErr))
+
+      const now = Date.now()
+      const startsAt = new Date(campaign.starts_at).getTime()
+      const endsAt = new Date(campaign.ends_at).getTime()
+      console.log('[restore] date window check -> now =', now, 'starts_at =', startsAt, 'ends_at =', endsAt)
+      if (now < startsAt || now > endsAt) {
+        throw new Error('campaign outside date window')
+      }
+
+      // Re-fetch questions fresh rather than trusting persisted trivia data.
+      // NOTE: get_puzzle_for_player re-randomises its question selection on
+      // every call (migrations/004_question_variety.sql uses ORDER BY RANDOM()),
+      // so unsolved slots may show different trivia than before the
+      // interruption. Known follow-up — see CLAUDE.md.
+      const seenIds = getSeenQuestionIds(session.user_id)
+      const { data: puzzleData, error: puzzleErr } = await supabase
+        .rpc('get_puzzle_for_player', {
+          p_session_id:  saved.session_id,
+          p_exclude_ids: seenIds,
+          p_difficulty:  saved.pack.difficulty || 'classic',
+        })
+      console.log('[restore] get_puzzle_for_player -> puzzleData =', puzzleData, 'error =', puzzleErr)
+      if (puzzleErr || !puzzleData?.questions) throw new Error('could not reload puzzle: ' + JSON.stringify(puzzleErr))
+
+      setActivePack(saved.pack)
+      setActiveSession({ id: saved.session_id, campaign_id: saved.campaign_id })
+      setActiveQuestions(puzzleData.questions)
+      setSolved(saved.solved || {})
+      // Prefer the server's authoritative value over the cached one —
+      // exactly the client/server mismatch that caused the takes-went-up
+      // bug started with a stale local number instead of the real session row.
+      setSignalPoints(session.signal_points ?? saved.signalPoints ?? 10)
+      setMaxSignalPoints(STARTING_TAKES[saved.pack?.difficulty] ?? 10)
+      setWaypointsMode(!!saved.waypointsMode)
+      setWaypoints(saved.waypoints || [])
+      setWaypointPhase(saved.waypointPhase || 0)
+      setCompassTarget(saved.compassTarget || null)
+      setScreen(saved.screen === 'compass' ? 'compass' : 'puzzles')
+      console.log('[restore] success — resumed on screen', saved.screen === 'compass' ? 'compass' : 'puzzles')
+    } catch (err) {
+      console.log('[restore] bailing: discarding saved progress —', err)
+      localStorage.removeItem('mtm_hunt_progress')
+    }
   }
 
   async function startHunt(hunt) {
@@ -3424,6 +3674,8 @@ export default function App() {
       // Load previously seen question IDs for this user (localStorage)
       const seenIds = getSeenQuestionIds(user.id)
 
+      const startingTakes = STARTING_TAKES[hunt.difficulty] ?? 10
+
       const { data: session, error: sessionErr } = await supabase
         .from('hunt_sessions')
         .insert({
@@ -3431,6 +3683,7 @@ export default function App() {
           puzzle_id: hunt.puzzle_id,
           start_lat: userPos?.lat ?? null,
           start_lon: userPos?.lon ?? null,
+          signal_points: startingTakes,
         })
         .select()
         .single()
@@ -3465,7 +3718,8 @@ export default function App() {
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
       setActiveQuestions(questions)
       setSolved({})
-      setSignalPoints(hunt.difficulty === 'expert' ? 5 : 10)
+      setSignalPoints(startingTakes)
+      setMaxSignalPoints(startingTakes)
       setShowReset(false)
       setRealCoords(null)
       setVoucher(null)
@@ -3479,21 +3733,41 @@ export default function App() {
       // get_puzzle_destination takes only a UUID  no FLOAT8 type issues.
       let wps = []
       if (isPremium) {
-        const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
+        // Real, author-placed waypoints (Command Center multi-stop trails)
+        // take priority over synthetic interpolation when they exist for
+        // this puzzle. Empty/missing result falls through to the existing
+        // interpolated path unchanged  Gillingham and every hunt without
+        // stored waypoints keeps working exactly as today.
         try {
-          const { data: destData, error: destErr } = await supabase.rpc('get_puzzle_destination', {
+          const { data: realWpData } = await supabase.rpc('get_puzzle_waypoints', {
             p_session_id: session.id,
           })
-          if (destData?.success) {
-            const huntTier = DIFF_TO_TIER[puzzleData.difficulty] || hunt.difficulty || 'classic'
-            wps = generateWaypoints(
-              startPos.lat, startPos.lon,
-              parseFloat(destData.real_lat), parseFloat(destData.real_lon),
-              huntTier,
-              hunt.difficulty || 'classic',
-            )
+          if (realWpData?.has_waypoints) {
+            wps = realWpData.waypoints.map(w => ({
+              lat: w.real_lat,
+              lon: w.real_lon,
+              geofence_m: w.geofence_radius_m,
+            }))
           }
-        } catch (e) { /* linear mode fallback */ }
+        } catch (e) { /* fall through to synthetic interpolation below */ }
+
+        if (wps.length === 0) {
+          const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
+          try {
+            const { data: destData, error: destErr } = await supabase.rpc('get_puzzle_destination', {
+              p_session_id: session.id,
+            })
+            if (destData?.success) {
+              const huntTier = DIFF_TO_TIER[puzzleData.difficulty] || hunt.difficulty || 'classic'
+              wps = generateWaypoints(
+                startPos.lat, startPos.lon,
+                parseFloat(destData.real_lat), parseFloat(destData.real_lon),
+                huntTier,
+                hunt.difficulty || 'classic',
+              )
+            }
+          } catch (e) { /* linear mode fallback */ }
+        }
       }
       setWaypoints(wps)
       setWaypointsMode(wps.length > 0)
@@ -3668,10 +3942,10 @@ export default function App() {
           <div className="reset-overlay">
             <div className="reset-sheet">
               
-              <div className="reset-title">SIGNAL LOST</div>
+              <div className="reset-title">THAT'S A WRAP</div>
               <div className="reset-body">
-                Too many wrong guesses  coordinate data has been wiped.
-                Restart the pack to try again.
+                Out of takes — coordinate data has been wiped.
+                Restart the pack to go again.
               </div>
               <button className="reset-action" onClick={() => startHunt(activePack)}>
                 RESTART PACK
@@ -3778,7 +4052,7 @@ export default function App() {
               </span>
             </div>
             <CoordDisplay hunt={activePack} solved={solved} />
-            <SignalBar points={signalPoints} accent={accent} />
+            <TakesBar points={signalPoints} max={maxSignalPoints} accent={accent} />
             {isMultiSlotPhase && (
               <div style={{
                 margin: '0 16px 6px', padding: '10px 14px',

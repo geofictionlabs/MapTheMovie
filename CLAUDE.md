@@ -51,6 +51,44 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
     003_functions_only.sql - corrected get_active_hunts (starts_at/ends_at)
 ```
 
+## SECURITY — HIGH PRIORITY, UNFIXED
+
+- **`puzzles.real_lat`/`real_lon` are directly readable via the anon key.**
+  `puzzles_select_active` RLS policy is `FOR SELECT USING (is_active = TRUE)` —
+  a full-row policy with no column restriction. The schema comment even
+  documents the assumption: "RLS allows reading the full row; the RPC
+  controls which columns are returned" — but nothing stops a client from
+  calling `.from('puzzles').select('real_lat,real_lon')` directly via the
+  anon key and reading the real destination before solving anything,
+  bypassing the entire trivia mechanic. Violates the project's hard rule
+  that real coordinates are never client-accessible before solving.
+  **Not fixed as of this entry — next security item after tonight's
+  waypoints work.** Likely fix: move `real_lat`/`real_lon` (and
+  `real_location`) to a locked side table with no RLS policies (same
+  pattern as `trivia_variables`/`puzzle_waypoints`), or revoke column-level
+  SELECT and force all reads through existing RPCs.
+
+- **`get_puzzle_waypoints` is callable via the anon key despite being
+  revoked from it.** Migration `014_real_multistop_waypoints.sql` runs
+  `REVOKE ALL ON FUNCTION get_puzzle_waypoints(uuid) FROM PUBLIC` then
+  `GRANT EXECUTE ... TO authenticated` — intended to restrict the RPC to
+  signed-in (including anonymous-auth) sessions only. Verified live
+  against the production Supabase project: calling it with the anon key
+  and no session returns the function's own `{"success": false, "error":
+  "Session not found"}` response (HTTP 200), not a permission-denied
+  error — meaning the anon role can still execute it. Likely cause:
+  Supabase grants `EXECUTE` to `anon`/`authenticated` directly (not via
+  the `PUBLIC` pseudo-role) at function-creation time, so `REVOKE ALL ...
+  FROM PUBLIC` doesn't touch that grant. The RPC itself is SECURITY
+  DEFINER and still requires a valid, owned `hunt_sessions` row to return
+  real coordinates, so this isn't currently exploitable the same way the
+  `real_lat`/`real_lon` issue above is — but the intended access
+  restriction is silently not enforced. **Not fixed as of this entry.**
+  Same category as the `real_lat`/`real_lon` issue — treat both as one
+  combined security pass rather than fixing piecemeal; likely fix is an
+  explicit `REVOKE EXECUTE ... FROM anon` (and audit other RPCs created
+  the same way for the same gap).
+
 ## Supabase
 
 - **Project URL:** `https://hnayygbrhrxyyfucgrus.supabase.co`
@@ -163,3 +201,32 @@ Each question object from `get_puzzle_for_player` has:
 3. Nearby hunts discovery map
 4. Legal documents review
 5. Stripe subscriptions
+
+## Known Follow-ups
+
+- **Cache `get_puzzle_for_player`'s question set on `hunt_sessions`**, mirroring
+  how `unlock_coordinates` caches `session_dest_lat`/`session_dest_lon` per
+  session (`migrations/004_question_variety.sql`). Right now the RPC does
+  `ORDER BY RANDOM()` on every call, so anything that re-fetches puzzle
+  questions mid-hunt (e.g. `restoreHuntProgress` in `App.jsx`, after a phone
+  call / backgrounded app / closed browser) may show different trivia for
+  unsolved slots than the player originally saw. Solved digits stay valid
+  either way — this is a continuity/UX gap, not a correctness bug.
+
+- **`delete_user_data` can't self-delete a `platform_admin` who has issued
+  `business_strikes`.** `business_strikes.issued_by` is `NOT NULL` with no
+  `ON DELETE` handling — deleting that admin's `auth.users` row will hit an
+  FK violation and roll back (a safe failure, not silent corruption, but it
+  does mean the deletion request fails rather than completing). Not
+  reassigned to the sentinel deleted-user placeholder because it represents
+  an admin *acting on* a business, not a player's own activity. Left
+  unhandled deliberately — `platform_admins` is a tiny, manually-curated set
+  for a sole founder, not a near-term risk. Revisit if admin headcount grows.
+
+- **Card genre is guessed client-side, not authored.** There is no `genre`
+  column on `puzzle_packs` — only `theme_tag` (seasonal: christmas/
+  halloween/evergreen/etc, unrelated to movie genre). `detectGenre()` in
+  `App.jsx` keyword-matches pack name/description/tagline against the 8
+  `THEMES` in `HuntSelectionScreen.jsx` as a placeholder so genre theming
+  has something to key off. Real fix: add a proper `genre` column + a
+  picker in Command Center, then drop the heuristic.

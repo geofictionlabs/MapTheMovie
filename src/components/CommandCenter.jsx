@@ -93,13 +93,10 @@ function extractCoordinateDigit(lat) {
   return parseInt(s[s.length - 1], 10);
 }
 
-// Replace the 4th decimal of |lat| with the slot letter 'A'.
-// e.g. 51.3858 -> "51.385A", -34.1234 -> "-34.123A"
-function buildMaskedLat(lat) {
-  const sign = lat < 0 ? '-' : '';
-  const s = Math.abs(lat).toFixed(4);
-  return sign + s.slice(0, -1) + 'A';
-}
+// NOTE: masked_lat/masked_lon used to be built per-waypoint here, but a
+// multi-stop hunt now has ONE combined masked template covering all slots,
+// built server-side in create_command_center_hunt from the final
+// destination's coordinates — see migrations/014_real_multistop_waypoints.sql.
 
 export default function CommandCenter() {
   const mapRef = useRef(null);
@@ -115,7 +112,10 @@ export default function CommandCenter() {
   const [pendingName, setPendingName] = useState('');
   const [packName, setPackName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [savedBanner, setSavedBanner] = useState(false);
+  // { packId, packName } of the most recently saved pack, or null.
+  // Stays visible (no auto-hide timer) until dismissed — the previous 3s
+  // toast let admins lose track of the pack_id needed to create its campaign.
+  const [savedInfo, setSavedInfo] = useState(null);
 
   // Admin gate. Real enforcement is server-side in the RPC and Edge Function.
   useEffect(() => {
@@ -172,8 +172,6 @@ export default function CommandCenter() {
     if (!pendingName.trim()) return;
     const id = crypto.randomUUID();
     const required_digit = extractCoordinateDigit(pendingPin.lat);
-    const masked_lat = buildMaskedLat(pendingPin.lat);
-    const masked_lon = pendingPin.lng.toFixed(4);
 
     const waypoint = {
       id,
@@ -182,8 +180,6 @@ export default function CommandCenter() {
       tier: selectedTier,
       name: pendingName.trim(),
       required_digit,
-      masked_lat,
-      masked_lon,
       question_text:    null,
       movie_title:      null,
       movie_year:       null,
@@ -242,8 +238,6 @@ export default function CommandCenter() {
         lat:              w.lat,
         lng:              w.lng,
         tier:             w.tier,
-        masked_lat:       w.masked_lat,
-        masked_lon:       w.masked_lon,
         movie_title:      w.movie_title,
         movie_year:       w.movie_year,
         movie_emoji:      w.movie_emoji,
@@ -254,16 +248,15 @@ export default function CommandCenter() {
         hint_text:        w.hint_text,
       }));
 
-      const { error } = await supabase.rpc('create_command_center_hunt', {
+      const { data, error } = await supabase.rpc('create_command_center_hunt', {
         p_pack_name: packName.trim(),
         p_waypoints: payload,
       });
       if (error) throw error;
 
-      setSavedBanner(true);
+      setSavedInfo({ packId: data, packName: packName.trim() });
       setPackName('');
       setWaypoints([]);
-      setTimeout(() => setSavedBanner(false), 3000);
     } catch (err) {
       console.error('Save failed:', err);
       alert('Save failed — ' + (err?.message || 'see console'));
@@ -426,7 +419,7 @@ export default function CommandCenter() {
                     <span style={{ fontSize: 14, fontWeight: 600 }}>{w.name}</span>
                   </div>
                   <p style={{ fontSize: 11, fontFamily: 'monospace', margin: '2px 0 0', color: COLORS.textDim }}>
-                    {w.masked_lat} / {w.masked_lon} &middot; {TIERS[w.tier].label}
+                    {w.lat.toFixed(4)}, {w.lng.toFixed(4)} &middot; {TIERS[w.tier].label}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
@@ -504,19 +497,58 @@ export default function CommandCenter() {
         >
           {saving ? (
             <Spinner size={16} />
-          ) : savedBanner ? (
+          ) : savedInfo ? (
             <CheckIcon size={16} />
           ) : (
             <SaveIcon size={16} />
           )}
-          {saving ? 'Saving...' : savedBanner ? 'Hunt Saved' : 'Save Hunt'}
+          {saving ? 'Saving...' : savedInfo ? 'Hunt Saved' : 'Save Hunt'}
         </button>
 
-        {savedBanner && (
-          <p style={{ fontSize: 12, color: COLORS.textDim, textAlign: 'center', marginTop: 8 }}>
-            Pack saved to database. Create a campaign in Supabase to make it live for players.
-          </p>
-        )}
+        {savedInfo && (() => {
+          const sql = `INSERT INTO campaigns (
+  business_id, pack_id, name, status,
+  starts_at, ends_at, max_redemptions,
+  voucher_headline
+) VALUES (
+  '<business_id>',
+  '${savedInfo.packId}',
+  '${savedInfo.packName.replace(/'/g, "''")}',
+  'active',
+  NOW(), NOW() + INTERVAL '30 days',
+  100,
+  '<voucher headline>'
+);`;
+          return (
+            <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)' }}>
+              <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
+                "{savedInfo.packName}" saved — not visible to players yet
+              </p>
+              <p style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 10px' }}>
+                A campaign still has to link this pack to a business before it appears on
+                discovery. Paste this into the Supabase SQL editor after filling in
+                business_id, dates, and voucher copy:
+              </p>
+              <pre style={{ fontSize: 11, color: COLORS.textBright, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: 10, margin: '0 0 10px', overflowX: 'auto', whiteSpace: 'pre' }}>
+                {sql}
+              </pre>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => navigator.clipboard.writeText(sql)}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: COLORS.gold, color: '#080810', border: 'none', cursor: 'pointer' }}
+                >
+                  Copy SQL
+                </button>
+                <button
+                  onClick={() => setSavedInfo(null)}
+                  style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
