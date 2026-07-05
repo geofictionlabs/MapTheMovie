@@ -3431,7 +3431,7 @@ export default function App() {
           voucher_headline,
           difficulty,
           puzzle_packs (
-            id, name, emoji, tier, description, tagline, accent_color, theme_tag,
+            id, name, emoji, tier, description, tagline, accent_color, theme_tag, genre,
             puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
           ),
           businesses ( id, name, is_active )
@@ -3458,12 +3458,12 @@ export default function App() {
           if (geo?.coordinates) { lon = geo.coordinates[0]; lat = geo.coordinates[1] }
         } catch {}
 
-        // No `genre` column exists on puzzle_packs today (theme_tag is
-        // seasonal — christmas/halloween/etc — not a movie genre). Until
-        // there's a real authored genre field + Command Center picker,
-        // detect one from the pack's own text so genre theming has
-        // something real to key off. See CLAUDE.md known follow-ups.
-        const genre = detectGenre(pp.name, pp.description, pp.tagline)
+        // `puzzle_packs.genre` is authored directly in Command Center as of
+        // migration 016. Packs created before that migration have genre =
+        // NULL (theme_tag is seasonal — christmas/halloween/etc — not a
+        // movie genre, so it can't stand in), so fall back to the old
+        // keyword-detection heuristic only for those.
+        const genre = pp.genre || detectGenre(pp.name, pp.description, pp.tagline)
 
         return [{
           campaign_id:      c.id,

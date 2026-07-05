@@ -3,13 +3,14 @@
 // Owner-only hunt builder. Drop waypoints on the map, generate trivia
 // via the secure Edge Function, then save to Supabase.
 //
-// Saves via create_command_center_hunt (SECURITY DEFINER RPC in migration 007).
+// Saves via create_command_center_hunt (SECURITY DEFINER RPC, migration 016).
 // That RPC checks is_platform_admin() server-side and inserts:
-//   puzzle_packs -> puzzles -> trivia_variables
-// atomically. Direct table writes are not used.
-//
-// After saving, create a campaign in Supabase manually to make the hunt
-// visible in the player app (get_active_hunts requires an active campaign).
+//   puzzle_packs -> puzzles -> trivia_variables -> puzzle_waypoints -> campaigns
+// all in one transaction. Direct table writes are not used. A successful
+// save is immediately live — no manual campaign SQL required. business_id
+// is required (a "GeoFiction Labs (Unassigned)" placeholder business exists
+// for hunts without a real sponsor yet — see migration 016 for why NULL
+// isn't supported).
 
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
@@ -83,6 +84,25 @@ const TIERS = {
   cipher: { label: 'Cipher', color: '#F43F5E' },
 };
 
+// Same 8 keys as HuntSelectionScreen.jsx's THEMES / App.jsx's GENRE_KEYWORDS.
+// Authored here going forward instead of guessed client-side from pack text.
+const GENRES = [
+  { key: 'general', label: 'General' },
+  { key: 'horror', label: 'Horror' },
+  { key: 'scifi', label: 'Sci-Fi' },
+  { key: 'action', label: 'Action' },
+  { key: 'romance', label: 'Romance' },
+  { key: 'comedy', label: 'Comedy' },
+  { key: 'thriller', label: 'Thriller' },
+  { key: 'evergreen_80s', label: '80s Nostalgia' },
+];
+
+const DEFAULT_VOUCHER_HEADLINE = 'Show this screen to claim your reward';
+
+function toDateInputValue(d) {
+  return d.toISOString().slice(0, 10);
+}
+
 const DEFAULT_CENTER = [51.3858, 0.5483]; // Gillingham, Kent
 const DEFAULT_ZOOM = 15;
 
@@ -107,15 +127,28 @@ export default function CommandCenter() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [selectedTier, setSelectedTier] = useState('classic');
+  const [selectedGenre, setSelectedGenre] = useState('general');
   const [waypoints, setWaypoints] = useState([]);
   const [pendingPin, setPendingPin] = useState(null);
   const [pendingName, setPendingName] = useState('');
   const [packName, setPackName] = useState('');
   const [saving, setSaving] = useState(false);
-  // { packId, packName } of the most recently saved pack, or null.
-  // Stays visible (no auto-hide timer) until dismissed — the previous 3s
-  // toast let admins lose track of the pack_id needed to create its campaign.
+  // { packId, campaignId, packName } of the most recently saved hunt, or null.
+  // Stays visible (no auto-hide timer) until dismissed.
   const [savedInfo, setSavedInfo] = useState(null);
+
+  // Campaign fields — required business, everything else defaulted.
+  const [businesses, setBusinesses] = useState([]);
+  const [businessesLoading, setBusinessesLoading] = useState(true);
+  const [selectedBusinessId, setSelectedBusinessId] = useState('');
+  const [campaignName, setCampaignName] = useState('');
+  const [startsAt, setStartsAt] = useState(() => toDateInputValue(new Date()));
+  const [endsAt, setEndsAt] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    return toDateInputValue(d);
+  });
+  const [voucherHeadline, setVoucherHeadline] = useState(DEFAULT_VOUCHER_HEADLINE);
 
   // Admin gate. Real enforcement is server-side in the RPC and Edge Function.
   useEffect(() => {
@@ -126,6 +159,22 @@ export default function CommandCenter() {
     }
     checkAdmin();
   }, []);
+
+  // Business picker options — loaded once admin access is confirmed.
+  useEffect(() => {
+    if (!isAdmin) return;
+    async function loadBusinesses() {
+      setBusinessesLoading(true);
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+      if (!error) setBusinesses(data || []);
+      setBusinessesLoading(false);
+    }
+    loadBusinesses();
+  }, [isAdmin]);
 
   // Map init — runs once when admin gate passes
   useEffect(() => {
@@ -205,7 +254,10 @@ export default function CommandCenter() {
       prev.map((w) => (w.id === id ? { ...w, loading: true, error: false } : w))
     );
     try {
-      const result = await generateTriviaQuestion(name, tier, required_digit);
+      // selectedGenre read live (not frozen per-waypoint) — genre is a
+      // pack-level setting, so a regenerate always uses whatever genre is
+      // currently selected, matching the rest of the hunt.
+      const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre);
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...result, loading: false } : w))
       );
@@ -226,7 +278,7 @@ export default function CommandCenter() {
   }
 
   async function saveHunt() {
-    if (!packName.trim() || waypoints.length === 0) return;
+    if (!packName.trim() || waypoints.length === 0 || !selectedBusinessId) return;
     if (waypoints.some((w) => w.loading || w.error || w.coordinate_digit === null)) {
       alert('All waypoints must finish generating before saving.');
       return;
@@ -251,12 +303,28 @@ export default function CommandCenter() {
       const { data, error } = await supabase.rpc('create_command_center_hunt', {
         p_pack_name: packName.trim(),
         p_waypoints: payload,
+        p_business_id: selectedBusinessId,
+        p_genre: selectedGenre,
+        p_campaign_name: campaignName.trim() || null,
+        p_starts_at: new Date(startsAt).toISOString(),
+        p_ends_at: new Date(endsAt).toISOString(),
+        p_voucher_headline: voucherHeadline.trim() || DEFAULT_VOUCHER_HEADLINE,
       });
       if (error) throw error;
 
-      setSavedInfo({ packId: data, packName: packName.trim() });
+      setSavedInfo({ packId: data.pack_id, campaignId: data.campaign_id, packName: data.campaign_name });
       setPackName('');
       setWaypoints([]);
+      setSelectedBusinessId('');
+      setSelectedGenre('general');
+      setCampaignName('');
+      setStartsAt(toDateInputValue(new Date()));
+      setEndsAt(() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() + 1);
+        return toDateInputValue(d);
+      });
+      setVoucherHeadline(DEFAULT_VOUCHER_HEADLINE);
     } catch (err) {
       console.error('Save failed:', err);
       alert('Save failed — ' + (err?.message || 'see console'));
@@ -268,6 +336,7 @@ export default function CommandCenter() {
   const canSave =
     waypoints.length > 0 &&
     packName.trim().length > 0 &&
+    !!selectedBusinessId &&
     !saving &&
     waypoints.every((w) => !w.loading && !w.error && w.coordinate_digit !== null);
 
@@ -323,6 +392,29 @@ export default function CommandCenter() {
             boxSizing: 'border-box',
           }}
         />
+
+        {/* Genre — pack-level, chosen before any waypoint is dropped so it
+            actually reaches trivia generation (not just card theming). */}
+        <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+          Genre
+        </label>
+        <select
+          value={selectedGenre}
+          onChange={(e) => setSelectedGenre(e.target.value)}
+          style={{
+            width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+            background: COLORS.panel, border: `1px solid ${COLORS.border}`,
+            color: COLORS.textBright, outline: 'none', marginBottom: 16,
+            boxSizing: 'border-box',
+          }}
+        >
+          {GENRES.map((g) => (
+            <option key={g.key} value={g.key}>{g.label}</option>
+          ))}
+        </select>
+        <p style={{ color: COLORS.textDim, fontSize: 11, marginBottom: 16, marginTop: -12 }}>
+          Applies to every waypoint's trivia below — pick it before dropping pins.
+        </p>
 
         {/* Difficulty tier selector */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -482,6 +574,97 @@ export default function CommandCenter() {
           ))}
         </div>
 
+        {/* Campaign details — created automatically alongside the pack */}
+        <div style={{ borderRadius: 8, padding: 14, marginBottom: 16, background: COLORS.panel, border: `1px solid ${COLORS.border}` }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: COLORS.textDim, margin: '0 0 12px' }}>
+            Campaign details
+          </p>
+
+          <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+            Business <span style={{ color: '#F43F5E' }}>*</span>
+          </label>
+          <select
+            value={selectedBusinessId}
+            onChange={(e) => setSelectedBusinessId(e.target.value)}
+            disabled={businessesLoading}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+              background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+              color: COLORS.textBright, outline: 'none', marginBottom: 12,
+              boxSizing: 'border-box',
+            }}
+          >
+            <option value="" disabled>
+              {businessesLoading ? 'Loading businesses…' : 'Select a business…'}
+            </option>
+            {businesses.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+
+          <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+            Campaign name
+          </label>
+          <input
+            value={campaignName}
+            onChange={(e) => setCampaignName(e.target.value)}
+            placeholder={packName || 'Defaults to pack name'}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+              background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+              color: COLORS.textBright, outline: 'none', marginBottom: 12,
+              boxSizing: 'border-box',
+            }}
+          />
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+                Starts
+              </label>
+              <input
+                type="date"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+                  background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+                  color: COLORS.textBright, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+                Ends
+              </label>
+              <input
+                type="date"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+                  background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+                  color: COLORS.textBright, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
+            Voucher headline
+          </label>
+          <input
+            value={voucherHeadline}
+            onChange={(e) => setVoucherHeadline(e.target.value)}
+            placeholder={DEFAULT_VOUCHER_HEADLINE}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+              background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+              color: COLORS.textBright, outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
         {/* Save button */}
         <button
           onClick={saveHunt}
@@ -505,50 +688,29 @@ export default function CommandCenter() {
           {saving ? 'Saving...' : savedInfo ? 'Hunt Saved' : 'Save Hunt'}
         </button>
 
-        {savedInfo && (() => {
-          const sql = `INSERT INTO campaigns (
-  business_id, pack_id, name, status,
-  starts_at, ends_at, max_redemptions,
-  voucher_headline
-) VALUES (
-  '<business_id>',
-  '${savedInfo.packId}',
-  '${savedInfo.packName.replace(/'/g, "''")}',
-  'active',
-  NOW(), NOW() + INTERVAL '30 days',
-  100,
-  '<voucher headline>'
-);`;
-          return (
-            <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)' }}>
-              <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
-                "{savedInfo.packName}" saved — not visible to players yet
-              </p>
-              <p style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 10px' }}>
-                A campaign still has to link this pack to a business before it appears on
-                discovery. Paste this into the Supabase SQL editor after filling in
-                business_id, dates, and voucher copy:
-              </p>
-              <pre style={{ fontSize: 11, color: COLORS.textBright, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: 10, margin: '0 0 10px', overflowX: 'auto', whiteSpace: 'pre' }}>
-                {sql}
-              </pre>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => navigator.clipboard.writeText(sql)}
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: COLORS.gold, color: '#080810', border: 'none', cursor: 'pointer' }}
-                >
-                  Copy SQL
-                </button>
-                <button
-                  onClick={() => setSavedInfo(null)}
-                  style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
-                >
-                  Dismiss
-                </button>
-              </div>
+        {savedInfo && (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)' }}>
+            <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
+              "{savedInfo.packName}" is live — players can find it now.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <a
+                href="https://app.mapthemovie.co.uk"
+                target="_blank"
+                rel="noreferrer"
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: COLORS.gold, color: '#080810', border: 'none', cursor: 'pointer', textAlign: 'center' }}
+              >
+                View on discovery screen &rarr;
+              </a>
+              <button
+                onClick={() => setSavedInfo(null)}
+                style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
             </div>
-          );
-        })()}
+          </div>
+        )}
       </div>
     </div>
   );

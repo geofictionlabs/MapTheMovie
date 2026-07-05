@@ -32,6 +32,30 @@ function tierGuidance(tier: string) {
   }
 }
 
+// One of the 8 HuntSelectionScreen THEMES keys. 'general' (or anything
+// unrecognised) returns null -- no genre constraint, same as pre-genre
+// behaviour: thematic-to-location if sensible, otherwise any film trivia.
+function genrePhrase(genre: string | undefined) {
+  switch (genre) {
+    case 'horror':
+      return 'a horror film (must be a recognised horror movie)';
+    case 'scifi':
+      return 'a science fiction film (must be a recognised sci-fi movie)';
+    case 'action':
+      return 'an action film (must be a recognised action movie)';
+    case 'romance':
+      return 'a romance film (must be a recognised romantic movie)';
+    case 'comedy':
+      return 'a comedy film (must be a recognised comedy movie)';
+    case 'thriller':
+      return 'a thriller film (must be a recognised thriller movie)';
+    case 'evergreen_80s':
+      return 'a film released in the 1980s (any genre, must be from the decade 1980-1989)';
+    default:
+      return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -73,7 +97,7 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json();
-  const { locationName, tier, required_digit } = body;
+  const { locationName, tier, required_digit, genre } = body;
 
   if (!locationName || !tier) {
     return new Response(JSON.stringify({ error: 'locationName and tier are required' }), {
@@ -95,14 +119,16 @@ Deno.serve(async (req) => {
     );
   }
 
+  const genreRequirement = genrePhrase(genre);
+
   const prompt = `Generate one movie trivia question for a GPS treasure hunt waypoint.
 Location name: "${locationName}"
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
-
+${genreRequirement ? `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n` : ''}
 CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film trivia) MUST naturally contain the digit ${required_digit} somewhere in it. This digit fills one GPS coordinate slot. Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
 
-Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.
+${genreRequirement ? 'Tie the question thematically to the location name only if doing so does not conflict with the genre constraint above — the genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
 
 Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself.
 

@@ -8,11 +8,13 @@ import { supabase } from './supabase';
 
 // requiredDigit: the 4th decimal digit of the waypoint latitude.
 // The AI will generate a question whose answer naturally contains this digit.
+// genre: one of the 8 HuntSelectionScreen THEMES keys, or 'general' for no
+// genre constraint (thematic-to-location behaviour, unchanged).
 // Returns: { question_text, movie_title, movie_year, movie_emoji,
 //            correct_answer, coordinate_digit, extraction_note, hint_text }
-export async function generateTriviaQuestion(locationName, tier, requiredDigit) {
+export async function generateTriviaQuestion(locationName, tier, requiredDigit, genre) {
   const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
-    body: { locationName, tier, required_digit: requiredDigit },
+    body: { locationName, tier, required_digit: requiredDigit, genre },
   });
 
   if (error) {

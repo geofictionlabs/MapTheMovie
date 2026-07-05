@@ -223,10 +223,10 @@ Each question object from `get_puzzle_for_player` has:
   unhandled deliberately — `platform_admins` is a tiny, manually-curated set
   for a sole founder, not a near-term risk. Revisit if admin headcount grows.
 
-- **Card genre is guessed client-side, not authored.** There is no `genre`
-  column on `puzzle_packs` — only `theme_tag` (seasonal: christmas/
-  halloween/evergreen/etc, unrelated to movie genre). `detectGenre()` in
-  `App.jsx` keyword-matches pack name/description/tagline against the 8
-  `THEMES` in `HuntSelectionScreen.jsx` as a placeholder so genre theming
-  has something to key off. Real fix: add a proper `genre` column + a
-  picker in Command Center, then drop the heuristic.
+- **Card genre is now authored, not guessed — for new packs only.**
+  Migration 016 added `puzzle_packs.genre` (one of the 8 `THEMES` keys)
+  and Command Center now has a genre picker on save. `detectGenre()` in
+  `App.jsx` still exists as a fallback for packs created before migration
+  016, which have `genre = NULL` (`pp.genre || detectGenre(...)`). No
+  backfill was run — old packs keep using the heuristic indefinitely
+  unless someone authors a real genre for them directly in the DB.
