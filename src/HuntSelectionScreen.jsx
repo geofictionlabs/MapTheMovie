@@ -305,8 +305,8 @@ function ActionFlourish({ theme }) {
         }} />
       ))}
       <div style={{
-        position: 'absolute', top: '-20%', left: '-30%', width: '60%', height: '140%',
-        background: `linear-gradient(115deg, transparent 45%, ${theme.accent}35 50%, transparent 55%)`,
+        position: 'absolute', top: '-20%', left: 0, width: '100%', height: '140%',
+        background: `linear-gradient(115deg, transparent 46%, ${theme.accent}35 50%, transparent 54%)`,
         animation: 'flourishSlash 7s ease-in-out infinite',
       }} />
     </div>
@@ -347,8 +347,8 @@ function RetroFlourish({ theme }) {
         ))}
       </svg>
       <div style={{
-        position: 'absolute', top: 0, left: '-40%', width: '30%', height: '100%',
-        background: 'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.5) 50%, transparent 60%)',
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+        background: 'linear-gradient(115deg, transparent 46%, rgba(255,255,255,0.5) 50%, transparent 54%)',
         mixBlendMode: 'overlay',
         animation: 'flourishChromeShimmer 3.5s ease-in-out infinite',
       }} />
@@ -391,8 +391,8 @@ function GeneralFlourish({ theme }) {
         }} />
       ))}
       <div style={{
-        position: 'absolute', top: 0, left: '-40%', width: '25%', height: '100%',
-        background: `linear-gradient(115deg, transparent 40%, ${theme.accent}30 50%, transparent 60%)`,
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+        background: `linear-gradient(115deg, transparent 46%, ${theme.accent}30 50%, transparent 54%)`,
         animation: 'flourishGoldGlint 8s ease-in-out infinite',
       }} />
     </div>
@@ -773,8 +773,8 @@ function PrizePoolBanner({ pool }) {
       {/* Slow shimmer sweep — opacity/transform only */}
       {!reduceMotion && (
         <div style={{
-          position: 'absolute', top: 0, left: '-30%', width: '18%', height: '100%',
-          background: 'linear-gradient(115deg, transparent 40%, rgba(245,158,11,0.35) 50%, transparent 60%)',
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'linear-gradient(115deg, transparent 46%, rgba(245,158,11,0.35) 50%, transparent 54%)',
           animation: 'ticketShimmer 5s ease-in-out infinite',
         }} />
       )}
@@ -991,9 +991,9 @@ export default function HuntSelectionScreen({
           100% { transform: translate(6px, -140px) scale(0.4); opacity: 0; }
         }
         @keyframes flourishSlash {
-          0%, 85%, 100% { transform: translateX(0); opacity: 0; }
+          0%, 85%, 100% { transform: translateX(-100%); opacity: 0; }
           88% { opacity: 1; }
-          95% { transform: translateX(180%); opacity: 0; }
+          95% { transform: translateX(100%); opacity: 0; }
         }
         @keyframes flourishPopcorn {
           0%, 100% { transform: translateY(0) scaleX(1) scaleY(1); }
@@ -1006,10 +1006,10 @@ export default function HuntSelectionScreen({
           50% { transform: translateY(4px); }
         }
         @keyframes flourishChromeShimmer {
-          0% { transform: translateX(0); opacity: 0; }
+          0% { transform: translateX(-100%); opacity: 0; }
           10% { opacity: 0.8; }
-          50% { transform: translateX(280%); opacity: 0.8; }
-          60%, 100% { transform: translateX(280%); opacity: 0; }
+          50% { transform: translateX(100%); opacity: 0.8; }
+          60%, 100% { transform: translateX(100%); opacity: 0; }
         }
         @keyframes flourishVHSJitter {
           0%, 92%, 100% { transform: translateX(0); }
@@ -1030,17 +1030,17 @@ export default function HuntSelectionScreen({
           50% { transform: translate(8px, -14px); opacity: 0.6; }
         }
         @keyframes flourishGoldGlint {
-          0%, 85%, 100% { transform: translateX(0); opacity: 0; }
+          0%, 85%, 100% { transform: translateX(-100%); opacity: 0; }
           90% { opacity: 0.9; }
-          98% { transform: translateX(280%); opacity: 0; }
+          98% { transform: translateX(100%); opacity: 0; }
         }
 
         /* Cinema frame — header marquee + ticket-stub prize banner */
         @keyframes letterGlow { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
         @keyframes ticketShimmer {
-          0%, 100% { transform: translateX(0); opacity: 0; }
+          0%, 100% { transform: translateX(-100%); opacity: 0; }
           45% { opacity: 0.9; }
-          55% { transform: translateX(650%); opacity: 0; }
+          55% { transform: translateX(100%); opacity: 0; }
         }
 
         @media (prefers-reduced-motion: reduce) {
