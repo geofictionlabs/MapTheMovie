@@ -261,6 +261,7 @@ function HorrorFlourish({ theme }) {
       ))}
       <div style={{
         position: 'absolute', inset: 0, background: '#fff',
+        opacity: 0, WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)',
         animation: 'flourishLightning 8s linear infinite',
       }} />
     </div>
@@ -970,10 +971,11 @@ export default function HuntSelectionScreen({
           100% { opacity: 0; transform: translateY(260px) translateX(-2px) scale(0.8,1.6); }
         }
         @keyframes flourishLightning {
-          0%, 96%, 100% { opacity: 0; }
-          97% { opacity: 0.12; }
-          97.5% { opacity: 0; }
+          0%, 95%, 100% { opacity: 0; }
+          96% { opacity: 0.12; }
+          97% { opacity: 0; }
           98% { opacity: 0.08; }
+          99% { opacity: 0; }
         }
         @keyframes flourishScanRise {
           0% { transform: translateY(340px); opacity: 0; }
