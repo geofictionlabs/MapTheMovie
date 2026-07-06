@@ -3324,6 +3324,22 @@ export default function App() {
   const [accessGranted, setAccessGranted] = useState(
     localStorage.getItem('mtm_access') === 'MAPTEST2026'
   )
+  // Platform admins bypass the beta gate entirely -- checked once against
+  // whatever Supabase session is already persisted for this browser (e.g.
+  // a magic-link session from Command Center/Dashboard). Gate render is
+  // held until this resolves so admins never see even a flash of it.
+  const [adminBypassChecked, setAdminBypassChecked] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    supabase.rpc('is_platform_admin')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (!error && data === true) setAccessGranted(true)
+        setAdminBypassChecked(true)
+      })
+      .catch(() => { if (!cancelled) setAdminBypassChecked(true) })
+    return () => { cancelled = true }
+  }, [])
   const [screen, setScreen] = useState(() => {
     try {
       const s = localStorage.getItem('mtm_active_reward')
@@ -3932,6 +3948,7 @@ export default function App() {
   const phaseUnsolved     = phaseSlots.filter(s => solved[s] === undefined)
   const isMultiSlotPhase  = phaseSlots.length > 1
 
+  if (!accessGranted && !adminBypassChecked) return null
   if (!accessGranted) return <AccessGate onSuccess={() => setAccessGranted(true)} />
 
   return (
