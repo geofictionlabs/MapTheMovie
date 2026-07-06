@@ -257,7 +257,18 @@ export default function CommandCenter() {
       // selectedGenre read live (not frozen per-waypoint) — genre is a
       // pack-level setting, so a regenerate always uses whatever genre is
       // currently selected, matching the rest of the hunt.
-      const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre);
+      // Movies already assigned to OTHER waypoints are excluded so the AI
+      // doesn't pick the same film twice across one hunt. Derived directly
+      // from waypoints (not separate tracked state) so it's always
+      // consistent with what's actually on the map -- no extra state to
+      // keep in sync. Excludes the pin's own current movie_title too (id
+      // filter), which only matters on regenerate and is harmless: we
+      // want a different movie for that pin anyway.
+      const usedMovies = waypoints
+        .filter((w) => w.id !== id)
+        .map((w) => w.movie_title)
+        .filter(Boolean);
+      const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre, usedMovies);
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...result, loading: false } : w))
       );

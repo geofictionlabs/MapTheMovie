@@ -10,11 +10,13 @@ import { supabase } from './supabase';
 // The AI will generate a question whose answer naturally contains this digit.
 // genre: one of the 8 HuntSelectionScreen THEMES keys, or 'general' for no
 // genre constraint (thematic-to-location behaviour, unchanged).
+// excludeMovies: movie titles already used elsewhere in this hunt, so the AI
+// doesn't pick the same film for two different pins.
 // Returns: { question_text, movie_title, movie_year, movie_emoji,
 //            correct_answer, coordinate_digit, extraction_note, hint_text }
-export async function generateTriviaQuestion(locationName, tier, requiredDigit, genre) {
+export async function generateTriviaQuestion(locationName, tier, requiredDigit, genre, excludeMovies) {
   const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
-    body: { locationName, tier, required_digit: requiredDigit, genre },
+    body: { locationName, tier, required_digit: requiredDigit, genre, exclude_movies: excludeMovies },
   });
 
   if (error) {

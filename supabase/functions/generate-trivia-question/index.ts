@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json();
-  const { locationName, tier, required_digit, genre } = body;
+  const { locationName, tier, required_digit, genre, exclude_movies } = body;
 
   if (!locationName || !tier) {
     return new Response(JSON.stringify({ error: 'locationName and tier are required' }), {
@@ -121,11 +121,16 @@ Deno.serve(async (req) => {
 
   const genreRequirement = genrePhrase(genre);
 
+  const excludeList = Array.isArray(exclude_movies) ? exclude_movies.filter(Boolean) : [];
+  const excludeConstraint = excludeList.length > 0
+    ? `\nIMPORTANT: Do not use any of these films in your question: ${excludeList.join(', ')}. Choose a completely different film.\n`
+    : '';
+
   const prompt = `Generate one movie trivia question for a GPS treasure hunt waypoint.
 Location name: "${locationName}"
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
-${genreRequirement ? `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n` : ''}
+${genreRequirement ? `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n` : ''}${excludeConstraint}
 CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film trivia) MUST naturally contain the digit ${required_digit} somewhere in it. This digit fills one GPS coordinate slot. Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
 
 ${genreRequirement ? 'Tie the question thematically to the location name only if doing so does not conflict with the genre constraint above — the genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
@@ -168,21 +173,27 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   const aiData = await aiResponse.json();
   const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
 
-  // Extract JSON object from wherever it appears — handles reasoning preamble
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) {
+  // The AI reasons before answering, so the clean JSON object is always the
+  // LAST one in the response -- a greedy first-{-to-last-} match can span
+  // across reasoning text that itself contains braces, leaking reasoning
+  // into the parsed fields. Find the last "{" and the last "}" instead,
+  // which isolates the final JSON object regardless of what precedes it.
+  const lastOpen = text.lastIndexOf('{');
+  const lastClose = text.lastIndexOf('}');
+  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) {
     return new Response(
       JSON.stringify({ error: 'Could not parse AI response', raw: text }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+  const jsonSlice = text.slice(lastOpen, lastClose + 1);
 
   let parsed: any;
   try {
-    parsed = JSON.parse(match[0]);
+    parsed = JSON.parse(jsonSlice);
   } catch {
     return new Response(
-      JSON.stringify({ error: 'Could not parse AI response', raw: match[0] }),
+      JSON.stringify({ error: 'Could not parse AI response', raw: jsonSlice }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
