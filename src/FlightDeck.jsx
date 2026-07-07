@@ -270,7 +270,7 @@ export default function FlightDeck() {
     setLoading(true);
     Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('businesses').select('*'),
+      supabase.from('businesses').select('id, name, is_active, billing_tier, subscription_active'),
       supabase.from('campaigns').select('id', { count: 'exact', head: true }),
       supabase.from('redemptions').select('id', { count: 'exact', head: true }),
       supabase.from('prize_pools').select('prize_amount_gbp').eq('status', 'active').maybeSingle(),
