@@ -230,3 +230,26 @@ Each question object from `get_puzzle_for_player` has:
   016, which have `genre = NULL` (`pp.genre || detectGenre(...)`). No
   backfill was run — old packs keep using the heuristic indefinitely
   unless someone authors a real genre for them directly in the DB.
+
+- **Cross-hunt question repetition — considered solved by migration 017,
+  no additional fix planned.** Two separate repetition problems, two
+  separate existing fixes:
+  - *Within one hunt* (e.g. Back to the Future on both pin 1 and pin 2):
+    fixed by `exclude_movies` on `generate-trivia-question` — Command
+    Center derives already-used movie titles straight from the waypoints
+    already on the map and passes them into every subsequent generation
+    call (see `CommandCenter.jsx`'s `fetchQuestionFor`).
+  - *Across different hunts* (the same AI-generated question showing up
+    in hunt after hunt over time): once questions are promoted into
+    `trivia_pool` via `promote_question_to_pool`, `get_pooled_question`'s
+    `ORDER BY times_used ASC, RANDOM()` naturally spreads usage across
+    the whole pool instead of clustering on a few popular rows. No
+    additional dedup logic needed *if* questions actually get promoted
+    into the pool regularly — this only helps hunts that draw from the
+    pool, not ones still generating fresh via AI every time.
+  - **Not yet true today**: the Command-Center-integration step that
+    actually tries the pool first and falls back to AI (mentioned in
+    migration 017's own header) hasn't been built — see that migration's
+    comments. Until it exists, every hunt still generates fresh via AI
+    with no cross-hunt awareness at all; this section describes the
+    intended fix, not current live behaviour.
