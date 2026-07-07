@@ -47,7 +47,7 @@ function bearingDegrees(lat1, lon1, lat2, lon2) {
 }
 
 function diffGeofence(difficulty) {
-  return { casual: 25, classic: 15, expert: 10 }[difficulty] || 15
+  return { casual: 25, classic: 15, expert: 10, cipher: 15 }[difficulty] || 15
 }
 
 function formatCountdown(endsAt) {
