@@ -3629,7 +3629,7 @@ export default function App() {
 
       const { data: campaign, error: campaignErr } = await supabase
         .from('campaigns')
-        .select('*')
+        .select('starts_at, ends_at')
         .eq('id', saved.campaign_id)
         .eq('status', 'active')
         .single()
