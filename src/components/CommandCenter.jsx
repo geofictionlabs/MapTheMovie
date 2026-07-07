@@ -64,6 +64,20 @@ function CheckIcon({ size = 16, style: s }) {
     </svg>
   );
 }
+function ArchiveIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><line x1="10" y1="13" x2="14" y2="13" />
+    </svg>
+  );
+}
+function AlertIcon({ size = 16, style: s }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M12 9v4" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><circle cx="12" cy="17" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
 import { supabase } from '../lib/supabase';
 import { generateTriviaQuestion } from '../lib/triviaApi';
 
@@ -99,6 +113,15 @@ const GENRES = [
 
 const DEFAULT_VOUCHER_HEADLINE = 'Show this screen to claim your reward';
 
+const STATUS_COLORS = {
+  active: '#10B981',
+  draft: '#8B8B9A',
+  paused: '#F59E0B',
+  ended: '#8B8B9A',
+  removed: '#F43F5E',
+  flagged: '#F43F5E',
+};
+
 function toDateInputValue(d) {
   return d.toISOString().slice(0, 10);
 }
@@ -118,6 +141,171 @@ function extractCoordinateDigit(lat) {
 // built server-side in create_command_center_hunt from the final
 // destination's coordinates — see migrations/014_real_multistop_waypoints.sql.
 
+// Manage Hunts — lists every campaign via get_all_hunts_admin() (migration
+// 018; campaigns' own campaigns_select_active policy only exposes active
+// rows, useless for an admin list) with Strike/Archive/Remove actions.
+// Each action needs one explicit confirm step before it fires -- `confirming`
+// holds "<campaignId>:<action>" for whichever row/action is mid-confirm.
+function ManageHuntsTab() {
+  const [hunts, setHunts] = useState(null); // null = still loading
+  const [loadError, setLoadError] = useState(null);
+  const [confirming, setConfirming] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    loadHunts();
+  }, []);
+
+  async function loadHunts() {
+    setLoadError(null);
+    const { data, error } = await supabase.rpc('get_all_hunts_admin');
+    if (error) {
+      setLoadError(error.message);
+      setHunts([]);
+      return;
+    }
+    setHunts(data || []);
+  }
+
+  async function runAction(campaignId, action) {
+    setBusyId(campaignId);
+    try {
+      if (action === 'strike') {
+        const { data, error } = await supabase.rpc('issue_strike', { p_campaign_id: campaignId });
+        if (error) throw error;
+        const result = Array.isArray(data) ? data[0] : data;
+        setHunts((prev) => prev.map((h) => h.campaign_id !== campaignId ? h : {
+          ...h,
+          strike_count: result?.strike_count ?? h.strike_count + 1,
+          status: result?.status ?? h.status,
+        }));
+      } else if (action === 'archive') {
+        const { error } = await supabase.rpc('archive_hunt', { p_campaign_id: campaignId });
+        if (error) throw error;
+        setHunts((prev) => prev.filter((h) => h.campaign_id !== campaignId));
+      } else if (action === 'remove') {
+        const { error } = await supabase.rpc('remove_hunt', { p_campaign_id: campaignId });
+        if (error) throw error;
+        setHunts((prev) => prev.filter((h) => h.campaign_id !== campaignId));
+      }
+    } catch (err) {
+      console.error(action + ' failed:', err);
+      alert('Action failed — ' + (err?.message || 'see console'));
+    } finally {
+      setBusyId(null);
+      setConfirming(null);
+    }
+  }
+
+  if (hunts === null) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+        <Spinner size={20} style={{ color: COLORS.textDim }} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {loadError && (
+        <p style={{ color: '#F43F5E', fontSize: 12, marginBottom: 12 }}>
+          Failed to load hunts — {loadError}
+        </p>
+      )}
+      {hunts.length === 0 && !loadError && (
+        <p style={{ color: COLORS.textDim, fontSize: 12, textAlign: 'center', padding: '24px 0', margin: 0 }}>
+          No hunts yet.
+        </p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {hunts.map((h) => {
+          const statusColor = STATUS_COLORS[h.status] || COLORS.textDim;
+          const isBusy = busyId === h.campaign_id;
+          const confirmingHere = confirming === `${h.campaign_id}:strike` ? 'strike'
+            : confirming === `${h.campaign_id}:archive` ? 'archive'
+            : confirming === `${h.campaign_id}:remove` ? 'remove'
+            : null;
+
+          return (
+            <div
+              key={h.campaign_id}
+              style={{ borderRadius: 8, padding: 12, background: COLORS.panel, border: `1px solid ${COLORS.border}` }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.textBright }}>{h.campaign_name}</div>
+                  <p style={{ fontSize: 11, color: COLORS.textDim, margin: '2px 0 0' }}>
+                    {h.pack_name} &middot; {h.business_name || 'No business'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
+                    color: statusColor, border: `1px solid ${statusColor}`, borderRadius: 20, padding: '2px 8px',
+                  }}>
+                    {h.status}
+                  </span>
+                  {h.strike_count > 0 && (
+                    <span style={{ fontSize: 10, color: '#F43F5E' }}>
+                      {h.strike_count} strike{h.strike_count === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {confirmingHere ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: COLORS.textBright, flex: 1 }}>
+                    {confirmingHere === 'strike' && 'Issue strike?'}
+                    {confirmingHere === 'archive' && 'Archive this hunt?'}
+                    {confirmingHere === 'remove' && 'Remove this hunt?'}
+                  </span>
+                  <button
+                    disabled={isBusy}
+                    onClick={() => runAction(h.campaign_id, confirmingHere)}
+                    style={{ display: 'flex', alignItems: 'center', padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: COLORS.purple, color: '#fff', border: 'none', cursor: isBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    {isBusy ? <Spinner size={12} /> : 'Yes'}
+                  </button>
+                  <button
+                    disabled={isBusy}
+                    onClick={() => setConfirming(null)}
+                    style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setConfirming(`${h.campaign_id}:strike`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'transparent', border: `1px solid ${COLORS.purple}`, color: COLORS.purple, cursor: 'pointer' }}
+                  >
+                    <AlertIcon size={12} /> Strike
+                  </button>
+                  {/* Archive: muted gold/amber, distinct from Remove's red — archive is reversible (status -> 'ended'), remove is not treated as reversible in the UI even though it's also just a status change. */}
+                  <button
+                    onClick={() => setConfirming(`${h.campaign_id}:archive`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'transparent', border: '1px solid #B8860B', color: '#D4A72C', cursor: 'pointer' }}
+                  >
+                    <ArchiveIcon size={12} /> Archive
+                  </button>
+                  <button
+                    onClick={() => setConfirming(`${h.campaign_id}:remove`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'transparent', border: '1px solid #F43F5E', color: '#F43F5E', cursor: 'pointer' }}
+                  >
+                    <TrashIcon size={12} /> Remove
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function CommandCenter() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -125,6 +313,7 @@ export default function CommandCenter() {
 
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState('build'); // 'build' | 'manage'
 
   const [selectedTier, setSelectedTier] = useState('classic');
   const [selectedGenre, setSelectedGenre] = useState('general');
@@ -391,6 +580,28 @@ export default function CommandCenter() {
           GeoFiction Labs — Owner Tools
         </p>
 
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
+          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              style={{
+                padding: '10px 4px', marginBottom: -1, fontSize: 13, fontWeight: 600,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: activeTab === t.key ? COLORS.textBright : COLORS.textDim,
+                borderBottom: activeTab === t.key ? `2px solid ${COLORS.gold}` : '2px solid transparent',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'manage' ? (
+          <ManageHuntsTab />
+        ) : (
+        <>
         {/* Pack name */}
         <input
           value={packName}
@@ -721,6 +932,8 @@ export default function CommandCenter() {
               </button>
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
