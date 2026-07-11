@@ -1,8 +1,14 @@
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
+import { clientsClaim } from 'workbox-core'
 
 // Workbox injects the precache manifest here at build time
 precacheAndRoute(self.__WB_MANIFEST)
 cleanupOutdatedCaches()
+
+// Activate a new SW immediately and take control of open clients without
+// requiring a manual skipWaiting in DevTools on every deploy.
+self.skipWaiting()
+clientsClaim()
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return

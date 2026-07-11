@@ -120,11 +120,11 @@ function AchievementBadge({ achievement, unlocked }) {
   return (
     <div style={{
       background: unlocked ? D.card : D.surface,
-      border: `1px solid ${unlocked ? D.border : '#0E0E14'}`,
+      border: `1px solid ${unlocked ? D.border : D.borderMid}`,
       borderRadius: '12px', padding: '14px 12px',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', gap: '6px',
-      opacity: unlocked ? 1 : 0.3,
+      opacity: unlocked ? 1 : 0.55,
       transition: 'all 0.3s',
       position: 'relative', overflow: 'hidden',
     }}>
@@ -140,7 +140,7 @@ function AchievementBadge({ achievement, unlocked }) {
       </div>
       <div style={{
         fontFamily: D.mono, fontSize: '8px',
-        color: unlocked ? D.gold : D.textDim,
+        color: unlocked ? D.gold : D.textMuted,
         letterSpacing: '1px', textAlign: 'center',
         fontWeight: 700,
       }}>{achievement.name}</div>
@@ -320,43 +320,28 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // ── AUTH SCREEN ────────────────────────────────────────────────
-function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState('login'); // login | signup
+function AuthScreen() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const handleAuth = async () => {
-    if (!email || !password) { setError('Email and password required'); return; }
-    setLoading(true); setError('');
+  const handleSendLink = async () => {
+    if (!email) { setError('Enter your email address'); return; }
+    setLoading(true); setError(''); setSuccess('');
     try {
-      if (mode === 'signup') {
-        const { data, error: e } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { display_name: name || email.split('@')[0] } }
-        });
-        if (e) throw e;
-        setSuccess('Check your email to confirm your account, then log in.');
-      } else {
-        const { data, error: e } = await supabase.auth.signInWithPassword({ email, password });
-        if (e) throw e;
-        onAuth(data.user);
-      }
+      const { error: e } = await supabase.auth.signInWithOtp({ email });
+      if (e) throw e;
+      setSuccess('Check your email for your sign-in link.');
     } catch(e) {
-      setError(e.message || 'Something went wrong');
+      const isRateLimited = e.status === 429 || e.code === 'over_email_send_rate_limit'
+        || /rate limit/i.test(e.message || '');
+      setError(isRateLimited
+        ? "You've already requested a link — check your email, or wait a moment before trying again."
+        : 'Something went wrong, try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/passport` }
-    });
   };
 
   return (
@@ -394,77 +379,20 @@ function AuthScreen({ onAuth }) {
             fontFamily: D.display, fontWeight: 900,
             fontSize: '28px', color: D.text, letterSpacing: '-0.5px',
           }}>
-            {mode === 'login' ? 'Welcome back.' : 'Start your journey.'}
+            Welcome back.
           </div>
           <div style={{ fontSize: '14px', color: D.textMuted, marginTop: '6px' }}>
-            {mode === 'login' ? 'Your hunts are waiting.' : 'Create your hunter profile.'}
+            Enter your email and we'll send you a sign-in link.
           </div>
-        </div>
-
-        {/* Google sign in */}
-        <button onClick={handleGoogle} style={{
-          width: '100%', padding: '13px',
-          background: D.card, border: `1px solid ${D.border}`,
-          borderRadius: '10px', color: D.text,
-          fontSize: '14px', fontFamily: D.body,
-          cursor: 'pointer', marginBottom: '16px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-        }}>
-          <svg width="18" height="18" viewBox="0 0 18 18">
-            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.548 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
-            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
-          </svg>
-          Continue with Google
-        </button>
-
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '12px',
-          marginBottom: '16px',
-        }}>
-          <div style={{ flex: 1, height: '1px', background: D.border }} />
-          <span style={{ fontFamily: D.mono, fontSize: '10px', color: D.textDim }}>OR</span>
-          <div style={{ flex: 1, height: '1px', background: D.border }} />
         </div>
 
         {/* Form */}
-        {mode === 'signup' && (
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Your name (optional)"
-            style={{
-              width: '100%', padding: '12px 14px',
-              background: D.cardAlt, border: `1px solid ${D.border}`,
-              borderRadius: '10px', color: D.text,
-              fontSize: '15px', fontFamily: D.body,
-              outline: 'none', marginBottom: '10px',
-              boxSizing: 'border-box',
-            }}
-          />
-        )}
         <input
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
           placeholder="Email address"
-          onKeyDown={e => e.key === 'Enter' && handleAuth()}
-          style={{
-            width: '100%', padding: '12px 14px',
-            background: D.cardAlt, border: `1px solid ${D.border}`,
-            borderRadius: '10px', color: D.text,
-            fontSize: '15px', fontFamily: D.body,
-            outline: 'none', marginBottom: '10px',
-            boxSizing: 'border-box',
-          }}
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="Password"
-          onKeyDown={e => e.key === 'Enter' && handleAuth()}
+          onKeyDown={e => e.key === 'Enter' && handleSendLink()}
           style={{
             width: '100%', padding: '12px 14px',
             background: D.cardAlt, border: `1px solid ${D.border}`,
@@ -479,7 +407,7 @@ function AuthScreen({ onAuth }) {
         {success && <div style={{ color: D.green, fontSize: '12px', fontFamily: D.mono, marginBottom: '12px', textAlign: 'center', lineHeight: 1.5 }}>{success}</div>}
 
         <button
-          onClick={handleAuth}
+          onClick={handleSendLink}
           disabled={loading}
           style={{
             width: '100%', padding: '14px',
@@ -488,23 +416,11 @@ function AuthScreen({ onAuth }) {
             borderRadius: '10px', fontSize: '15px',
             fontWeight: 700, fontFamily: D.body,
             cursor: loading ? 'not-allowed' : 'pointer',
-            marginBottom: '16px',
             boxShadow: loading ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
           }}
         >
-          {loading ? 'Please wait...' : mode === 'login' ? 'Open My Passport' : 'Create Passport'}
+          {loading ? 'Sending...' : 'Send me a sign-in link'}
         </button>
-
-        <div style={{ textAlign: 'center' }}>
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setSuccess(''); }}
-            style={{
-              background: 'transparent', border: 'none',
-              color: D.purple, fontSize: '14px',
-              cursor: 'pointer', fontFamily: D.body,
-            }}>
-            {mode === 'login' ? "No passport yet? Create one →" : "Already have one? Log in →"}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -516,6 +432,7 @@ export default function PlayerPassport({ onClose }) {
   const [tab, setTab] = useState('passport');
   const [hunts, setHunts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [initialAuthLoading, setInitialAuthLoading] = useState(true);
   const [shareHunt, setShareHunt] = useState(null);
   const [referralCopied, setReferralCopied] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -525,9 +442,11 @@ export default function PlayerPassport({ onClose }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setUser(session.user);
       else setLoading(false);
+      setInitialAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user || null);
+      setInitialAuthLoading(false);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -610,7 +529,20 @@ export default function PlayerPassport({ onClose }) {
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Hunter';
 
-  if (!user) return <AuthScreen onAuth={setUser} />;
+  if (initialAuthLoading) {
+    return (
+      <div style={{
+        background: D.bg, minHeight: '100vh',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: D.mono, fontSize: '11px', color: D.textDim,
+        letterSpacing: '3px',
+      }}>
+        LOADING PASSPORT...
+      </div>
+    );
+  }
+
+  if (!user) return <AuthScreen />;
 
   const tabs = [
     { id: 'passport', label: 'PASSPORT' },

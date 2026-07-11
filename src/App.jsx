@@ -735,6 +735,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  transition: background 1s ease;
 }
 .compass-dist {
   font-family: 'Share Tech Mono', monospace;
@@ -762,16 +763,19 @@ body {
   border-color: #10B981;
   box-shadow: 0 0 30px rgba(16,185,129,0.4), inset 0 0 24px rgba(16,185,129,0.12);
 }
-.compass-on-track-label {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 12px;
-  letter-spacing: 3px;
-  color: #10B981;
-  animation: on-track-pulse 1s infinite;
+/* Radar sweep — rotating line inside the compass ring */
+.compass-radar-line {
+  transform-box: view-box;
+  transform-origin: center;
 }
-@keyframes on-track-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
+@media (prefers-reduced-motion: no-preference) {
+  .compass-radar-line {
+    animation: compass-radar-spin 4s linear infinite;
+  }
+}
+@keyframes compass-radar-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .compass-journey-bar {
@@ -927,6 +931,398 @@ body {
   padding: 4px;
 }
 .account-sent { font-size: 13px; color: #10B981; }
+
+/*  Arrival reveal — geofence trigger premiere sequence  */
+.reveal-flash {
+  position: absolute; inset: 0;
+  background: #F59E0B;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+}
+.reveal-particle-field {
+  position: absolute; inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  overflow: hidden;
+}
+.reveal-particle {
+  position: absolute;
+  top: 50%; left: 50%;
+  opacity: 0;
+  border-radius: 1px;
+}
+.reveal-scanline {
+  position: absolute;
+  left: 0; right: 0; top: -20px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #9D5FF5 20%, #9D5FF5 80%, transparent);
+  box-shadow: 0 0 16px 2px rgba(157,95,245,0.7);
+  opacity: 0;
+  z-index: 24;
+  pointer-events: none;
+}
+.reveal-locus {
+  position: absolute;
+  top: 120px; left: 50%;
+  width: 0; height: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+.reveal-dot {
+  position: absolute; top: 0; left: 0;
+  width: 10px; height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #F59E0B;
+  opacity: 0;
+  box-shadow: 0 0 12px 2px rgba(245,158,11,0.7);
+}
+.reveal-ripple {
+  position: absolute; top: 0; left: 0;
+  width: 10px; height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  border: 1.5px solid #FCD34D;
+  opacity: 0;
+}
+.reveal-found-bar {
+  position: relative;
+  background: linear-gradient(135deg, #7C3AED, #9D5FF5);
+  color: #fff;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-align: center;
+  padding: 11px 16px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  opacity: 0;
+  width: 100%;
+  max-width: 340px;
+  z-index: 5;
+}
+.reveal-shimmer {
+  position: absolute; top: 0; bottom: 0; left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent);
+  transform: translateX(0);
+}
+.reveal-biz-name {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: 27px;
+  text-align: center;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  opacity: 0;
+}
+.reveal-location-line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 1px;
+  color: #6B67A0;
+  text-align: center;
+  margin-bottom: 20px;
+  opacity: 0;
+}
+.reveal-voucher-card {
+  width: 100%; max-width: 340px;
+  background: #1C1C26;
+  border: 1px solid #32324A;
+  border-radius: 16px;
+  padding: 18px 20px;
+  opacity: 0;
+  margin-bottom: 16px;
+}
+.reveal-voucher-card .reveal-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; letter-spacing: 2px;
+  color: #9D5FF5; margin-bottom: 8px;
+}
+.reveal-voucher-card .reveal-headline {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800; font-size: 18px;
+  color: #F1F0FF; margin-bottom: 5px; line-height: 1.25;
+}
+.reveal-voucher-card .reveal-detail {
+  font-size: 12.5px; color: #B8B4D8; line-height: 1.5; margin-bottom: 14px;
+}
+.reveal-voucher-card .reveal-code {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 20px; font-weight: 700; letter-spacing: 3px;
+  color: #F59E0B; text-align: center; padding: 13px; border-radius: 9px;
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.55);
+  text-shadow: 0 0 14px rgba(245,158,11,0.35);
+}
+.reveal-stats-row {
+  width: 100%; max-width: 340px;
+  display: flex; gap: 10px;
+  margin-bottom: 18px;
+  opacity: 0;
+}
+.reveal-stat {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #32324A;
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.reveal-stat .reveal-num {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 16px; font-weight: 700; color: #F1F0FF;
+  font-variant-numeric: tabular-nums;
+}
+.reveal-stat .reveal-cap {
+  font-size: 9.5px; letter-spacing: 1.5px; color: #6B67A0; margin-top: 2px;
+}
+.reveal-share-btn {
+  width: 100%; max-width: 340px;
+  background: linear-gradient(135deg, #FCD34D, #F59E0B);
+  color: #1a1200;
+  border: none; border-radius: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-weight: 800; font-size: 13px; letter-spacing: 2px;
+  padding: 15px; text-align: center;
+  margin-bottom: 12px;
+  opacity: 0;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(245,158,11,0.25);
+}
+.reveal-secondary-actions {
+  display: flex; gap: 20px;
+  opacity: 0;
+  margin-bottom: 8px;
+}
+.reveal-secondary-actions button {
+  background: none; border: none; padding: 0;
+  font-size: 12px; color: #6B67A0;
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: rgba(107,103,160,0.5);
+  cursor: pointer; font-family: inherit;
+}
+
+/*  Passport stamp + star strip  */
+.reveal-stamp-zone {
+  position: relative;
+  width: 108px; height: 108px;
+  margin: 4px 0 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.reveal-inkbloom {
+  position: absolute;
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  filter: blur(7px);
+  opacity: 0;
+}
+.reveal-stamp-outer {
+  position: relative;
+  width: 92px; height: 92px;
+}
+.reveal-stamp {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 3px solid;
+  background: rgba(255,255,255,0.03);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-60px) scale(1.3);
+}
+.reveal-stamp-emoji { font-size: 22px; line-height: 1; margin-bottom: 2px; }
+.reveal-stamp-tier {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+}
+.reveal-stamp-complete {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 7px; letter-spacing: 1.5px; opacity: 0.75;
+}
+.reveal-stamp-sheen {
+  position: absolute; top: 0; bottom: 0; left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.65), transparent);
+}
+.reveal-stamp-caption {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; letter-spacing: 1.5px;
+  text-align: center;
+  margin-bottom: 16px;
+  opacity: 0;
+}
+.reveal-star-strip {
+  width: 100%; max-width: 340px;
+  text-align: center;
+  margin-bottom: 18px;
+  opacity: 0;
+}
+.reveal-star-row {
+  display: flex; justify-content: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.reveal-star {
+  display: inline-block;
+  font-size: 20px; line-height: 1;
+  color: #32324A;
+  opacity: 0;
+  transform: scale(0.4);
+}
+.reveal-star-caption {
+  font-size: 11.5px; color: #8888BB;
+  margin-bottom: 8px;
+}
+.reveal-star-progress-track {
+  width: 100%; height: 4px;
+  background: #1E1E2E;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.reveal-star-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7C3AED, #FCD34D);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-stage.playing .reveal-flash             { animation: revealFlash     350ms ease-out                       0ms    1 forwards; }
+  .reveal-stage.playing .reveal-particle           { animation: revealParticle  var(--dur) cubic-bezier(.16,1,.3,1)  var(--delay) 1 forwards; }
+  .reveal-stage.playing .reveal-scanline           { animation: revealScan      650ms ease-in                       200ms  1 forwards; }
+  .reveal-stage.playing .reveal-dot                { animation: revealDotIn     260ms ease-out                      300ms  1 forwards; }
+  .reveal-stage.playing .reveal-ripple.r1          { animation: revealRipple    1100ms ease-out                     300ms  1 forwards; }
+  .reveal-stage.playing .reveal-ripple.r2          { animation: revealRipple    1100ms ease-out                     550ms  1 forwards; }
+  .reveal-stage.playing .reveal-found-bar          { animation: revealFadeIn    200ms ease-out                      260ms  1 forwards; }
+  .reveal-stage.playing .reveal-shimmer            { animation: revealShimmer   750ms ease-in-out                   900ms  1 forwards; }
+  .reveal-stage.playing .reveal-biz-name           { animation: revealNameSlam  560ms cubic-bezier(.34,1.56,.64,1)  300ms  1 forwards; }
+  .reveal-stage.playing .reveal-location-line      { animation: revealFadeUp    380ms ease-out                      520ms  1 forwards; }
+  .reveal-stage.playing .reveal-voucher-card       { animation: revealCardPop   520ms cubic-bezier(.34,1.56,.64,1)  650ms  1 forwards; }
+  .reveal-stage.playing .reveal-inkbloom           { animation: revealInkBloom  900ms ease-out                      800ms  1 forwards; }
+  .reveal-stage.playing .reveal-stamp              { animation: revealStampDrop 480ms cubic-bezier(.34,1.56,.64,1)  800ms  1 forwards; }
+  .reveal-stage.playing .reveal-stamp-sheen        { animation: revealShimmer   700ms ease-in-out                   1250ms 1 forwards; }
+  .reveal-stage.playing .reveal-stamp-caption      { animation: revealFadeUp    340ms ease-out                      1300ms 1 forwards; }
+  .reveal-stage.playing .reveal-star-strip         { animation: revealFadeIn    380ms ease-out                      1100ms 1 forwards; }
+  .reveal-stage.playing .reveal-star               { animation: revealStarPop   320ms cubic-bezier(.34,1.56,.64,1)  var(--star-delay) 1 forwards; }
+  .reveal-stage.playing .reveal-star-progress-fill { animation: revealStarBar   700ms ease-out                      1450ms 1 forwards; }
+  .reveal-stage.playing .reveal-stats-row          { animation: revealFadeUp    420ms ease-out                      1000ms 1 forwards; }
+  .reveal-stage.playing .reveal-share-btn          { animation: revealBtnBounce 560ms cubic-bezier(.34,1.56,.64,1)  1050ms 1 forwards; }
+  .reveal-stage.playing .reveal-secondary-actions  { animation: revealFadeIn    380ms ease-out                      1300ms 1 forwards; }
+}
+@keyframes revealFlash {
+  0%   { opacity: 0; }
+  28%  { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+@keyframes revealParticle {
+  0%   { transform: translate(-50%,-50%) translate(0,0) scale(1); opacity: 1; }
+  8%   { opacity: 1; }
+  100% { transform: translate(-50%,-50%) translate(var(--tx), var(--ty)) scale(0.3); opacity: 0; }
+}
+@keyframes revealScan {
+  0%   { transform: translateY(0);     opacity: 0; }
+  8%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(700px); opacity: 0; }
+}
+@keyframes revealDotIn {
+  0%   { transform: scale(0.2); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+@keyframes revealRipple {
+  0%   { transform: scale(0.3); opacity: 0.8; }
+  100% { transform: scale(9);   opacity: 0; }
+}
+@keyframes revealFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes revealFadeUp {
+  0%   { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes revealNameSlam {
+  0%   { opacity: 0; transform: scale(3); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes revealCardPop {
+  0%   { opacity: 0; transform: scale(0.7) rotate(-2deg); }
+  100% { opacity: 1; transform: scale(1)   rotate(0deg); }
+}
+@keyframes revealBtnBounce {
+  0%   { opacity: 0; transform: translateY(22px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0)     scale(1); }
+}
+@keyframes revealShimmer {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(430%); }
+}
+@keyframes revealInkBloom {
+  0%   { transform: scale(0.3); opacity: 0.55; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes revealStampDrop {
+  0%   { opacity: 0; transform: translateY(-60px) scale(1.3); }
+  100% { opacity: 1; transform: translateY(0)      scale(1); }
+}
+@keyframes revealStarPop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes revealStarBar {
+  from { width: 0; }
+  to   { width: var(--star-pct); }
+}
+
+/* Reduced motion: decorative-only elements dropped, content fades in */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-stage.playing .reveal-flash,
+  .reveal-stage.playing .reveal-particle-field,
+  .reveal-stage.playing .reveal-scanline,
+  .reveal-stage.playing .reveal-ripple,
+  .reveal-stage.playing .reveal-shimmer,
+  .reveal-stage.playing .reveal-inkbloom,
+  .reveal-stage.playing .reveal-stamp-sheen {
+    display: none;
+  }
+  .reveal-stage.playing .reveal-dot,
+  .reveal-stage.playing .reveal-found-bar,
+  .reveal-stage.playing .reveal-biz-name,
+  .reveal-stage.playing .reveal-location-line,
+  .reveal-stage.playing .reveal-voucher-card,
+  .reveal-stage.playing .reveal-stamp,
+  .reveal-stage.playing .reveal-stamp-caption,
+  .reveal-stage.playing .reveal-star-strip,
+  .reveal-stage.playing .reveal-star,
+  .reveal-stage.playing .reveal-stats-row,
+  .reveal-stage.playing .reveal-share-btn,
+  .reveal-stage.playing .reveal-secondary-actions {
+    animation: revealSimpleFade 240ms ease-out both;
+    transform: none;
+  }
+  .reveal-stage.playing .reveal-star-progress-fill {
+    width: var(--star-pct);
+  }
+  .reveal-stage.playing .reveal-dot              { animation-delay: 80ms;  }
+  .reveal-stage.playing .reveal-found-bar         { animation-delay: 160ms; }
+  .reveal-stage.playing .reveal-biz-name          { animation-delay: 260ms; }
+  .reveal-stage.playing .reveal-location-line     { animation-delay: 360ms; }
+  .reveal-stage.playing .reveal-voucher-card      { animation-delay: 460ms; }
+  .reveal-stage.playing .reveal-stamp             { animation-delay: 560ms; }
+  .reveal-stage.playing .reveal-stamp-caption     { animation-delay: 640ms; }
+  .reveal-stage.playing .reveal-star-strip        { animation-delay: 700ms; }
+  .reveal-stage.playing .reveal-star              { animation-delay: 700ms; }
+  .reveal-stage.playing .reveal-stats-row         { animation-delay: 780ms; }
+  .reveal-stage.playing .reveal-share-btn         { animation-delay: 860ms; }
+  .reveal-stage.playing .reveal-secondary-actions { animation-delay: 940ms; }
+}
+@keyframes revealSimpleFade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
 
 /*  Reset modal  */
 .reset-overlay {
@@ -2441,8 +2837,11 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     setToBearing(bearingDegrees(playerPos.lat, playerPos.lon, t.lat, t.lon))
     if (distance != null && distance <= (t.geofence_m || 15) && !arrivedRef.current) {
       arrivedRef.current = true
-      if (t.isWaypoint) { onWaypointReachedRef.current?.() }
-      else { onArrivedRef.current?.(playerPos.lat, playerPos.lon) }
+      // startDist is this leg's straight-line distance when GPS first
+      // locked — reported up so the parent can accumulate a "distance
+      // walked" total across waypoint legs for the arrival reveal screen.
+      if (t.isWaypoint) { onWaypointReachedRef.current?.(startDist) }
+      else { onArrivedRef.current?.(playerPos.lat, playerPos.lon, startDist) }
     }
   }, [playerPos, distance])
 
@@ -2566,7 +2965,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     return diff > 180 ? 360 - diff : diff
   })()
   const isFacingDestination = deviceHeading != null && normalisedAngle < 20
-  const onTrack = isFacingDestination && distance != null && gpsStatus === 'active'
+  // Red state: needle pointing away from destination (>160 degrees off)
+  const isHeadingAway = deviceHeading != null && normalisedAngle > 160
+  const headingColor = isFacingDestination ? '#5DCAA5' : isHeadingAway ? '#E24B4A' : null
   const journeyPct = startDist > 0
     ? Math.min(100, Math.max(0, ((startDist - (distance || 0)) / startDist) * 100))
     : 0
@@ -2574,9 +2975,15 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const destLabel = (distance != null && distance >= 0)
     ? (target?.isWaypoint ? 'KM TO WAYPOINT' : 'KM TO DESTINATION')
     : 'CALCULATING...'
+  // Warmth shift as the player closes in: base -> amber (<150m) -> warm gold (<80m)
+  const compassBg = distance != null && distance < 80
+    ? '#0C0808'
+    : distance != null && distance < 150
+      ? '#0A0810'
+      : '#080810'
 
   return (
-    <div className="compass-wrap">
+    <div className="compass-wrap" style={{ background: compassBg }}>
       {/* Waypoint / destination badge — tap 5× quickly to open debug panel */}
       <div
         onClick={handleDebugTap}
@@ -2594,23 +3001,37 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
       {/* Film-reel compass ring — 280px */}
       <div className="compass-arrow-wrap">
-        {/* Outer ring — reactive green state via inline styles */}
+        {/* Outer ring — reactive green/red heading state via inline styles */}
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
-          border: `3px solid ${isFacingDestination ? '#10B981' : '#7C3AED'}`,
+          border: `3px solid ${headingColor || '#7C3AED'}`,
           boxShadow: isFacingDestination
-            ? '0 0 30px rgba(16,185,129,0.4), inset 0 0 24px rgba(16,185,129,0.12)'
-            : '0 0 20px rgba(124,58,237,0.3), inset 0 0 24px rgba(124,58,237,0.12)',
-          transition: 'border-color 0.4s, box-shadow 0.4s',
+            ? '0 0 30px rgba(93,202,165,0.4), inset 0 0 24px rgba(93,202,165,0.12)'
+            : isHeadingAway
+              ? '0 0 30px rgba(226,75,74,0.4), inset 0 0 24px rgba(226,75,74,0.12)'
+              : '0 0 20px rgba(124,58,237,0.3), inset 0 0 24px rgba(124,58,237,0.12)',
+          transition: isHeadingAway ? 'none' : 'border-color 0.4s, box-shadow 0.4s',
         }} />
 
-        {/* Sprocket holes — 16 dark-filled circles via SVG */}
+        {/* Radar sweep — rotating line, sonar/spy feel */}
+        <svg viewBox="0 0 280 280" style={{ position: 'absolute', inset: 0, width: 280, height: 280, pointerEvents: 'none' }}>
+          <line
+            className="compass-radar-line"
+            x1={140} y1={140} x2={140} y2={20}
+            stroke={headingColor || '#7C3AED'}
+            strokeWidth={2}
+            strokeLinecap="round"
+            opacity={0.55}
+          />
+        </svg>
+
+        {/* Sprocket holes — 11 dark-filled circles via SVG, film-reel perforation motif */}
         <svg style={{ position: 'absolute', inset: 0, width: 280, height: 280 }}>
-          {Array.from({ length: 16 }, (_, i) => {
-            const angle = (i * 22.5 * Math.PI) / 180
-            const cx = 140 + 128 * Math.cos(angle - Math.PI / 2)
-            const cy = 140 + 128 * Math.sin(angle - Math.PI / 2)
-            return <circle key={i} cx={cx} cy={cy} r={5} fill="#0A0A0F" stroke="#5B21B6" strokeWidth={2} />
+          {Array.from({ length: 11 }, (_, i) => {
+            const angle = (i * (360 / 11) * Math.PI) / 180
+            const cx = 140 + 130 * Math.cos(angle - Math.PI / 2)
+            const cy = 140 + 130 * Math.sin(angle - Math.PI / 2)
+            return <circle key={i} cx={cx} cy={cy} r={4} fill="#2A2A3E" />
           })}
         </svg>
 
@@ -2627,13 +3048,17 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
             width: 8, height: 140,
             display: 'flex', flexDirection: 'column',
           }}>
-            {/* Top half — gold, green when facing destination */}
+            {/* Top half — gold by default, green when facing destination, red when heading away */}
             <div style={{
               width: 8, height: 70, flexShrink: 0,
-              background: isFacingDestination ? '#10B981' : 'linear-gradient(180deg, #FCD34D, #F59E0B)',
+              background: headingColor || 'linear-gradient(180deg, #FCD34D, #F59E0B)',
               borderRadius: '4px 4px 0 0',
-              filter: isFacingDestination ? 'drop-shadow(0 0 6px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
-              transition: 'background 0.4s, filter 0.4s',
+              filter: isFacingDestination
+                ? 'drop-shadow(0 0 6px rgba(93,202,165,0.8))'
+                : isHeadingAway
+                  ? 'drop-shadow(0 0 6px rgba(226,75,74,0.8))'
+                  : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
+              transition: isHeadingAway ? 'none' : 'background 0.4s, filter 0.4s',
             }} />
             {/* Bottom half — grey counterweight */}
             <div style={{
@@ -2649,9 +3074,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
           width: 16, height: 16, borderRadius: '50%',
-          background: isFacingDestination ? '#10B981' : '#7C3AED',
+          background: headingColor || '#7C3AED',
           border: '3px solid #9D5FF5',
-          transition: 'background 0.4s',
+          transition: isHeadingAway ? 'none' : 'background 0.4s',
           zIndex: 3,
         }} />
       </div>
@@ -2673,12 +3098,16 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         </div>
       </div>
 
-      {/* On-track label */}
-      {isFacingDestination && <div className="compass-on-track-label">ON TRACK</div>}
-
       {/* Journey progress bar */}
       <div className="compass-journey-bar">
-        <div className="compass-journey-fill" style={{ width: `${journeyPct}%` }} />
+        <div
+          className="compass-journey-fill"
+          style={{
+            width: `${journeyPct}%`,
+            background: headingColor || undefined,
+            transition: isHeadingAway ? 'width 1s ease' : 'width 1s ease, background 0.4s',
+          }}
+        />
       </div>
 
       {orientState === 'needs-permission' && (
@@ -2689,9 +3118,15 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
       {orientState === 'calibrating' && (
         <div className="compass-calibrating">CALIBRATING COMPASS</div>
       )}
-      {distance != null && gpsStatus === 'active' && !onTrack && (
-        <div style={{ fontSize: 12, color: '#8888BB', fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1 }}>
-          HEAD {cardinalDir()}
+      {distance != null && gpsStatus === 'active' && (
+        <div style={{
+          fontSize: 12,
+          color: headingColor || '#8888BB',
+          fontFamily: "'Share Tech Mono', monospace",
+          letterSpacing: 1,
+          transition: isHeadingAway ? 'none' : 'color 0.4s',
+        }}>
+          {isHeadingAway ? 'TURN AROUND' : `HEAD ${cardinalDir()}`}
         </div>
       )}
 
@@ -2942,14 +3377,14 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
               <button
                 onClick={() => {
                   arrivedRef.current = false
-                  if (effectiveTarget?.isWaypoint) onWaypointReachedRef.current?.()
-                  else onArrivedRef.current?.(playerPos?.lat ?? effectiveTarget?.lat, playerPos?.lon ?? effectiveTarget?.lon)
+                  if (effectiveTarget?.isWaypoint) onWaypointReachedRef.current?.(startDist)
+                  else onArrivedRef.current?.(playerPos?.lat ?? effectiveTarget?.lat, playerPos?.lon ?? effectiveTarget?.lon, startDist)
                 }}
                 style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 10, color: '#10B981', padding: '13px', fontSize: 12, letterSpacing: 1.5, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
               >SIMULATE ARRIVAL</button>
 
               <button
-                onClick={() => onWaypointReachedRef.current?.()}
+                onClick={() => onWaypointReachedRef.current?.(startDist)}
                 style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, color: '#F59E0B', padding: '13px', fontSize: 12, letterSpacing: 1.5, cursor: 'pointer', fontFamily: "'Share Tech Mono', monospace" }}
               >NEXT WAYPOINT</button>
 
@@ -2971,10 +3406,22 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 function AccountPrompt() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSave() {
     if (!email.includes('@')) return
-    await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } })
+    setError('')
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      // No anonymous (or any) session to link the email to — this is a
+      // different bug than the one this fix addresses. Surface it rather
+      // than silently falling back to a fresh signInWithOtp sign-in, which
+      // would mask the missing-session case instead of fixing it.
+      setError('No active session found — please try again.')
+      return
+    }
+    const { error: e } = await supabase.auth.updateUser({ email })
+    if (e) { setError('Something went wrong, try again.'); return }
     setSent(true)
   }
 
@@ -2985,7 +3432,7 @@ function AccountPrompt() {
         Get notified about new hunts near you. Free forever.
       </div>
       {sent ? (
-        <div className="account-sent">Check your inbox for a sign-in link.</div>
+        <div className="account-sent">Check your email to confirm and save your progress.</div>
       ) : (
         <>
           <div className="account-email-row">
@@ -2999,6 +3446,7 @@ function AccountPrompt() {
             />
             <button className="account-submit" onClick={handleSave}>SAVE PROGRESS</button>
           </div>
+          {error && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 6 }}>{error}</div>}
           <button className="account-maybe" onClick={() => {}}>Maybe later</button>
         </>
       )}
@@ -3006,7 +3454,47 @@ function AccountPrompt() {
   )
 }
 
-//  Arrived Screen 
+function formatWalkedDistance(m) {
+  if (m == null) return null
+  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${Math.round(m)}m`
+}
+function formatTimeTaken(s) {
+  if (s == null) return null
+  const mins = Math.floor(s / 60)
+  const secs = s % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+const REVEAL_GOLD_TONES = ['#F59E0B', '#FCD34D']
+const REVEAL_PURPLE_TONES = ['#7C3AED', '#9D5FF5']
+
+// Passport stamp + star strip — cosmetic preview of the star progression
+// system (queued as a future project), so "stars earned" is derived purely
+// from this hunt's own tier rather than a persisted cross-hunt counter that
+// doesn't exist yet.
+const TIER_STAMP = {
+  casual:  { label: 'CASUAL',  emoji: '🎬', color: '#34D399', rotate: -7 },
+  classic: { label: 'CLASSIC', emoji: '🎭', color: '#7C3AED', rotate: 5 },
+  expert:  { label: 'EXPERT',  emoji: '🏆', color: '#F59E0B', rotate: -4 },
+  cipher:  { label: 'CIPHER',  emoji: '🔐', color: '#F43F5E', rotate: 6 },
+}
+const TIER_STARS = { casual: 1, classic: 2, expert: 3, cipher: 4 }
+function buildRevealParticles() {
+  return Array.from({ length: 24 }, () => {
+    const angle = Math.random() * Math.PI * 2
+    const dist = 70 + Math.random() * 90
+    const tx = Math.cos(angle) * dist
+    const ty = Math.sin(angle) * dist * 1.3 // stage is taller than wide
+    const size = 4 + Math.random() * 6
+    const dur = 600 + Math.random() * 300
+    const delay = 100 + Math.random() * 70
+    const palette = Math.random() < 0.5 ? REVEAL_GOLD_TONES : REVEAL_PURPLE_TONES
+    const color = palette[Math.floor(Math.random() * palette.length)]
+    return { tx, ty, size, dur, delay, color }
+  })
+}
+
+//  Arrived Screen
 function ArrivedScreen({ voucher }) {
   const pinHash = voucher?.redemption_pin_hash || null
   const businessId = String(voucher?.business_id || '')
@@ -3019,6 +3507,40 @@ function ArrivedScreen({ voucher }) {
   const [holdProgress, setHoldProgress] = useState(0)
   const holdTimerRef = useRef(null)
   const lockTimerRef = useRef(null)
+  const [particles] = useState(buildRevealParticles)
+  const [showSave, setShowSave] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [reportText, setReportText] = useState('')
+  const [reportSent, setReportSent] = useState(false)
+
+  const walkedLabel = formatWalkedDistance(voucher?.distance_walked_m)
+  const timeLabel = formatTimeTaken(voucher?.time_taken_s)
+
+  const tierKey = TIER_STAMP[voucher?.difficulty] ? voucher.difficulty : 'classic'
+  const tier = TIER_STAMP[tierKey]
+  const starsEarned = TIER_STARS[tierKey] || 0
+  const starsRemaining = Math.max(0, 5 - starsEarned)
+
+  function handleShare() {
+    const text = `I just found ${voucher?.business_name || 'a hidden spot'} on MapTheMovie and unlocked a reward - app.mapthemovie.co.uk`
+    if (navigator.share) {
+      navigator.share({ title: 'MapTheMovie', text, url: 'https://app.mapthemovie.co.uk' }).catch(() => {})
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text)
+    }
+  }
+
+  async function submitReport() {
+    if (!reportText.trim()) return
+    try {
+      await supabase.from('obstacle_reports').insert({
+        hunt_name: voucher?.business_name || 'Unknown',
+        reason: 'Reward screen: ' + reportText.trim(),
+        reported_at: new Date().toISOString(),
+      })
+    } catch (e) {}
+    setReportSent(true)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setEntered(true), 60)
@@ -3228,51 +3750,138 @@ function ArrivedScreen({ voucher }) {
         </div>
       )}
 
-      <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '11px', color: '#7C3AED', letterSpacing: '3px', marginBottom: '8px', textAlign: 'center' }}>
-        YOU HAVE ARRIVED AT
-      </div>
-      <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: '24px', color: '#F1F0FF', marginBottom: '6px', textAlign: 'center' }}>
-        {voucher?.business_name || 'YOUR DESTINATION'}
-      </div>
-      <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 20, textAlign: 'center' }}>
-        Show this screen to claim your reward
-      </div>
-
-      <div style={{
-        background: '#F1F0FF', color: '#121218', borderRadius: 16, overflow: 'hidden',
-        width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-        transform: entered ? 'translateY(0) scale(1)' : 'translateY(60px) scale(0.92)',
-        opacity: entered ? 1 : 0,
-        transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease',
-      }}>
-        <div style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', padding: '20px 24px', fontFamily: "'Share Tech Mono', monospace", fontWeight: 900, fontSize: 18, letterSpacing: 2 }}>
-          REWARD UNLOCKED
+      <div className={`reveal-stage${entered ? ' playing' : ''}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        <div className="reveal-flash" />
+        <div className="reveal-particle-field">
+          {particles.map((p, i) => (
+            <div
+              key={i}
+              className="reveal-particle"
+              style={{
+                width: p.size, height: p.size, background: p.color,
+                '--tx': `${p.tx.toFixed(1)}px`,
+                '--ty': `${p.ty.toFixed(1)}px`,
+                '--dur': `${p.dur.toFixed(0)}ms`,
+                '--delay': `${p.delay.toFixed(0)}ms`,
+              }}
+            />
+          ))}
         </div>
-        <div style={{ borderTop: '2px dashed rgba(124,58,237,0.25)', background: '#F1F0FF' }} />
-        <div style={{ padding: '16px 20px 0', background: '#F1F0FF' }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: '#9D5FF5', fontFamily: "'Share Tech Mono', monospace", marginBottom: 10 }}>
-            YOUR REWARD
-          </div>
+        <div className="reveal-scanline" />
+        <div className="reveal-locus">
+          <div className="reveal-ripple r1" />
+          <div className="reveal-ripple r2" />
+          <div className="reveal-dot" />
+        </div>
+
+        <div className="reveal-found-bar">
+          YOU FOUND IT
+          <div className="reveal-shimmer" />
+        </div>
+
+        <div className="reveal-biz-name">{voucher?.business_name || 'YOUR DESTINATION'}</div>
+        <div className="reveal-location-line">You made it</div>
+
+        <div className="reveal-voucher-card">
+          <div className="reveal-label">YOUR REWARD</div>
           {voucher && (
             <>
-              <div style={{ fontFamily: "'Nunito', sans-serif", fontSize: 22, fontWeight: 800, color: '#121218', marginBottom: 6, lineHeight: 1.2 }}>
-                {voucher.voucher_headline}
-              </div>
-              <div style={{ fontSize: 13, color: '#8888BB', marginBottom: 16, lineHeight: 1.4 }}>
-                {voucher.voucher_detail}
-              </div>
+              <div className="reveal-headline">{voucher.voucher_headline}</div>
+              <div className="reveal-detail">{voucher.voucher_detail}</div>
             </>
           )}
-          <div style={{ background: '#121218', color: '#F59E0B', fontFamily: "'Share Tech Mono', monospace", fontSize: 28, fontWeight: 700, letterSpacing: 4, padding: '16px 24px', borderRadius: 8, marginBottom: 20, textAlign: 'center' }}>
-            {voucher?.voucher_code || '---'}
+          <div className="reveal-code">{voucher?.voucher_code || '---'}</div>
+        </div>
+
+        <div className="reveal-stamp-zone">
+          <div className="reveal-inkbloom" style={{ background: tier.color }} />
+          <div className="reveal-stamp-outer" style={{ transform: `rotate(${tier.rotate}deg)` }}>
+            <div className="reveal-stamp" style={{ borderColor: tier.color, color: tier.color }}>
+              <div className="reveal-stamp-emoji">{tier.emoji}</div>
+              <div className="reveal-stamp-tier">{tier.label}</div>
+              <div className="reveal-stamp-complete">COMPLETE</div>
+              <div className="reveal-stamp-sheen" />
+            </div>
           </div>
         </div>
+        <div className="reveal-stamp-caption" style={{ color: tier.color }}>Stamped in your Passport</div>
+
+        <div className="reveal-star-strip">
+          <div className="reveal-star-row">
+            {[0, 1, 2, 3, 4].map(i => (
+              <span
+                key={i}
+                className="reveal-star"
+                style={{
+                  '--star-delay': `${1150 + i * 70}ms`,
+                  ...(i < starsEarned ? { color: tier.color, textShadow: `0 0 10px ${tier.color}` } : null),
+                }}
+              >★</span>
+            ))}
+          </div>
+          <div className="reveal-star-caption">
+            {starsEarned} of 5 stars · {starsRemaining} more to enter the £500 draw
+          </div>
+          <div className="reveal-star-progress-track">
+            <div className="reveal-star-progress-fill" style={{ '--star-pct': `${(starsEarned / 5) * 100}%` }} />
+          </div>
+        </div>
+
+        {(walkedLabel || timeLabel) && (
+          <div className="reveal-stats-row">
+            {walkedLabel && (
+              <div className="reveal-stat">
+                <div className="reveal-num">{walkedLabel}</div>
+                <div className="reveal-cap">WALKED</div>
+              </div>
+            )}
+            {timeLabel && (
+              <div className="reveal-stat">
+                <div className="reveal-num">{timeLabel}</div>
+                <div className="reveal-cap">TIME TAKEN</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button className="reveal-share-btn" onClick={handleShare}>SHARE YOUR WIN</button>
+
         <button
           onClick={() => setStep('handoff')}
-          style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', width: '100%', height: 52, fontFamily: "'Share Tech Mono', monospace", fontWeight: 800, fontSize: 13, letterSpacing: 2, border: 'none', cursor: 'pointer', borderRadius: '0 0 16px 16px' }}
+          style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', width: '100%', maxWidth: 340, height: 52, fontFamily: "'Share Tech Mono', monospace", fontWeight: 800, fontSize: 13, letterSpacing: 2, border: 'none', cursor: 'pointer', borderRadius: 12, marginBottom: 18 }}
         >
           PRESENT TO STAFF
         </button>
+
+        <div className="reveal-secondary-actions">
+          <button onClick={() => setShowSave(s => !s)}>Save progress</button>
+          <button onClick={() => setShowReport(s => !s)}>Report an issue</button>
+        </div>
+
+        {showSave && <div style={{ width: '100%', maxWidth: 340, marginTop: 12 }}><AccountPrompt /></div>}
+
+        {showReport && (
+          <div style={{ width: '100%', maxWidth: 340, marginTop: 12 }}>
+            {reportSent ? (
+              <div style={{ fontSize: 12, color: '#8888BB', textAlign: 'center' }}>Thanks — we'll take a look.</div>
+            ) : (
+              <>
+                <textarea
+                  value={reportText}
+                  onChange={e => setReportText(e.target.value)}
+                  placeholder="What went wrong?"
+                  rows={2}
+                  style={{ width: '100%', background: '#1C1C26', border: '1px solid #32324A', borderRadius: 10, color: '#F1F0FF', fontSize: 13, padding: 10, fontFamily: 'inherit', resize: 'vertical', marginBottom: 8, boxSizing: 'border-box' }}
+                />
+                <button
+                  onClick={submitReport}
+                  disabled={!reportText.trim()}
+                  style={{ width: '100%', padding: 10, background: 'transparent', border: '1px solid #32324A', borderRadius: 8, color: reportText.trim() ? '#B8B4D8' : '#4A4A5A', fontSize: 12, cursor: reportText.trim() ? 'pointer' : 'not-allowed' }}
+                >Send</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -3354,6 +3963,13 @@ export default function App() {
 
   const [activePack, setActivePack] = useState(null)
   const [activeSession, setActiveSession] = useState(null)
+  // Client-side only, for the arrival reveal's "distance walked / time
+  // taken" stats — confirm_arrival doesn't return either. huntStartedAt
+  // comes from hunt_sessions.started_at (server clock, avoids device skew);
+  // huntDistanceRef accumulates each waypoint leg's straight-line start
+  // distance as the player progresses.
+  const [huntStartedAt, setHuntStartedAt] = useState(null)
+  const huntDistanceRef = useRef(0)
   const [activeQuestions, setActiveQuestions] = useState([])
   const [solved, setSolved] = useState({})
   const [signalPoints, setSignalPoints] = useState(10)
@@ -3661,6 +4277,11 @@ export default function App() {
 
       setActivePack(saved.pack)
       setActiveSession({ id: saved.session_id, campaign_id: saved.campaign_id })
+      // Best-effort — legs completed before the restore aren't recoverable,
+      // so "distance walked" undercounts for a resumed hunt. Acceptable for
+      // a display-only stat.
+      setHuntStartedAt(session.started_at ? new Date(session.started_at).getTime() : Date.now())
+      huntDistanceRef.current = 0
       setActiveQuestions(puzzleData.questions)
       setSolved(saved.solved || {})
       // Prefer the server's authoritative value over the cached one —
@@ -3732,6 +4353,8 @@ export default function App() {
 
       setActivePack(hunt)
       setActiveSession({ id: session.id, campaign_id: hunt.campaign_id })
+      setHuntStartedAt(session.started_at ? new Date(session.started_at).getTime() : Date.now())
+      huntDistanceRef.current = 0
       setActiveQuestions(questions)
       setSolved({})
       setSignalPoints(startingTakes)
@@ -3872,7 +4495,8 @@ export default function App() {
     }
   }
 
-  function handleWaypointReached() {
+  function handleWaypointReached(legDist) {
+    huntDistanceRef.current += Math.round(legDist || 0)
     const next = waypointPhase + 1
     setWaypointPhase(next)
     setCompassTarget(null)
@@ -3880,7 +4504,16 @@ export default function App() {
     setScreen('puzzles')
   }
 
+  // Client-side only — see huntStartedAt/huntDistanceRef comment above.
+  function arrivalStats(legDist) {
+    return {
+      distance_walked_m: Math.round(huntDistanceRef.current + (legDist || 0)),
+      time_taken_s: huntStartedAt ? Math.max(0, Math.round((Date.now() - huntStartedAt) / 1000)) : null,
+    }
+  }
+
   async function handleSimulateArrival() {
+    const stats = arrivalStats(0)
     try {
       const { data, error } = await supabase.rpc('confirm_arrival', {
         p_session_id:  activeSession?.id,
@@ -3889,7 +4522,7 @@ export default function App() {
         p_arrival_lon: compassTarget?.lon ?? 0.5277,
       })
       if (data?.success) {
-        setVoucher(data)
+        setVoucher({ ...data, ...stats, difficulty: activePack?.difficulty || 'classic' })
         setScreen('arrived')
       } else {
         setVoucher({
@@ -3897,6 +4530,8 @@ export default function App() {
           voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
           voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
           business_name:    activePack?.business_name || '',
+          difficulty:       activePack?.difficulty || 'classic',
+          ...stats,
         })
         setScreen('arrived')
       }
@@ -3906,13 +4541,15 @@ export default function App() {
         voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
         voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
         business_name:    activePack?.business_name || '',
+        difficulty:       activePack?.difficulty || 'classic',
+        ...stats,
       })
       setScreen('arrived')
     }
   }
 
   const handleArrived = useCallback(
-    async (lat, lon) => {
+    async (lat, lon, legDist) => {
       if (screen === 'arrived' || !activeSession) return
 
       const { data, error } = await supabase.rpc('confirm_arrival', {
@@ -3929,11 +4566,17 @@ export default function App() {
         return
       }
 
-      setVoucher(data)
+      const enrichedVoucher = {
+        ...data,
+        distance_walked_m: Math.round(huntDistanceRef.current + (legDist || 0)),
+        time_taken_s: huntStartedAt ? Math.max(0, Math.round((Date.now() - huntStartedAt) / 1000)) : null,
+        difficulty: activePack?.difficulty || 'classic',
+      }
+      setVoucher(enrichedVoucher)
       setScreen('arrived')
-      try { localStorage.setItem('mtm_active_reward', JSON.stringify({ voucher: data, expiresAt: Date.now() + 30 * 60 * 1000 })) } catch {}
+      try { localStorage.setItem('mtm_active_reward', JSON.stringify({ voucher: enrichedVoucher, expiresAt: Date.now() + 30 * 60 * 1000 })) } catch {}
     },
-    [activeSession, screen]
+    [activeSession, screen, huntStartedAt, activePack]
   )
 
   const accent = hexAccent(activePack?.accent_color)
@@ -3984,15 +4627,16 @@ export default function App() {
               <button
                 onClick={() => window.location.href = '/passport'}
                 style={{
-                  background: 'transparent',
-                  border: '1px solid #1E1E2E',
-                  color: '#6B67A0',
+                  background: '#7C3AED',
+                  border: '1px solid #9D5FF5',
+                  color: '#F1F0FF',
                   padding: '8px 16px',
                   borderRadius: '20px',
                   fontSize: '11px',
                   fontFamily: "'Share Tech Mono', monospace",
                   letterSpacing: '2px',
                   cursor: 'pointer',
+                  boxShadow: '0 2px 12px rgba(124,58,237,0.4)',
                 }}
               >🎬 MY PASSPORT</button>
             </div>
