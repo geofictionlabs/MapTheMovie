@@ -3403,7 +3403,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 }
 
 //  Account Prompt
-function AccountPrompt() {
+function AccountPrompt({ onDismiss }) {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
@@ -3447,7 +3447,7 @@ function AccountPrompt() {
             <button className="account-submit" onClick={handleSave}>SAVE PROGRESS</button>
           </div>
           {error && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 6 }}>{error}</div>}
-          <button className="account-maybe" onClick={() => {}}>Maybe later</button>
+          <button className="account-maybe" onClick={() => onDismiss?.()}>Continue without saving</button>
         </>
       )}
     </div>
@@ -3509,6 +3509,7 @@ function ArrivedScreen({ voucher }) {
   const lockTimerRef = useRef(null)
   const [particles] = useState(buildRevealParticles)
   const [showSave, setShowSave] = useState(false)
+  const [accountPromptDismissed, setAccountPromptDismissed] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [reportText, setReportText] = useState('')
   const [reportSent, setReportSent] = useState(false)
@@ -3619,7 +3620,11 @@ function ArrivedScreen({ voucher }) {
             Thank you for visiting and playing MapTheMovie
           </div>
         </div>
-        <div style={{ width: '100%' }}><AccountPrompt /></div>
+        {!accountPromptDismissed && (
+          <div style={{ width: '100%' }}>
+            <AccountPrompt onDismiss={() => setAccountPromptDismissed(true)} />
+          </div>
+        )}
       </div>
     )
   }
@@ -3858,7 +3863,11 @@ function ArrivedScreen({ voucher }) {
           <button onClick={() => setShowReport(s => !s)}>Report an issue</button>
         </div>
 
-        {showSave && <div style={{ width: '100%', maxWidth: 340, marginTop: 12 }}><AccountPrompt /></div>}
+        {showSave && (
+          <div style={{ width: '100%', maxWidth: 340, marginTop: 12 }}>
+            <AccountPrompt onDismiss={() => setShowSave(false)} />
+          </div>
+        )}
 
         {showReport && (
           <div style={{ width: '100%', maxWidth: 340, marginTop: 12 }}>
