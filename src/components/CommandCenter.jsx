@@ -316,7 +316,8 @@ export default function CommandCenter() {
   const [activeTab, setActiveTab] = useState('build'); // 'build' | 'manage'
 
   const [selectedTier, setSelectedTier] = useState('classic');
-  const [selectedGenre, setSelectedGenre] = useState('general');
+  const [selectedGenre, setSelectedGenre] = useState('');
+  const [genreError, setGenreError] = useState(false);
   const [waypoints, setWaypoints] = useState([]);
   const [pendingPin, setPendingPin] = useState(null);
   const [pendingName, setPendingName] = useState('');
@@ -440,7 +441,7 @@ export default function CommandCenter() {
 
   async function fetchQuestionFor(id, name, tier, required_digit) {
     setWaypoints((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, loading: true, error: false } : w))
+      prev.map((w) => (w.id === id ? { ...w, loading: true, error: false, errorMessage: null } : w))
     );
     try {
       // selectedGenre read live (not frozen per-waypoint) — genre is a
@@ -461,9 +462,9 @@ export default function CommandCenter() {
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...result, loading: false } : w))
       );
-    } catch {
+    } catch (err) {
       setWaypoints((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, loading: false, error: true } : w))
+        prev.map((w) => (w.id === id ? { ...w, loading: false, error: true, errorMessage: err?.message || null } : w))
       );
     }
   }
@@ -479,6 +480,10 @@ export default function CommandCenter() {
 
   async function saveHunt() {
     if (!packName.trim() || waypoints.length === 0 || !selectedBusinessId) return;
+    if (!selectedGenre) {
+      setGenreError(true);
+      return;
+    }
     if (waypoints.some((w) => w.loading || w.error || w.coordinate_digit === null)) {
       alert('All waypoints must finish generating before saving.');
       return;
@@ -516,7 +521,8 @@ export default function CommandCenter() {
       setPackName('');
       setWaypoints([]);
       setSelectedBusinessId('');
-      setSelectedGenre('general');
+      setSelectedGenre('');
+      setGenreError(false);
       setCampaignName('');
       setStartsAt(toDateInputValue(new Date()));
       setEndsAt(() => {
@@ -616,25 +622,36 @@ export default function CommandCenter() {
         />
 
         {/* Genre — pack-level, chosen before any waypoint is dropped so it
-            actually reaches trivia generation (not just card theming). */}
+            actually reaches trivia generation (not just card theming).
+            No default selection — 'general' is a real, valid option but
+            must be picked deliberately, not landed on by leaving the
+            picker untouched (see live data: 19 packs saved with genre
+            still at its old default, several with names that clearly
+            signalled a different genre). */}
         <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
-          Genre
+          Genre <span style={{ color: '#F43F5E' }}>*</span>
         </label>
         <select
           value={selectedGenre}
-          onChange={(e) => setSelectedGenre(e.target.value)}
+          onChange={(e) => { setSelectedGenre(e.target.value); setGenreError(false); }}
           style={{
             width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
-            background: COLORS.panel, border: `1px solid ${COLORS.border}`,
-            color: COLORS.textBright, outline: 'none', marginBottom: 16,
+            background: COLORS.panel, border: `1px solid ${genreError ? '#F43F5E' : COLORS.border}`,
+            color: COLORS.textBright, outline: 'none', marginBottom: 4,
             boxSizing: 'border-box',
           }}
         >
+          <option value="" disabled>— Select genre —</option>
           {GENRES.map((g) => (
             <option key={g.key} value={g.key}>{g.label}</option>
           ))}
         </select>
-        <p style={{ color: COLORS.textDim, fontSize: 11, marginBottom: 16, marginTop: -12 }}>
+        {genreError && (
+          <p style={{ fontSize: 12, margin: '4px 0 0', color: '#F43F5E' }}>
+            Pick a genre before saving — choose "General" if this hunt genuinely isn't genre-specific.
+          </p>
+        )}
+        <p style={{ color: COLORS.textDim, fontSize: 11, marginBottom: 16, marginTop: 8 }}>
           Applies to every waypoint's trivia below — pick it before dropping pins.
         </p>
 
@@ -763,7 +780,7 @@ export default function CommandCenter() {
               )}
               {w.error && (
                 <p style={{ fontSize: 12, marginTop: 8, color: '#F43F5E', margin: '8px 0 0' }}>
-                  Generation failed — tap regenerate to try again.
+                  {w.errorMessage || 'Generation failed'} — tap regenerate, or try a different location/tier.
                 </p>
               )}
 

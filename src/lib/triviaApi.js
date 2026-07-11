@@ -5,6 +5,7 @@
 // which is what lets the function verify they are a platform admin.
 
 import { supabase } from './supabase';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
 // requiredDigit: the 4th decimal digit of the waypoint latitude.
 // The AI will generate a question whose answer naturally contains this digit.
@@ -20,6 +21,20 @@ export async function generateTriviaQuestion(locationName, tier, requiredDigit, 
   });
 
   if (error) {
+    // FunctionsHttpError's own .message is a fixed generic string ("Edge
+    // Function returned a non-2xx status code") -- the actual reason
+    // (e.g. which validation failed, after how many retries) only lives
+    // in the response body, reachable via error.context.
+    if (error instanceof FunctionsHttpError) {
+      let detail = null;
+      try {
+        const body = await error.context.json();
+        detail = body?.error || body?.lastFailureReason;
+      } catch {
+        // Response body wasn't valid JSON -- fall through to the generic message.
+      }
+      throw new Error(detail || error.message || 'Trivia generation failed');
+    }
     throw new Error(error.message || 'Trivia generation failed');
   }
   if (data?.error) {

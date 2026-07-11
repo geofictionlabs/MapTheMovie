@@ -26,7 +26,7 @@ function tierGuidance(tier: string) {
     case 'expert':
       return 'Use a deep-cut fact: trivia, behind-the-scenes detail, or obscure connection only a film buff would know.';
     case 'cipher':
-      return 'Write a cryptic, puzzle-like clue requiring decoding or wordplay, not a direct question.';
+      return 'Write a cryptic, puzzle-like clue requiring decoding or wordplay. The clue must obscure the underlying FACT, not just the phrasing -- do not name iconic, instantly-identifying specifics (e.g. a famous number, an exact character name, a signature object) directly, even in flowery language. A solver who knows the film should still have to actually decode the clue, not just recognise familiar details dressed up poetically.';
     default:
       return '';
   }
@@ -135,7 +135,7 @@ CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film 
 
 ${genreRequirement ? 'Tie the question thematically to the location name only if doing so does not conflict with the genre constraint above — the genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
 
-Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself.
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself. extraction_note and question_text must also be completely free of reasoning, self-correction, or alternate attempts. Do not write "wait", "but", "actually", "let me reconsider", "correcting", or show any alternate digit-checking process. If your first idea doesn't satisfy the digit constraint, work it out silently and only output the final, clean, correct version. Never let the reader see you checking or changing your answer.
 
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
@@ -148,77 +148,111 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   "hint_text": "..."
 }`;
 
-  const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 600,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  // Up to 3 attempts total. A generation that fails its own stated
+  // constraints (clean fields, digit actually present) is a failed
+  // attempt, not a saveable puzzle -- retry rather than pass it through.
+  const MAX_ATTEMPTS = 3;
+  const SELF_CORRECTION_PATTERN = /\b(wait|correcting|re-examining|let me|actually the|override)\b/i;
 
-  if (!aiResponse.ok) {
-    const errText = await aiResponse.text();
-    return new Response(JSON.stringify({ error: 'AI generation failed', detail: errText }), {
-      status: 502,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  let lastFailureReason = 'unknown';
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
-  }
 
-  const aiData = await aiResponse.json();
-  const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
+    if (!aiResponse.ok) {
+      lastFailureReason = `AI request failed: ${await aiResponse.text()}`;
+      continue;
+    }
 
-  // The AI reasons before answering, so the clean JSON object is always the
-  // LAST one in the response -- a greedy first-{-to-last-} match can span
-  // across reasoning text that itself contains braces, leaking reasoning
-  // into the parsed fields. Find the last "{" and the last "}" instead,
-  // which isolates the final JSON object regardless of what precedes it.
-  const lastOpen = text.lastIndexOf('{');
-  const lastClose = text.lastIndexOf('}');
-  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) {
+    const aiData = await aiResponse.json();
+    const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
+
+    // The AI reasons before answering, so the clean JSON object is always the
+    // LAST one in the response -- a greedy first-{-to-last-} match can span
+    // across reasoning text that itself contains braces, leaking reasoning
+    // into the parsed fields. Find the last "{" and the last "}" instead,
+    // which isolates the final JSON object regardless of what precedes it.
+    const lastOpen = text.lastIndexOf('{');
+    const lastClose = text.lastIndexOf('}');
+    if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) {
+      lastFailureReason = 'Could not locate a JSON object in the AI response';
+      continue;
+    }
+    const jsonSlice = text.slice(lastOpen, lastClose + 1);
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonSlice);
+    } catch {
+      lastFailureReason = 'AI response was not valid JSON';
+      continue;
+    }
+
+    // Strict correct_answer validation -- reject anything containing a
+    // non-digit character rather than relying on parseInt's lenient
+    // leading-digits parse, which would silently truncate leaked
+    // reasoning text (e.g. "15 -- wait, actually 8" -> 15) instead of
+    // catching it.
+    const rawAnswer = String(parsed.correct_answer ?? '').trim();
+    if (!/^\d+$/.test(rawAnswer)) {
+      lastFailureReason = `correct_answer was not a clean integer: "${rawAnswer}"`;
+      continue;
+    }
+    const correctAnswer = parseInt(rawAnswer, 10);
+
+    // The whole point of required_digit is that it must actually be
+    // extractable from correct_answer -- verify this instead of trusting
+    // the AI's own CRITICAL CONSTRAINT instruction to have been followed.
+    if (!rawAnswer.includes(String(required_digit))) {
+      lastFailureReason = `correct_answer (${rawAnswer}) does not contain required digit ${required_digit}`;
+      continue;
+    }
+
+    // Second line of defense against leaked reasoning even with the
+    // prompt fix in place -- reject on self-correction markers in either
+    // player-facing text field.
+    const extractionNote = String(parsed.extraction_note ?? '');
+    const questionText   = String(parsed.question_text ?? '');
+    if (SELF_CORRECTION_PATTERN.test(extractionNote) || SELF_CORRECTION_PATTERN.test(questionText)) {
+      lastFailureReason = 'extraction_note or question_text contained self-correction language';
+      continue;
+    }
+
+    // coordinate_digit is always required_digit — the AI cannot override this value.
     return new Response(
-      JSON.stringify({ error: 'Could not parse AI response', raw: text }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        question_text:    parsed.question_text,
+        movie_title:      parsed.movie_title,
+        movie_year:       parsed.movie_year ?? null,
+        movie_emoji:      parsed.movie_emoji || '🎬',
+        correct_answer:   correctAnswer,
+        coordinate_digit: required_digit,
+        extraction_note:  parsed.extraction_note,
+        hint_text:        parsed.hint_text,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-  const jsonSlice = text.slice(lastOpen, lastClose + 1);
 
-  let parsed: any;
-  try {
-    parsed = JSON.parse(jsonSlice);
-  } catch {
-    return new Response(
-      JSON.stringify({ error: 'Could not parse AI response', raw: jsonSlice }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Sanitise correct_answer — must be a plain integer, never AI reasoning text.
-  const correctAnswer = parseInt(String(parsed.correct_answer), 10);
-  if (isNaN(correctAnswer)) {
-    return new Response(
-      JSON.stringify({ error: 'AI returned a non-integer correct_answer', raw: parsed.correct_answer }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // coordinate_digit is always required_digit — the AI cannot override this value.
+  // Every attempt failed its own validation -- surface a clear error
+  // rather than ever saving a broken or contaminated puzzle.
   return new Response(
     JSON.stringify({
-      question_text:    parsed.question_text,
-      movie_title:      parsed.movie_title,
-      movie_year:       parsed.movie_year ?? null,
-      movie_emoji:      parsed.movie_emoji || '🎬',
-      correct_answer:   correctAnswer,
-      coordinate_digit: required_digit,
-      extraction_note:  parsed.extraction_note,
-      hint_text:        parsed.hint_text,
+      error: `Trivia generation failed validation after ${MAX_ATTEMPTS} attempts`,
+      lastFailureReason,
     }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 });
