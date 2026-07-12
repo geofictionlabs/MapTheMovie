@@ -98,6 +98,15 @@ const TIERS = {
   cipher: { label: 'Cipher', color: '#F43F5E' },
 };
 
+// trivia_pool.difficulty (and trivia_variables.difficulty, which it's
+// copied from) is capped at 3 -- CHECK (difficulty BETWEEN 1 AND 3).
+// There's no question-level "4", only a puzzle-level one.
+// create_command_center_hunt applies the same LEAST(tier_int, 3) cap
+// when it promotes a question -- sending the raw 1-4 tier value to
+// get_pooled_question would silently never match anything for
+// Cipher-tier waypoints.
+const TIER_TO_INT = { casual: 1, classic: 2, expert: 3, cipher: 4 };
+
 // Same 11 keys as HuntSelectionScreen.jsx's THEMES / App.jsx's GENRE_KEYWORDS.
 // Authored here going forward instead of guessed client-side from pack text.
 // evergreen_80s dropped 2026-07-12 (zero live packs used it); fantasy/drama/
@@ -463,9 +472,65 @@ export default function CommandCenter() {
         .filter((w) => w.id !== id)
         .map((w) => w.movie_title)
         .filter(Boolean);
+
+      // Same idea for the trivia pool -- don't hand back a question
+      // already used elsewhere in this hunt. Derived live from
+      // waypoints, same reasoning as usedMovies above.
+      const usedPoolIds = waypoints
+        .filter((w) => w.id !== id)
+        .map((w) => w.from_pool_id)
+        .filter(Boolean);
+
+      // Pool lookup is a fast-path optimisation, not a required step --
+      // any failure here (network, RPC error) falls through to AI
+      // generation exactly as if the pool had no match, rather than
+      // being caught by the outer catch and reported as a generation
+      // failure it isn't.
+      let pooled = null;
+      try {
+        const { data } = await supabase.rpc('get_pooled_question', {
+          p_digit: required_digit,
+          p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
+          p_genre: selectedGenre,
+          p_exclude_ids: usedPoolIds,
+        });
+        pooled = data;
+      } catch (e) { /* fall through to AI generation below */ }
+
+      if (pooled) {
+        // coordinate_digit is OVERRIDDEN to required_digit, never trusted
+        // from the pool row -- the row matched because required_digit is
+        // SOMEWHERE in available_digits, not necessarily the same digit
+        // it was originally promoted for (e.g. correct_answer=148,
+        // available_digits={1,4,8}, could have been promoted for digit 1
+        // but reused here for digit 8). Same discipline as
+        // build_puzzle_for_location's v_digit override.
+        setWaypoints((prev) =>
+          prev.map((w) => (w.id === id ? {
+            ...w,
+            question_text:    pooled.question_text,
+            movie_title:      pooled.movie_title,
+            movie_year:       pooled.movie_year,
+            movie_emoji:      pooled.movie_emoji,
+            correct_answer:   pooled.correct_answer,
+            coordinate_digit: required_digit,
+            extraction_note:  pooled.extraction_note,
+            hint_text:        pooled.hint_text,
+            from_pool_id:     pooled.id,
+            loading: false,
+          } : w))
+        );
+        return;
+      }
+
+      // No pool match -- fall through to AI generation exactly as before.
+      // from_pool_id explicitly cleared to null: without this, a
+      // regenerate() on a waypoint that was PREVIOUSLY pool-sourced would
+      // leave the old from_pool_id lingering on the merged state even
+      // though this result is freshly AI-generated.
       const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre, usedMovies);
       setWaypoints((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, ...result, loading: false } : w))
+        prev.map((w) => (w.id === id ? { ...w, ...result, from_pool_id: null, loading: false } : w))
       );
     } catch (err) {
       setWaypoints((prev) =>
@@ -508,6 +573,11 @@ export default function CommandCenter() {
         coordinate_digit: w.coordinate_digit,
         extraction_note:  w.extraction_note,
         hint_text:        w.hint_text,
+        // Tells create_command_center_hunt whether to promote this
+        // question into trivia_pool -- null/absent means freshly
+        // AI-generated (promote it); set means it already came FROM the
+        // pool (don't re-promote a question that's already there).
+        from_pool_id:     w.from_pool_id || null,
       }));
 
       const { data, error } = await supabase.rpc('create_command_center_hunt', {
