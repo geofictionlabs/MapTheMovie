@@ -4,6 +4,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from "react";
+import ScratchCard from "./components/ScratchCard";
 
 // ── REDUCED MOTION ────────────────────────────────────────────
 function usePrefersReducedMotion() {
@@ -39,39 +40,6 @@ function useInViewport(ref) {
     return () => obs.disconnect();
   }, [ref]);
   return inView;
-}
-
-// ── COORD MASKER ──────────────────────────────────────────────
-const maskCoord = (raw) => {
-  if (!raw) return '??.??????';
-  const s = String(raw);
-  const dot = s.indexOf('.');
-  if (dot === -1) return '?'.repeat(s.length);
-  return s.slice(0, dot + 1) + '?'.repeat(s.length - dot - 1);
-};
-
-// Decrypt-flicker: cycles random glyphs in place of each masked '?'
-// briefly on mount, then settles to the real masked string. Purely
-// cosmetic — never reveals real digits, only ever animates toward '?'.
-const FLICKER_CHARS = '0123456789';
-function DecryptCoord({ text, reduceMotion }) {
-  const [display, setDisplay] = useState(reduceMotion ? text : text.replace(/\?/g, () => FLICKER_CHARS[Math.floor(Math.random() * 10)]));
-  useEffect(() => {
-    if (reduceMotion) { setDisplay(text); return; }
-    let frame = 0;
-    const totalFrames = 8;
-    const id = setInterval(() => {
-      frame += 1;
-      if (frame >= totalFrames) {
-        setDisplay(text);
-        clearInterval(id);
-        return;
-      }
-      setDisplay(text.replace(/\?/g, () => FLICKER_CHARS[Math.floor(Math.random() * 10)]));
-    }, 55);
-    return () => clearInterval(id);
-  }, [text, reduceMotion]);
-  return <>{display}</>;
 }
 
 // ── THEME DEFINITIONS ─────────────────────────────────────────
@@ -776,41 +744,17 @@ function HuntCard({ hunt, onSelect, index }) {
           <DifficultyPill level={hunt.difficulty} theme={theme} />
         </div>
 
-        {/* Destination */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'rgba(0,0,0,0.3)',
-          border: `1px solid ${theme.accent}18`,
-          borderRadius: '10px', padding: '10px 14px', marginBottom: '14px',
-        }}>
-          <div>
-            <div style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: '7px', color: 'rgba(255,255,255,0.22)',
-              letterSpacing: '2px', marginBottom: '4px',
-            }}>DESTINATION LOCKED</div>
-            <div style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: '13px', color: theme.accent, letterSpacing: '2px',
-            }}>
-              <DecryptCoord text={maskCoord(hunt.masked_lat)} reduceMotion={reduceMotion} />° N &nbsp;
-              <DecryptCoord text={maskCoord(hunt.masked_lon)} reduceMotion={reduceMotion} />° E
-            </div>
-          </div>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            border: `1px solid ${theme.accent}30`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <circle cx="6" cy="5" r="2.5" stroke={theme.accent} strokeWidth="1"/>
-              <path d="M3.5 7 Q6 11 8.5 7" stroke={theme.accent} strokeWidth="1" fill="none"/>
-              <line x1="6" y1="1" x2="6" y2="2.5" stroke={theme.accent} strokeWidth="1"/>
-              <line x1="9.5" y1="5" x2="11" y2="5" stroke={theme.accent} strokeWidth="1"/>
-              <line x1="1" y1="5" x2="2.5" y2="5" stroke={theme.accent} strokeWidth="1"/>
-            </svg>
-          </div>
-        </div>
+        {/* Destination — scratch-to-reveal area teaser. Replaces the old
+            masked-coordinate readout in the same slot: both existed to
+            tease the hidden destination without revealing it, so keeping
+            both would have been redundant. */}
+        <ScratchCard
+          theme={theme}
+          approxLat={hunt.approx_lat}
+          approxLon={hunt.approx_lon}
+          postcodeOutward={hunt.postcode_outward}
+          inView={inView}
+        />
 
         {/* CTA — marquee bulb: slow gold glow breathes at rest (opacity-only
             overlay, so the animated property stays transform/opacity per
