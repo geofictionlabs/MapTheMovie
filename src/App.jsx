@@ -4120,6 +4120,7 @@ export default function App() {
           difficulty:       h.difficulty || 'classic',
           approx_lat:       h.approx_lat,
           approx_lon:       h.approx_lon,
+          postcode_outward: h.postcode_outward,
         }
       })
 
