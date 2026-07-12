@@ -167,18 +167,57 @@ const THEMES = {
     sideBarPattern: 'static',
     tagline: 'Trust no one',
   },
-  evergreen_80s: {
-    gradient: 'linear-gradient(145deg, #0A0014 0%, #18002E 30%, #280040 60%, #0A0014 100%)',
-    accentGradient: 'linear-gradient(90deg, #C026D3, #FF00FF)',
-    accent: '#FF00FF',
-    glow: 'rgba(255,0,255,0.5)',
-    borderColor: 'rgba(255,0,255,0.25)',
-    label: '80s NOSTALGIA',
-    labelBg: 'rgba(255,0,255,0.1)',
-    labelBorder: 'rgba(255,0,255,0.4)',
-    icon: '📼',
-    sideBarPattern: 'retro',
-    tagline: 'Rewind & play',
+  fantasy: {
+    gradient: 'linear-gradient(145deg, #020A02 0%, #0A2410 45%, #020A02 100%)',
+    accentGradient: 'linear-gradient(90deg, #15803D, #22C55E)',
+    accent: '#22C55E',
+    glow: 'rgba(34,197,94,0.5)',
+    borderColor: 'rgba(34,197,94,0.25)',
+    label: 'FANTASY',
+    labelBg: 'rgba(21,128,61,0.15)',
+    labelBorder: 'rgba(34,197,94,0.4)',
+    icon: '⚔️',
+    sideBarPattern: 'elvish',
+    tagline: 'A realm awaits',
+  },
+  drama: {
+    gradient: 'linear-gradient(145deg, #0A0204 0%, #300818 45%, #0A0204 100%)',
+    accentGradient: 'linear-gradient(90deg, #B45309, #FCD34D)',
+    accent: '#FCD34D',
+    glow: 'rgba(252,211,77,0.45)',
+    borderColor: 'rgba(252,211,77,0.25)',
+    label: 'DRAMA',
+    labelBg: 'rgba(180,83,9,0.15)',
+    labelBorder: 'rgba(252,211,77,0.4)',
+    icon: '🎞️',
+    sideBarPattern: 'spotlight',
+    tagline: 'Every frame matters',
+  },
+  mystery: {
+    gradient: 'linear-gradient(145deg, #05070A 0%, #1B222C 45%, #05070A 100%)',
+    accentGradient: 'linear-gradient(90deg, #475569, #64748B)',
+    accent: '#94A3B8',
+    glow: 'rgba(148,163,184,0.45)',
+    borderColor: 'rgba(148,163,184,0.25)',
+    label: 'MYSTERY',
+    labelBg: 'rgba(71,85,105,0.18)',
+    labelBorder: 'rgba(148,163,184,0.4)',
+    icon: '🔍',
+    sideBarPattern: 'fog',
+    tagline: 'Nothing is as it seems',
+  },
+  family: {
+    gradient: 'linear-gradient(145deg, #1A1200 0%, #0C2624 55%, #041A18 100%)',
+    accentGradient: 'linear-gradient(90deg, #F59E0B, #2DD4BF)',
+    accent: '#F59E0B',
+    glow: 'rgba(245,158,11,0.45)',
+    borderColor: 'rgba(245,158,11,0.25)',
+    label: 'FAMILY',
+    labelBg: 'rgba(245,158,11,0.12)',
+    labelBorder: 'rgba(245,158,11,0.4)',
+    icon: '🎈',
+    sideBarPattern: 'stars',
+    tagline: 'Fun for everyone',
   },
 };
 
@@ -336,23 +375,87 @@ function ComedyFlourish({ theme }) {
   );
 }
 
-function RetroFlourish({ theme }) {
-  // Neon horizon grid at the card base, chrome shimmer sweeping the
-  // title, occasional single-frame VHS tracking jitter.
+function MoodIcon({ icon }) {
+  // Shared bottom-left mood icon for the 4 newer genres — small, dim,
+  // doesn't compete with the existing top-right theme.icon corner badge.
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', pointerEvents: 'none', animation: 'flourishVHSJitter 9s linear infinite' }}>
-      <svg width="100%" height="60" viewBox="0 0 300 60" preserveAspectRatio="none"
-        style={{ position: 'absolute', left: 0, bottom: 0, opacity: 0.5, animation: 'flourishGridDrift 3s ease-in-out infinite' }}>
-        {[0, 12, 26, 42, 60].map((y, i) => (
-          <line key={i} x1="0" y1={60 - y} x2="300" y2={60 - y} stroke={i % 2 === 0 ? '#FF00FF' : '#00FFFF'} strokeWidth="1" />
-        ))}
+    <div style={{
+      position: 'absolute', bottom: 10, left: 12, fontSize: 15, opacity: 0.55,
+      animation: 'flourishMoodFade 4s ease-in-out infinite',
+    }}>{icon}</div>
+  );
+}
+
+function FantasyFlourish({ theme }) {
+  // Faint drifting ornamental vine/rune linework along the top edge —
+  // subtle, not a full pattern fill.
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', pointerEvents: 'none' }}>
+      <svg width="100%" height="46" viewBox="0 0 300 46" preserveAspectRatio="none"
+        style={{ position: 'absolute', top: 0, left: 0, opacity: 0.3, animation: 'flourishVineDrift 10s ease-in-out infinite' }}>
+        <path d="M-20 12 Q 20 2, 50 14 T 110 12 T 170 14 T 230 12 T 290 14 T 340 12"
+          stroke={theme.accent} strokeWidth="1" fill="none" />
+        <circle cx="50" cy="14" r="2" fill={theme.accent} />
+        <circle cx="170" cy="14" r="2" fill={theme.accent} />
+        <circle cx="290" cy="14" r="2" fill={theme.accent} />
       </svg>
+      <MoodIcon icon={theme.icon} />
+    </div>
+  );
+}
+
+function DramaFlourish({ theme }) {
+  // Slow-breathing radial spotlight vignette, gold-toned.
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', pointerEvents: 'none' }}>
       <div style={{
-        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-        background: 'linear-gradient(115deg, transparent 46%, rgba(255,255,255,0.5) 50%, transparent 54%)',
-        mixBlendMode: 'overlay',
-        animation: 'flourishChromeShimmer 3.5s ease-in-out infinite',
+        position: 'absolute', top: '-30%', left: '50%', width: '160%', height: '160%',
+        transform: 'translateX(-50%)',
+        background: `radial-gradient(ellipse at 50% 0%, ${theme.accent}22 0%, transparent 60%)`,
+        animation: 'flourishSpotlightBreathe 5s ease-in-out infinite',
       }} />
+      <MoodIcon icon={theme.icon} />
+    </div>
+  );
+}
+
+function MysteryFlourish({ theme }) {
+  // Slowly drifting fog/mist layer, slate-blue tinted — same technique
+  // as ThrillerFlourish's fog, recoloured and repositioned so the two
+  // genres don't read identically.
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', pointerEvents: 'none' }}>
+      <div style={{
+        position: 'absolute', top: -10, left: '-20%', width: '140%', height: '55%',
+        background: `linear-gradient(180deg, ${theme.accent}20, transparent)`,
+        filter: 'blur(8px)',
+        animation: 'flourishFogDrift 12s ease-in-out infinite reverse',
+      }} />
+      <MoodIcon icon={theme.icon} />
+    </div>
+  );
+}
+
+function FamilyFlourish({ theme }) {
+  // 5 small twinkling stars scattered across the card, warm-gold.
+  const stars = [
+    { left: '14%', top: '18%', delay: '0s' },
+    { left: '40%', top: '10%', delay: '0.6s' },
+    { left: '64%', top: '22%', delay: '1.3s' },
+    { left: '82%', top: '14%', delay: '0.3s' },
+    { left: '28%', top: '30%', delay: '1.8s' },
+  ];
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', pointerEvents: 'none' }}>
+      {stars.map((s, i) => (
+        <div key={i} style={{
+          position: 'absolute', left: s.left, top: s.top, width: 3, height: 3, borderRadius: '50%',
+          background: theme.accent, boxShadow: `0 0 4px ${theme.accent}`,
+          animation: `flourishTwinkle 2.6s ease-in-out infinite`,
+          animationDelay: s.delay,
+        }} />
+      ))}
+      <MoodIcon icon={theme.icon} />
     </div>
   );
 }
@@ -408,8 +511,11 @@ function GenreFlourish({ genre, theme, active }) {
     case 'scifi':         return <ScifiFlourish theme={theme} />;
     case 'action':        return <ActionFlourish theme={theme} />;
     case 'comedy':        return <ComedyFlourish theme={theme} />;
-    case 'evergreen_80s': return <RetroFlourish theme={theme} />;
     case 'thriller':      return <ThrillerFlourish theme={theme} />;
+    case 'fantasy':       return <FantasyFlourish theme={theme} />;
+    case 'drama':         return <DramaFlourish theme={theme} />;
+    case 'mystery':       return <MysteryFlourish theme={theme} />;
+    case 'family':        return <FamilyFlourish theme={theme} />;
     default:              return <GeneralFlourish theme={theme} />;
   }
 }
@@ -1003,21 +1109,21 @@ export default function HuntSelectionScreen({
           70% { transform: translateY(0) scaleX(1.25) scaleY(0.75); }
           85% { transform: translateY(-4px) scaleX(0.95) scaleY(1.05); }
         }
-        @keyframes flourishGridDrift {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(4px); }
+        @keyframes flourishMoodFade {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 0.65; }
         }
-        @keyframes flourishChromeShimmer {
-          0% { transform: translateX(-100%); opacity: 0; }
-          10% { opacity: 0.8; }
-          50% { transform: translateX(100%); opacity: 0.8; }
-          60%, 100% { transform: translateX(100%); opacity: 0; }
+        @keyframes flourishVineDrift {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(3%); }
         }
-        @keyframes flourishVHSJitter {
-          0%, 92%, 100% { transform: translateX(0); }
-          93% { transform: translateX(-2px) skewX(1deg); }
-          94% { transform: translateX(2px) skewX(-1deg); }
-          95% { transform: translateX(0); }
+        @keyframes flourishSpotlightBreathe {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.9; }
+        }
+        @keyframes flourishTwinkle {
+          0%, 100% { opacity: 0.2; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.3); }
         }
         @keyframes flourishSearchlight {
           0%, 100% { transform: rotate(-18deg); opacity: 0.7; }

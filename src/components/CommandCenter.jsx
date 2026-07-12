@@ -98,8 +98,10 @@ const TIERS = {
   cipher: { label: 'Cipher', color: '#F43F5E' },
 };
 
-// Same 8 keys as HuntSelectionScreen.jsx's THEMES / App.jsx's GENRE_KEYWORDS.
+// Same 11 keys as HuntSelectionScreen.jsx's THEMES / App.jsx's GENRE_KEYWORDS.
 // Authored here going forward instead of guessed client-side from pack text.
+// evergreen_80s dropped 2026-07-12 (zero live packs used it); fantasy/drama/
+// mystery/family added.
 const GENRES = [
   { key: 'general', label: 'General' },
   { key: 'horror', label: 'Horror' },
@@ -108,7 +110,10 @@ const GENRES = [
   { key: 'romance', label: 'Romance' },
   { key: 'comedy', label: 'Comedy' },
   { key: 'thriller', label: 'Thriller' },
-  { key: 'evergreen_80s', label: '80s Nostalgia' },
+  { key: 'fantasy', label: 'Fantasy' },
+  { key: 'drama', label: 'Drama' },
+  { key: 'mystery', label: 'Mystery' },
+  { key: 'family', label: 'Family' },
 ];
 
 const DEFAULT_VOUCHER_HEADLINE = 'Show this screen to claim your reward';
