@@ -81,18 +81,23 @@ function hexAccent(raw) {
   return raw.startsWith('#') ? raw : '#' + raw
 }
 
-// Placeholder genre detection — there is no authored `genre` column on
-// puzzle_packs yet (theme_tag is seasonal, not a movie genre). Matches
-// pack text against keywords for each of HuntSelectionScreen's 8 THEMES.
-// Replace with real authored data once Command Center has a genre picker.
+// Fallback genre detection for packs created before migration 016 added
+// the authored `genre` column (theme_tag is seasonal, not a movie genre,
+// so it can't stand in for those). Command Center has authored its own
+// genre via a picker since that migration — this only ever runs for
+// packs where puzzle_packs.genre IS NULL. Matches pack text against
+// keywords for each of HuntSelectionScreen's 11 THEMES.
 const GENRE_KEYWORDS = {
-  horror:        ['horror', 'scream', 'nightmare', 'haunt', 'blood', 'zombie', 'ghost', 'curse'],
-  scifi:         ['sci-fi', 'scifi', 'space', 'alien', 'future', 'robot', 'galaxy', 'cyber'],
-  action:        ['action', 'chase', 'explosion', 'heist', 'spy', 'mission', 'agent'],
-  romance:       ['romance', 'love', 'heart', 'valentine', 'wedding', 'romcom'],
-  comedy:        ['comedy', 'laugh', 'funny', 'sitcom', 'comic'],
-  thriller:      ['thriller', 'suspense', 'conspiracy', 'noir', 'mystery'],
-  evergreen_80s: ['80s', 'nostalgia', 'retro', 'arcade', 'neon'],
+  horror:   ['horror', 'scream', 'nightmare', 'haunt', 'blood', 'zombie', 'ghost', 'curse'],
+  scifi:    ['sci-fi', 'scifi', 'space', 'alien', 'future', 'robot', 'galaxy', 'cyber'],
+  action:   ['action', 'chase', 'explosion', 'heist', 'spy', 'mission', 'agent'],
+  romance:  ['romance', 'love', 'heart', 'valentine', 'wedding', 'romcom'],
+  comedy:   ['comedy', 'laugh', 'funny', 'sitcom', 'comic'],
+  thriller: ['thriller', 'suspense', 'conspiracy', 'noir'],
+  fantasy:  ['fantasy', 'dragon', 'wizard', 'kingdom', 'magic', 'quest'],
+  drama:    ['drama', 'biopic', 'tragedy'],
+  mystery:  ['mystery', 'detective', 'whodunit', 'clue', 'sleuth'],
+  family:   ['family', 'kids', 'animated', 'pixar', 'disney'],
 }
 function detectGenre(name, description, tagline) {
   const text = [name, description, tagline].filter(Boolean).join(' ').toLowerCase()
@@ -3995,7 +4000,13 @@ export default function App() {
   const [starting, setStarting] = useState(false)
   const [compassMsg, setCompassMsg] = useState(null)
   const [waypointsMode, setWaypointsMode] = useState(false)
+  // `waypoints` now only ever holds ALREADY-UNLOCKED real waypoints (each
+  // one fetched fresh from get_puzzle_waypoints right as its own trivia
+  // slot is solved — see handleSubmitAnswer) — never the full trail
+  // upfront. `totalWaypoints` is the true count, needed separately since
+  // waypoints.length no longer represents it.
   const [waypoints, setWaypoints] = useState([])
+  const [totalWaypoints, setTotalWaypoints] = useState(0)
   const [waypointPhase, setWaypointPhase] = useState(0)
   const [compassTarget, setCompassTarget] = useState(null)
   const [installPrompt, setInstallPrompt] = useState(null)
@@ -4025,6 +4036,7 @@ export default function App() {
           signalPoints,
           waypointsMode,
           waypoints,
+          totalWaypoints,
           waypointPhase,
           compassTarget,
           screen,
@@ -4034,7 +4046,7 @@ export default function App() {
     } else {
       try { localStorage.removeItem('mtm_hunt_progress') } catch {}
     }
-  }, [hydrated, activeSession, activePack, solved, signalPoints, waypointsMode, waypoints, waypointPhase, compassTarget, screen])
+  }, [hydrated, activeSession, activePack, solved, signalPoints, waypointsMode, waypoints, totalWaypoints, waypointPhase, compassTarget, screen])
 
   useEffect(() => {
     loadHunts()
@@ -4064,72 +4076,51 @@ export default function App() {
 
   async function loadHunts() {
     try {
-      const nowIso = new Date().toISOString()
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select(`
-          id,
-          voucher_headline,
-          difficulty,
-          puzzle_packs (
-            id, name, emoji, tier, description, tagline, accent_color, theme_tag, genre,
-            puzzles ( id, coordinate_slots, masked_lat, masked_lon, is_active )
-          ),
-          businesses ( id, name, is_active )
-        `)
-        .eq('status', 'active')
-        .lte('starts_at', nowIso)
-        .gte('ends_at', nowIso)
-
+      // get_active_hunts() does the active/date/is_active filtering and
+      // the real_lat/real_lon -> approx_lat/approx_lon fuzzing server-side
+      // (deterministic hashtext(business_id) offset, ~300-400m, never the
+      // real business coordinates) -- see migration 003 + 028. Previously
+      // this was a direct .from('campaigns').select(...) that never
+      // selected businesses.location at all, so approx_lat/approx_lon were
+      // silently always 0,0 -- fixed as a side effect of this switch, not
+      // the point of it.
+      const { data, error } = await supabase.rpc('get_active_hunts')
       if (error) throw error
 
-      const hunts = (data || []).flatMap(c => {
-        const pp = c.puzzle_packs
-        const b  = c.businesses
-        if (!pp || !b || b.is_active === false) return []
-
-        // Pick the first active puzzle for this pack
-        const pz = (pp.puzzles || []).find(p => p.is_active)
-        if (!pz) return []
-
-        // PostgREST returns geography as GeoJSON  may be string or object
-        let lat = 0, lon = 0
-        try {
-          const geo = typeof b.location === 'string' ? JSON.parse(b.location) : b.location
-          if (geo?.coordinates) { lon = geo.coordinates[0]; lat = geo.coordinates[1] }
-        } catch {}
-
+      // One puzzle row per pack is the established model (migration 014
+      // consolidated multi-waypoint hunts to this) -- the RPC's JOIN
+      // assumes that too, same as the old client-side .find(is_active).
+      const hunts = (data?.hunts || []).map(h => {
         // `puzzle_packs.genre` is authored directly in Command Center as of
         // migration 016. Packs created before that migration have genre =
         // NULL (theme_tag is seasonal — christmas/halloween/etc — not a
         // movie genre, so it can't stand in), so fall back to the old
         // keyword-detection heuristic only for those.
-        const genre = pp.genre || detectGenre(pp.name, pp.description, pp.tagline)
+        const genre = h.genre || detectGenre(h.pack_name, h.pack_description, h.tagline)
 
-        return [{
-          campaign_id:      c.id,
-          pack_id:          pp.id,
-          puzzle_id:        pz.id,
-          pack_name:        pp.name,
-          pack_emoji:       pp.emoji,
-          pack_tier:        pp.tier,
-          pack_description: pp.description,
-          description:      pp.description,
-          tagline:          pp.tagline,
-          accent_color:     pp.accent_color,
-          theme_tag:        pp.theme_tag,
+        return {
+          campaign_id:      h.campaign_id,
+          pack_id:          h.pack_id,
+          puzzle_id:        h.puzzle_id,
+          pack_name:        h.pack_name,
+          pack_emoji:       h.pack_emoji,
+          pack_tier:        h.pack_tier,
+          pack_description: h.pack_description,
+          description:      h.pack_description,
+          tagline:          h.tagline,
+          accent_color:     h.accent_color,
+          theme_tag:        h.theme_tag,
           genre,
-          coordinate_slots: pz.coordinate_slots,
-          puzzle_packs:     { genre, coordinate_slots: pz.coordinate_slots },
-          masked_lat:       pz.masked_lat,
-          masked_lon:       pz.masked_lon,
-          is_free_tier:     pp.tier === 'standard',
-          business_name:    b.name,
-          voucher_headline: c.voucher_headline,
-          difficulty:       c.difficulty || 'classic',
-          approx_lat:       lat,
-          approx_lon:       lon,
-        }]
+          coordinate_slots: h.coordinate_slots,
+          masked_lat:       h.masked_lat,
+          masked_lon:       h.masked_lon,
+          is_free_tier:     h.is_free_tier,
+          business_name:    h.business_name,
+          voucher_headline: h.voucher_headline,
+          difficulty:       h.difficulty || 'classic',
+          approx_lat:       h.approx_lat,
+          approx_lon:       h.approx_lon,
+        }
       })
 
       setHunts(hunts)
@@ -4300,6 +4291,7 @@ export default function App() {
       setMaxSignalPoints(STARTING_TAKES[saved.pack?.difficulty] ?? 10)
       setWaypointsMode(!!saved.waypointsMode)
       setWaypoints(saved.waypoints || [])
+      setTotalWaypoints(saved.totalWaypoints || 0)
       setWaypointPhase(saved.waypointPhase || 0)
       setCompassTarget(saved.compassTarget || null)
       setScreen(saved.screen === 'compass' ? 'compass' : 'puzzles')
@@ -4377,29 +4369,27 @@ export default function App() {
       setWaypointPhase(0)
       setCompassTarget(null)
 
-      // Premium packs: fetch destination once, generate waypoints client-side.
-      // get_puzzle_destination takes only a UUID  no FLOAT8 type issues.
+      // Premium packs: real, author-placed waypoints (Command Center
+      // multi-stop trails) take priority over synthetic interpolation.
+      // Real coordinates are never fetched here, only the total COUNT --
+      // each waypoint's real lat/lon is fetched fresh right as its own
+      // trivia slot is solved (see handleSubmitAnswer's phaseDone branch),
+      // never all at once upfront. total_waypoints === 0 means this
+      // puzzle has no real waypoints at all, falling through to the
+      // existing synthetic interpolation path exactly as before.
       let wps = []
+      let totalWp = 0
+      let usesRealWaypoints = false
       if (isPremium) {
-        // Real, author-placed waypoints (Command Center multi-stop trails)
-        // take priority over synthetic interpolation when they exist for
-        // this puzzle. Empty/missing result falls through to the existing
-        // interpolated path unchanged  Gillingham and every hunt without
-        // stored waypoints keeps working exactly as today.
         try {
           const { data: realWpData } = await supabase.rpc('get_puzzle_waypoints', {
             p_session_id: session.id,
           })
-          if (realWpData?.has_waypoints) {
-            wps = realWpData.waypoints.map(w => ({
-              lat: w.real_lat,
-              lon: w.real_lon,
-              geofence_m: w.geofence_radius_m,
-            }))
-          }
+          totalWp = realWpData?.total_waypoints || 0
+          usesRealWaypoints = totalWp > 0
         } catch (e) { /* fall through to synthetic interpolation below */ }
 
-        if (wps.length === 0) {
+        if (!usesRealWaypoints) {
           const startPos = userPos || { lat: 51.3748, lon: 0.5439 }
           try {
             const { data: destData, error: destErr } = await supabase.rpc('get_puzzle_destination', {
@@ -4418,7 +4408,8 @@ export default function App() {
         }
       }
       setWaypoints(wps)
-      setWaypointsMode(wps.length > 0)
+      setTotalWaypoints(totalWp)
+      setWaypointsMode(usesRealWaypoints || wps.length > 0)
 
       setScreen('puzzles')
     } catch (err) {
@@ -4453,15 +4444,37 @@ export default function App() {
           const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
 
           if (phaseDone) {
-            if (waypointPhase < waypoints.length && waypointPhase < activeQuestions.length - 1) {
-              const wp = waypoints[waypointPhase]
-              setCompassTarget({
-                lat: wp.lat, lon: wp.lon,
-                geofence_m: wp.geofence_m,
-                isWaypoint: true,
-                label: `WAYPOINT ${waypointPhase + 1} OF ${waypoints.length}`,
-              })
-              setTimeout(() => setScreen('compass'), 600)
+            const isRealWaypoints = totalWaypoints > 0
+            const wpCount = isRealWaypoints ? totalWaypoints : waypoints.length
+
+            if (waypointPhase < wpCount && waypointPhase < activeQuestions.length - 1) {
+              let wp
+              if (isRealWaypoints) {
+                // Fetch fresh — the slot just solved above is what unlocks
+                // this waypoint server-side (get_puzzle_waypoints gates on
+                // solved-slot count), so the real coordinates for THIS
+                // waypoint don't exist client-side until this exact moment.
+                // Waypoints beyond this one are still withheld by the RPC.
+                const { data: realWpData } = await supabase.rpc('get_puzzle_waypoints', {
+                  p_session_id: activeSession.id,
+                })
+                const unlocked = (realWpData?.waypoints || []).map(w => ({
+                  lat: w.real_lat, lon: w.real_lon, geofence_m: w.geofence_radius_m,
+                }))
+                setWaypoints(unlocked)
+                wp = unlocked[waypointPhase]
+              } else {
+                wp = waypoints[waypointPhase]
+              }
+              if (wp) {
+                setCompassTarget({
+                  lat: wp.lat, lon: wp.lon,
+                  geofence_m: wp.geofence_m,
+                  isWaypoint: true,
+                  label: `WAYPOINT ${waypointPhase + 1} OF ${wpCount}`,
+                })
+                setTimeout(() => setScreen('compass'), 600)
+              }
             } else {
               // All waypoints passed and this phase's slots solved  unlock final destination
               const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
