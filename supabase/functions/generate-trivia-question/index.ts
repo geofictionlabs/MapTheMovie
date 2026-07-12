@@ -56,6 +56,31 @@ function genrePhrase(genre: string | undefined) {
   }
 }
 
+// Weak heuristic, not a real language check: does the question describe a
+// calculation the player has to work out? Digit-sequence count deliberately
+// stays loose -- Cipher tier is instructed to obscure numbers as wordplay
+// ("a rogue's fingers", "the total permitted quarry"), so literal digits in
+// question_text are often absent even when a real calculation is implied;
+// the operation-word branch is what actually catches that case.
+function impliesCalculation(questionText: string): boolean {
+  const numberMatches = questionText.match(/\d+/g) || [];
+  const hasOperationWord = /\b(subtract|add|multiply|divide|total)\b/i.test(questionText);
+  return numberMatches.length >= 2 || hasOperationWord;
+}
+
+// Weak signal that extraction_note actually derived the answer rather than
+// just asserting it. Distinct-number count (not raw match count) matters --
+// "The answer itself is 8, satisfying the digit requirement directly" has
+// TWO occurrences of "8" (the exact bug this check exists to catch) and
+// would wrongly pass a plain match-count check; a Set collapses that to one
+// distinct number, correctly failing it.
+function hasDerivationSignal(extractionNote: string): boolean {
+  const hasOperatorSymbol = /[+\-*/]/.test(extractionNote);
+  const hasOperatorWord = /\b(plus|minus|times|divided)\b/i.test(extractionNote);
+  const distinctNumbers = new Set(extractionNote.match(/\d+/g) || []);
+  return hasOperatorSymbol || hasOperatorWord || distinctNumbers.size >= 2;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -132,6 +157,8 @@ Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
 ${genreRequirement ? `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n` : ''}${excludeConstraint}
 CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film trivia) MUST naturally contain the digit ${required_digit} somewhere in it. This digit fills one GPS coordinate slot. Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
+
+If the question describes a calculation (e.g. subtracting, adding, or combining numbers or facts), extraction_note must show the actual calculation using the specific numbers/facts referenced in question_text, ending in the final digit -- not just assert the answer. Example of a VALID note: "Quota is 6, minus 10 fingers, plus 12 floors = 8, take the units digit." An INVALID note merely states the answer without deriving it from the question's own numbers, e.g. "The answer is 8, satisfying the requirement" -- this must never be produced.
 
 ${genreRequirement ? 'Tie the question thematically to the location name only if doing so does not conflict with the genre constraint above — the genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
 
@@ -227,6 +254,16 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     const questionText   = String(parsed.question_text ?? '');
     if (SELF_CORRECTION_PATTERN.test(extractionNote) || SELF_CORRECTION_PATTERN.test(questionText)) {
       lastFailureReason = 'extraction_note or question_text contained self-correction language';
+      continue;
+    }
+
+    // Catches a bare assertion of the answer (e.g. "The answer itself is 8,
+    // satisfying the digit requirement directly") that passes every check
+    // above but never actually derives the digit from the question's own
+    // numbers -- see migration/prompt notes above for a real example found
+    // in Cipher-tier testing.
+    if (impliesCalculation(questionText) && !hasDerivationSignal(extractionNote)) {
+      lastFailureReason = 'question_text implies a calculation but extraction_note does not show a derivation';
       continue;
     }
 
