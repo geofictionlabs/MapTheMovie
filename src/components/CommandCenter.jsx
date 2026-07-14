@@ -487,52 +487,24 @@ export default function CommandCenter() {
       // being caught by the outer catch and reported as a generation
       // failure it isn't.
       let pooled = null;
-      const poolParams = {
-        p_digit: required_digit,
-        p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
-        p_genre: selectedGenre,
-        p_exclude_ids: usedPoolIds,
-      };
-      // TEMPORARY DIAGNOSTIC LOGGING (remove once the Command Center
-      // generation-failure investigation is closed out).
-      console.log('[trivia-diag] get_pooled_question params', { waypointId: id, name, tier, ...poolParams });
       try {
-        const { data, error } = await supabase.rpc('get_pooled_question', poolParams);
-        console.log('[trivia-diag] get_pooled_question raw response', { waypointId: id, data, error });
+        // .maybeSingle() (migration 034): get_pooled_question is RETURNS
+        // SETOF trivia_pool, so this correctly unwraps zero rows to real
+        // JS null and exactly one row to a plain object -- never the
+        // ambiguous all-null-fields object the old scalar RETURNS
+        // trivia_pool + RETURN NULL produced over PostgREST, which used
+        // to make `if (pooled)` below wrongly read a genuine no-match as
+        // a hit (blank waypoint card, no error, no AI fallback call).
+        const { data } = await supabase.rpc('get_pooled_question', {
+          p_digit: required_digit,
+          p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
+          p_genre: selectedGenre,
+          p_exclude_ids: usedPoolIds,
+        }).maybeSingle();
         pooled = data;
-      } catch (e) {
-        console.log('[trivia-diag] get_pooled_question threw (falling through to AI)', { waypointId: id, error: e });
-        /* fall through to AI generation below */
-      }
+      } catch (e) { /* fall through to AI generation below */ }
 
       if (pooled) {
-        // TEMPORARY DIAGNOSTIC LOGGING (remove once the Command Center
-        // generation-failure investigation is closed out). Logs the
-        // exact fields about to be written into waypoint state, plus a
-        // blunt "are they actually all null" flag -- if `pooled` is
-        // truthy (a non-null object) but every field on it is null,
-        // that's consistent with the classic Postgres/PostgREST
-        // composite-NULL gotcha: get_pooled_question's own `RETURN NULL`
-        // (its NOT FOUND branch) can come back over PostgREST as a JSON
-        // object with every key set to null, not JSON `null` itself --
-        // so `if (pooled)` here would wrongly read as a pool hit.
-        const pooledFieldsAllNull = pooled && Object.keys(pooled).length > 0
-          && Object.values(pooled).every((v) => v === null);
-        console.log('[trivia-diag] pooled branch entered, fields about to be set', {
-          waypointId: id,
-          pooled,
-          pooledFieldsAllNull,
-          question_text:    pooled.question_text,
-          movie_title:      pooled.movie_title,
-          movie_year:       pooled.movie_year,
-          movie_emoji:      pooled.movie_emoji,
-          correct_answer:   pooled.correct_answer,
-          coordinate_digit: required_digit,
-          extraction_note:  pooled.extraction_note,
-          hint_text:        pooled.hint_text,
-          from_pool_id:     pooled.id,
-        });
-
         // coordinate_digit is OVERRIDDEN to required_digit, never trusted
         // from the pool row -- the row matched because required_digit is
         // SOMEWHERE in available_digits, not necessarily the same digit
@@ -540,8 +512,8 @@ export default function CommandCenter() {
         // available_digits={1,4,8}, could have been promoted for digit 1
         // but reused here for digit 8). Same discipline as
         // build_puzzle_for_location's v_digit override.
-        setWaypoints((prev) => {
-          const next = prev.map((w) => (w.id === id ? {
+        setWaypoints((prev) =>
+          prev.map((w) => (w.id === id ? {
             ...w,
             question_text:    pooled.question_text,
             movie_title:      pooled.movie_title,
@@ -553,13 +525,8 @@ export default function CommandCenter() {
             hint_text:        pooled.hint_text,
             from_pool_id:     pooled.id,
             loading: false,
-          } : w));
-          console.log('[trivia-diag] setWaypoints called from pooled branch', {
-            waypointId: id,
-            newWaypointState: next.find((w) => w.id === id),
-          });
-          return next;
-        });
+          } : w))
+        );
         return;
       }
 
@@ -568,18 +535,11 @@ export default function CommandCenter() {
       // regenerate() on a waypoint that was PREVIOUSLY pool-sourced would
       // leave the old from_pool_id lingering on the merged state even
       // though this result is freshly AI-generated.
-      console.log('[trivia-diag] no pool match, calling AI generation', { waypointId: id, name, tier, required_digit, selectedGenre, usedMovies });
       const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre, usedMovies);
-      console.log('[trivia-diag] AI generation result merged into waypoint', { waypointId: id, result });
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...result, from_pool_id: null, loading: false } : w))
       );
     } catch (err) {
-      // TEMPORARY DIAGNOSTIC LOGGING (remove once the Command Center
-      // generation-failure investigation is closed out) -- logs the full
-      // error object, not just err.message, in case the thrown error's
-      // message is generic/empty and the real detail is elsewhere on it.
-      console.log('[trivia-diag] fetchQuestionFor caught error', { waypointId: id, err, message: err?.message, stack: err?.stack });
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, loading: false, error: true, errorMessage: err?.message || null } : w))
       );
