@@ -2716,7 +2716,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent, difficulty 
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              placeholder={question.placeholder || 'e.g. ?'}
+              placeholder={question.placeholder || 'e.g. 42'}
               disabled={status === 'submitting'}
             />
             <button
@@ -2972,6 +2972,10 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const isFacingDestination = deviceHeading != null && normalisedAngle < 20
   // Red state: needle pointing away from destination (>160 degrees off)
   const isHeadingAway = deviceHeading != null && normalisedAngle > 160
+  // Inside the geofence, distance rounds to "0.0 km" (looks like "arrived"),
+  // so a directional instruction like TURN AROUND reads as a contradiction
+  // rather than guidance -- swap to an arrival-adjacent message instead.
+  const isVeryClose = distance != null && distance <= geofence
   const headingColor = isFacingDestination ? '#5DCAA5' : isHeadingAway ? '#E24B4A' : null
   const journeyPct = startDist > 0
     ? Math.min(100, Math.max(0, ((startDist - (distance || 0)) / startDist) * 100))
@@ -3131,7 +3135,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           letterSpacing: 1,
           transition: isHeadingAway ? 'none' : 'color 0.4s',
         }}>
-          {isHeadingAway ? 'TURN AROUND' : `HEAD ${cardinalDir()}`}
+          {isVeryClose && isHeadingAway
+            ? "YOU'RE VERY CLOSE — look around"
+            : isHeadingAway ? 'TURN AROUND' : `HEAD ${cardinalDir()}`}
         </div>
       )}
 
