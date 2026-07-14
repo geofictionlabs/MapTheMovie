@@ -487,15 +487,23 @@ export default function CommandCenter() {
       // being caught by the outer catch and reported as a generation
       // failure it isn't.
       let pooled = null;
+      const poolParams = {
+        p_digit: required_digit,
+        p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
+        p_genre: selectedGenre,
+        p_exclude_ids: usedPoolIds,
+      };
+      // TEMPORARY DIAGNOSTIC LOGGING (remove once the Command Center
+      // generation-failure investigation is closed out).
+      console.log('[trivia-diag] get_pooled_question params', { waypointId: id, name, tier, ...poolParams });
       try {
-        const { data } = await supabase.rpc('get_pooled_question', {
-          p_digit: required_digit,
-          p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
-          p_genre: selectedGenre,
-          p_exclude_ids: usedPoolIds,
-        });
+        const { data, error } = await supabase.rpc('get_pooled_question', poolParams);
+        console.log('[trivia-diag] get_pooled_question raw response', { waypointId: id, data, error });
         pooled = data;
-      } catch (e) { /* fall through to AI generation below */ }
+      } catch (e) {
+        console.log('[trivia-diag] get_pooled_question threw (falling through to AI)', { waypointId: id, error: e });
+        /* fall through to AI generation below */
+      }
 
       if (pooled) {
         // coordinate_digit is OVERRIDDEN to required_digit, never trusted
@@ -528,11 +536,18 @@ export default function CommandCenter() {
       // regenerate() on a waypoint that was PREVIOUSLY pool-sourced would
       // leave the old from_pool_id lingering on the merged state even
       // though this result is freshly AI-generated.
+      console.log('[trivia-diag] no pool match, calling AI generation', { waypointId: id, name, tier, required_digit, selectedGenre, usedMovies });
       const result = await generateTriviaQuestion(name, tier, required_digit, selectedGenre, usedMovies);
+      console.log('[trivia-diag] AI generation result merged into waypoint', { waypointId: id, result });
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...result, from_pool_id: null, loading: false } : w))
       );
     } catch (err) {
+      // TEMPORARY DIAGNOSTIC LOGGING (remove once the Command Center
+      // generation-failure investigation is closed out) -- logs the full
+      // error object, not just err.message, in case the thrown error's
+      // message is generic/empty and the real detail is elsewhere on it.
+      console.log('[trivia-diag] fetchQuestionFor caught error', { waypointId: id, err, message: err?.message, stack: err?.stack });
       setWaypoints((prev) =>
         prev.map((w) => (w.id === id ? { ...w, loading: false, error: true, errorMessage: err?.message || null } : w))
       );
