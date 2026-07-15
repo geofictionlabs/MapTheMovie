@@ -92,16 +92,39 @@ function hexToRgba(hex, alpha) {
 // Bands are the spec's as-given estimates, not calibrated against real hunt
 // data yet — retune after a real-world walk-test.
 const TEMPERATURE_TIERS = [
-  { max: 20,  key: 'burning', label: 'BURNING HOT!',   emoji: '\u{1F525}', color: '#FCD34D' },
-  { max: 50,  key: 'hot',     label: 'HOT',             emoji: '\u{2668}\u{FE0F}', color: '#F59E0B' },
-  { max: 150, key: 'warm',    label: 'WARM',            emoji: '\u{1F60A}', color: '#C97BD1' },
-  { max: 400, key: 'warmer',  label: 'GETTING WARMER',  emoji: '\u{1F642}', color: '#9D6FFF' },
-  { max: 800, key: 'cold',    label: 'COLD',             emoji: '\u{1F976}', color: '#5B5BD6' },
-  { max: Infinity, key: 'freezing', label: 'FREEZING COLD', emoji: '\u{1F9CA}', color: '#2563EB' },
+  { max: 20,  key: 'burning', label: 'BURNING HOT!',   color: '#FCD34D', fillPct: 1.00 },
+  { max: 50,  key: 'hot',     label: 'HOT',            color: '#F59E0B', fillPct: 0.80 },
+  { max: 150, key: 'warm',    label: 'WARM',            color: '#C97BD1', fillPct: 0.60 },
+  { max: 400, key: 'warmer',  label: 'GETTING WARMER',  color: '#9D6FFF', fillPct: 0.40 },
+  { max: 800, key: 'cold',    label: 'COLD',             color: '#5B5BD6', fillPct: 0.20 },
+  { max: Infinity, key: 'freezing', label: 'FREEZING COLD', color: '#2563EB', fillPct: 0.05 },
 ]
 function getTemperatureTier(distanceM) {
   if (distanceM == null) return null
   return TEMPERATURE_TIERS.find(t => distanceM < t.max)
+}
+
+// Mercury thermometer icon for the temperature phrase — glass stays a fixed
+// neutral colour, only the mercury uses tempTier.color, so there's one
+// colour signal across the phrase text/glow/icon instead of a second,
+// disconnected one (replaces the old per-tier emoji set).
+function ThermometerIcon({ fillPct, color, size = 26 }) {
+  const clamped = Math.max(0, Math.min(1, fillPct))
+  const innerTop = 12, innerBottom = 82
+  const mercuryHeight = clamped * (innerBottom - innerTop)
+  const mercuryY = innerBottom - mercuryHeight
+
+  return (
+    <svg width={size} height={size * (100 / 40)} viewBox="0 0 40 100" style={{ display: 'block', flexShrink: 0 }}>
+      <rect x={14} y={6} width={12} height={76} rx={6} fill="#0A0A12" stroke="#32324A" strokeWidth={2} />
+      <circle cx={20} cy={84} r={14} fill="#0A0A12" stroke="#32324A" strokeWidth={2} />
+      {[20, 34, 48, 62].map(y => (
+        <line key={y} x1={28} y1={y} x2={32} y2={y} stroke="#32324A" strokeWidth={1.5} />
+      ))}
+      <circle cx={20} cy={84} r={10} fill={color} />
+      <rect x={17} y={mercuryY} width={6} height={mercuryHeight} rx={3} fill={color} />
+    </svg>
+  )
 }
 
 // Fallback genre detection for packs created before migration 016 added
@@ -3239,12 +3262,14 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           </div>
         )}
         <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           fontFamily: "'Share Tech Mono', monospace",
           fontSize: 30, fontWeight: 900, letterSpacing: 1,
           color: tempTier?.color || '#F1F0FF', lineHeight: 1.2, minHeight: 36,
           textShadow: tempTier ? `0 0 20px ${hexToRgba(tempTier.color, 0.5)}` : 'none',
         }}>
-          {tempTier ? `${tempTier.emoji} ${tempTier.label}` : 'LOCATING...'}
+          {tempTier && <ThermometerIcon fillPct={tempTier.fillPct} color={tempTier.color} />}
+          {tempTier ? tempTier.label : 'LOCATING...'}
         </div>
         <div style={{
           fontFamily: "'Share Tech Mono', monospace",
