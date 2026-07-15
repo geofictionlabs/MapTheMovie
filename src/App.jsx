@@ -127,6 +127,16 @@ function ThermometerIcon({ fillPct, color, size = 26 }) {
   )
 }
 
+// Left-chevron icon for .nav-back — universal nav element, not tied to any
+// genre/tier color, so it always uses the same bright text color.
+function ChevronLeftIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>
+      <path d="M15 6 L9 12 L15 18" stroke="#F1F0FF" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 // Fallback genre detection for packs created before migration 016 added
 // the authored `genre` column (theme_tag is seasonal, not a movie genre,
 // so it can't stand in for those). Command Center has authored its own
@@ -499,6 +509,28 @@ body {
   cursor: pointer;
   flex-shrink: 0;
 }
+/* Same background/border/rounding language as .nav-back, but for the one
+   instance (arrived screen) that needs icon + "All Hunts" text rather than
+   an icon alone in a fixed 36px square. */
+.nav-back-wide {
+  width: auto;
+  height: 36px;
+  padding: 0 16px;
+  gap: 8px;
+}
+.back-btn {
+  background: #252533;
+  border: 1px solid #32324A;
+  border-radius: 10px;
+  color: #F1F0FF;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.back-btn:hover { border-color: #7C3AED; color: #9D5FF5; }
 .nav-pack-name {
   font-weight: 700;
   font-size: 15px;
@@ -4914,7 +4946,7 @@ export default function App() {
         {screen === 'puzzles' && activePack && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('discover')}></button>
+              <button className="nav-back" onClick={() => setScreen('discover')}><ChevronLeftIcon /></button>
               <span className="nav-pack-name">{activePack.pack_name}</span>
               <span className="nav-count">
                 {Object.keys(solved).length}/{slots.length} solved
@@ -4960,7 +4992,7 @@ export default function App() {
         {screen === 'compass' && activePack && compassTarget && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => setScreen('puzzles')}></button>
+              <button className="nav-back" onClick={() => setScreen('puzzles')}><ChevronLeftIcon /></button>
               <span className="nav-pack-name">{activePack?.pack_name || 'GPS Compass'}</span>
               <span className="nav-count" style={{ color: compassTarget.isWaypoint ? '#F59E0B' : '#10B981' }}>
                 {compassTarget.isWaypoint ? compassTarget.label : 'All slots unlocked'}
@@ -4988,7 +5020,7 @@ export default function App() {
         {screen === 'arrived' && (
           <div className="puzzle-screen">
             <div className="pack-nav">
-              <button className="nav-back" onClick={() => { localStorage.removeItem('mtm_active_reward'); setScreen('discover') }}> All Hunts</button>
+              <button className="nav-back nav-back-wide" onClick={() => { localStorage.removeItem('mtm_active_reward'); setScreen('discover') }}><ChevronLeftIcon />All Hunts</button>
             </div>
             <ArrivedScreen voucher={voucher} />
           </div>
