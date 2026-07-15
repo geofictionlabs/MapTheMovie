@@ -3157,50 +3157,63 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           })}
         </svg>
 
-        {/* Needle — rotates based on bearing; static (north-up) when no data */}
+        {/* Needle — tapered, diamond-tipped shape; rotates based on bearing,
+            static (north-up) when no data. Same headingColor/gradient/
+            drop-shadow logic as before, just SVG polygons instead of two
+            plain rectangles. */}
         <div style={{
           position: 'absolute', top: '50%', left: '50%',
-          width: 8, height: 140,
+          width: 20, height: 140,
           transformOrigin: 'bottom center',
           transform: `translate(-50%, -100%) rotate(${needleRotation}deg)`,
           transition: searching ? 'none' : 'transform 0.5s ease',
           opacity: orientState === 'needs-permission' ? 0.35 : 1,
         }}>
-          <div style={{
-            width: 8, height: 140,
-            display: 'flex', flexDirection: 'column',
-          }}>
-            {/* Top half — gold by default, green when facing destination, red when heading away */}
-            <div style={{
-              width: 8, height: 70, flexShrink: 0,
-              background: headingColor || 'linear-gradient(180deg, #FCD34D, #F59E0B)',
-              borderRadius: '4px 4px 0 0',
-              filter: isFacingDestination
-                ? 'drop-shadow(0 0 6px rgba(93,202,165,0.8))'
-                : isHeadingAway
-                  ? 'drop-shadow(0 0 6px rgba(226,75,74,0.8))'
-                  : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
-              transition: isHeadingAway ? 'none' : 'background 0.4s, filter 0.4s',
-            }} />
-            {/* Bottom half — grey counterweight */}
-            <div style={{
-              width: 8, height: 70, flexShrink: 0,
-              background: '#32324A',
-              borderRadius: '0 0 4px 4px',
-            }} />
-          </div>
+          <svg width={20} height={140} viewBox="-10 0 20 140" style={{ display: 'block' }}>
+            <defs>
+              <linearGradient id="needleTipGrad" x1="0" y1="0" x2="0" y2="70">
+                <stop offset="0%" stopColor="#FCD34D" />
+                <stop offset="100%" stopColor="#F59E0B" />
+              </linearGradient>
+            </defs>
+            {/* Diamond-faceted tip tapering into the shaft — gold by default,
+                green when facing destination, red when heading away */}
+            <polygon
+              points="0,0 7,20 4,70 -4,70 -7,20"
+              style={{
+                fill: headingColor || 'url(#needleTipGrad)',
+                filter: isFacingDestination
+                  ? 'drop-shadow(0 0 6px rgba(93,202,165,0.8))'
+                  : isHeadingAway
+                    ? 'drop-shadow(0 0 6px rgba(226,75,74,0.8))'
+                    : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
+                transition: isHeadingAway ? 'none' : 'fill 0.4s, filter 0.4s',
+              }}
+            />
+            {/* Base — grey, flares wider near the hub */}
+            <polygon points="4,70 -4,70 -7,140 7,140" fill="#32324A" />
+          </svg>
         </div>
 
-        {/* Centre pivot */}
+        {/* Centre pivot — layered hub, concentric rings like a real compass
+            pivot. Same headingColor-driven middle disc as the old single
+            dot; outer ring/groove/pin are new decorative layers only. */}
         <div style={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: 16, height: 16, borderRadius: '50%',
-          background: headingColor || '#7C3AED',
-          border: '3px solid #9D5FF5',
-          transition: isHeadingAway ? 'none' : 'background 0.4s',
+          width: 28, height: 28,
           zIndex: 3,
-        }} />
+        }}>
+          <svg width={28} height={28} viewBox="0 0 28 28">
+            <circle cx={14} cy={14} r={13} fill="none" stroke="#9D5FF5" strokeWidth={2} />
+            <circle cx={14} cy={14} r={10.5} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.6} />
+            <circle
+              cx={14} cy={14} r={8}
+              style={{ fill: headingColor || '#7C3AED', transition: isHeadingAway ? 'none' : 'fill 0.4s' }}
+            />
+            <circle cx={14} cy={14} r={3} fill="#0A0A12" opacity={0.85} />
+          </svg>
+        </div>
       </div>
 
       {/* Temperature phrase — primary readout; exact distance is secondary */}
