@@ -81,6 +81,29 @@ function hexAccent(raw) {
   return raw.startsWith('#') ? raw : '#' + raw
 }
 
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.replace('#', ''), 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+// Temperature layer — deep blue -> purple -> gold, deliberately its own axis
+// from the heading system's green/red (see CompassScreen: headingColor).
+// Bands are the spec's as-given estimates, not calibrated against real hunt
+// data yet — retune after a real-world walk-test.
+const TEMPERATURE_TIERS = [
+  { max: 20,  key: 'burning', label: 'BURNING HOT!',   emoji: '\u{1F525}', color: '#FCD34D' },
+  { max: 50,  key: 'hot',     label: 'HOT',             emoji: '\u{2668}\u{FE0F}', color: '#F59E0B' },
+  { max: 150, key: 'warm',    label: 'WARM',            emoji: '\u{1F60A}', color: '#C97BD1' },
+  { max: 400, key: 'warmer',  label: 'GETTING WARMER',  emoji: '\u{1F642}', color: '#9D6FFF' },
+  { max: 800, key: 'cold',    label: 'COLD',             emoji: '\u{1F976}', color: '#5B5BD6' },
+  { max: Infinity, key: 'freezing', label: 'FREEZING COLD', emoji: '\u{1F9CA}', color: '#2563EB' },
+]
+function getTemperatureTier(distanceM) {
+  if (distanceM == null) return null
+  return TEMPERATURE_TIERS.find(t => distanceM < t.max)
+}
+
 // Fallback genre detection for packs created before migration 016 added
 // the authored `genre` column (theme_tag is seasonal, not a movie genre,
 // so it can't stand in for those). Command Center has authored its own
@@ -735,12 +758,19 @@ body {
 
 /*  Compass screen  */
 .compass-wrap {
+  position: relative;
   padding: 20px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
   transition: background 1s ease;
+}
+@keyframes temp-toast-pop {
+  0%   { opacity: 0; transform: translate(-50%, -90%); }
+  15%  { opacity: 1; transform: translate(-50%, -100%); }
+  80%  { opacity: 1; transform: translate(-50%, -100%); }
+  100% { opacity: 0; transform: translate(-50%, -110%); }
 }
 .compass-dist {
   font-family: 'Share Tech Mono', monospace;
@@ -2765,6 +2795,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
   const headingHistoryRef = useRef([])
+  const smoothedDistRef = useRef(null)
+  const toastTimeoutRef = useRef(null)
+  const [tempToast, setTempToast] = useState(null) // { type: 'warmer' | 'colder' }
   const [debugTargetOverride, setDebugTargetOverride] = useState(null)
   const [showDebug, setShowDebug] = useState(() => window.location.search.includes('debug=true'))
   const tapTimeRef = useRef([])
@@ -2820,6 +2853,21 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
             const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
             setDistance(dist)
             setStartDist(prev => prev ?? dist)
+
+            // Warmer/colder toast — compares an EMA of distance, not the raw
+            // per-poll reading, so single-poll GPS jitter doesn't flip the
+            // toast back and forth. Equal 0.5/0.5 weighting: light damping
+            // without adding much lag on top of the already-slow 5s poll.
+            // Deliberately separate from `distance` above — the glow/phrase
+            // tiers and the geofence arrival check keep using the raw value.
+            const prevSmoothed = smoothedDistRef.current
+            const smoothed = prevSmoothed == null ? dist : prevSmoothed * 0.5 + dist * 0.5
+            smoothedDistRef.current = smoothed
+            if (prevSmoothed != null) {
+              const delta = smoothed - prevSmoothed
+              if (delta <= -5) showTempToast('warmer')
+              else if (delta >= 5) showTempToast('colder')
+            }
           }
         },
         (err) => {
@@ -2832,7 +2880,10 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     }
     getPosition()
     intervalRef.current = setInterval(getPosition, 5000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      clearTimeout(toastTimeoutRef.current)
+    }
   }, [effectiveTarget])
 
   // Bearing + arrival detection whenever position or distance updates
@@ -2862,6 +2913,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     }
     return () => { if (orientCleanupRef.current) orientCleanupRef.current() }
   }, [])
+
+  function showTempToast(type) {
+    clearTimeout(toastTimeoutRef.current)
+    setTempToast({ type })
+    toastTimeoutRef.current = setTimeout(() => setTempToast(null), 2000)
+  }
 
   function smoothHeading(newHeading) {
     const h = headingHistoryRef.current
@@ -2984,12 +3041,14 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const destLabel = (distance != null && distance >= 0)
     ? (target?.isWaypoint ? 'KM TO WAYPOINT' : 'KM TO DESTINATION')
     : 'CALCULATING...'
-  // Warmth shift as the player closes in: base -> amber (<150m) -> warm gold (<80m)
-  const compassBg = distance != null && distance < 80
-    ? '#0C0808'
-    : distance != null && distance < 150
-      ? '#0A0810'
-      : '#080810'
+  // Temperature ambient glow — separate colour axis from headingColor above
+  // (blue -> purple -> gold), never green/red, so the two systems never
+  // share a colour. Replaces the old 3-tier near-black wash with the full
+  // 6-tier temperature band.
+  const tempTier = getTemperatureTier(distance)
+  const compassBg = tempTier
+    ? `radial-gradient(ellipse at 50% 30%, ${hexToRgba(tempTier.color, 0.30)} 0%, #08080F 70%)`
+    : '#08080F'
 
   return (
     <div className="compass-wrap" style={{ background: compassBg }}>
@@ -3010,6 +3069,60 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
       {/* Film-reel compass ring — 280px */}
       <div className="compass-arrow-wrap">
+        {/* Instrument bezel/housing — cosmetic only, sits behind the dial.
+            Inserted first in DOM (no z-index) so the existing ring/sweep/
+            needle, which also use z-index:auto, paint on top of it. */}
+        <div style={{
+          position: 'absolute', inset: -18, borderRadius: '50%',
+          background: 'radial-gradient(circle at 32% 28%, #3A3A52 0%, #1C1C26 55%, #08080F 100%)',
+          border: '1px solid #32324A',
+          boxShadow: 'inset 0 2px 5px rgba(255,255,255,0.08), inset 0 -4px 10px rgba(0,0,0,0.6), 0 8px 22px rgba(0,0,0,0.5)',
+        }} />
+
+        {/* Distance rings — decorative gradations inside the bezel */}
+        <svg viewBox="0 0 316 316" style={{ position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none' }}>
+          <circle cx={158} cy={158} r={132} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.5} />
+          <circle cx={158} cy={158} r={108} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.35} />
+        </svg>
+
+        {/* Cardinal N/E/S/W tick marks. Rotate the whole ring by -deviceHeading
+            so ticks track true north/east/south/west, consistent with
+            needleRotation = toBearing - deviceHeading below — a static ring
+            would mislabel directions since "up" here means "current facing
+            direction", not true north. Falls back to unrotated (0deg) when
+            no heading yet, same convention as arrowDeg's fallback above. */}
+        <svg
+          viewBox="0 0 316 316"
+          style={{
+            position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none',
+            transform: `rotate(${deviceHeading != null ? -deviceHeading : 0}deg)`,
+            transformOrigin: '158px 158px',
+            transition: searching ? 'none' : 'transform 0.5s ease',
+          }}
+        >
+          {['N', 'E', 'S', 'W'].map((label, i) => {
+            const angle = i * 90
+            const rad = (angle - 90) * Math.PI / 180
+            const x1 = 158 + 150 * Math.cos(rad), y1 = 158 + 150 * Math.sin(rad)
+            const x2 = 158 + 136 * Math.cos(rad), y2 = 158 + 136 * Math.sin(rad)
+            const lx = 158 + 120 * Math.cos(rad), ly = 158 + 120 * Math.sin(rad)
+            return (
+              <g key={label}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#9D5FF5" strokeWidth={3} strokeLinecap="round" />
+                <text x={lx} y={ly} fill="#9D5FF5" fontSize={13} fontWeight={800}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily="'Share Tech Mono', monospace">{label}</text>
+              </g>
+            )
+          })}
+          {[45, 135, 225, 315].map(angle => {
+            const rad = (angle - 90) * Math.PI / 180
+            const x1 = 158 + 148 * Math.cos(rad), y1 = 158 + 148 * Math.sin(rad)
+            const x2 = 158 + 140 * Math.cos(rad), y2 = 158 + 140 * Math.sin(rad)
+            return <line key={angle} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6B67A0" strokeWidth={2} strokeLinecap="round" opacity={0.6} />
+          })}
+        </svg>
+
         {/* Outer ring — reactive green/red heading state via inline styles */}
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
@@ -3090,12 +3203,40 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         }} />
       </div>
 
-      {/* Distance display */}
-      <div style={{ textAlign: 'center', marginTop: 24 }}>
+      {/* Temperature phrase — primary readout; exact distance is secondary */}
+      <div style={{ textAlign: 'center', marginTop: 24, position: 'relative' }}>
+        {/* Warmer/colder toast — anchored to the phrase, not the whole screen */}
+        {tempToast && (
+          <div
+            key={tempToast.type + Date.now()}
+            style={{
+              position: 'absolute', top: -14, left: '50%',
+              padding: '6px 18px', borderRadius: 20,
+              fontFamily: "'Share Tech Mono', monospace", fontSize: 13, fontWeight: 800,
+              letterSpacing: 1, whiteSpace: 'nowrap', zIndex: 10,
+              background: tempToast.type === 'warmer' ? '#F59E0B' : '#2563EB',
+              color: tempToast.type === 'warmer' ? '#000' : '#fff',
+              boxShadow: tempToast.type === 'warmer'
+                ? '0 0 20px rgba(245,158,11,0.5)'
+                : '0 0 20px rgba(37,99,235,0.5)',
+              animation: 'temp-toast-pop 2s ease forwards',
+            }}
+          >
+            {tempToast.type === 'warmer' ? 'Warmer!' : 'Colder...'}
+          </div>
+        )}
         <div style={{
           fontFamily: "'Share Tech Mono', monospace",
-          fontSize: 52, fontWeight: 900,
-          color: '#F1F0FF', lineHeight: 1, minHeight: 52,
+          fontSize: 30, fontWeight: 900, letterSpacing: 1,
+          color: tempTier?.color || '#F1F0FF', lineHeight: 1.2, minHeight: 36,
+          textShadow: tempTier ? `0 0 20px ${hexToRgba(tempTier.color, 0.5)}` : 'none',
+        }}>
+          {tempTier ? `${tempTier.emoji} ${tempTier.label}` : 'LOCATING...'}
+        </div>
+        <div style={{
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 20, fontWeight: 700, marginTop: 10,
+          color: '#F1F0FF', lineHeight: 1,
         }}>
           {distMi}
         </div>
