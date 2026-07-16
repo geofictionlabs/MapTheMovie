@@ -108,21 +108,55 @@ function getTemperatureTier(distanceM) {
 // neutral colour, only the mercury uses tempTier.color, so there's one
 // colour signal across the phrase text/glow/icon instead of a second,
 // disconnected one (replaces the old per-tier emoji set).
-function ThermometerIcon({ fillPct, color, size = 26 }) {
+function ThermometerIcon({ fillPct, color, size = 34 }) {
   const clamped = Math.max(0, Math.min(1, fillPct))
-  const innerTop = 12, innerBottom = 82
+  const innerTop = 14, innerBottom = 80
   const mercuryHeight = clamped * (innerBottom - innerTop)
   const mercuryY = innerBottom - mercuryHeight
 
   return (
     <svg width={size} height={size * (100 / 40)} viewBox="0 0 40 100" style={{ display: 'block', flexShrink: 0 }}>
-      <rect x={14} y={6} width={12} height={76} rx={6} fill="#0A0A12" stroke="#32324A" strokeWidth={2} />
-      <circle cx={20} cy={84} r={14} fill="#0A0A12" stroke="#32324A" strokeWidth={2} />
-      {[20, 34, 48, 62].map(y => (
-        <line key={y} x1={28} y1={y} x2={32} y2={y} stroke="#32324A" strokeWidth={1.5} />
+      <defs>
+        {/* Same recipe as the compass bezel's radial-gradient, for family resemblance */}
+        <linearGradient id="thermoGlassGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#38384C" />
+          <stop offset="18%" stopColor="#2A2A3C" />
+          <stop offset="45%" stopColor="#14141E" />
+          <stop offset="100%" stopColor="#08080C" />
+        </linearGradient>
+        <radialGradient id="thermoBulbGrad" cx="35%" cy="30%" r="75%">
+          <stop offset="0%" stopColor="#3A3A52" />
+          <stop offset="55%" stopColor="#1C1C26" />
+          <stop offset="100%" stopColor="#08080C" />
+        </radialGradient>
+        <radialGradient id="thermoInnerShadow" cx="50%" cy="50%" r="65%">
+          <stop offset="55%" stopColor="rgba(0,0,0,0)" />
+          <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
+        </radialGradient>
+      </defs>
+
+      {/* Glass tube + bulb — gradient fill instead of flat colour, plus an
+          inset vignette overlay to fake an inner shadow */}
+      <rect x={15} y={6} width={10} height={74} rx={5} fill="url(#thermoGlassGrad)" stroke="#32324A" strokeWidth={1.5} />
+      <circle cx={20} cy={82} r={17} fill="url(#thermoBulbGrad)" stroke="#32324A" strokeWidth={1.5} />
+      <rect x={15} y={6} width={10} height={74} rx={5} fill="url(#thermoInnerShadow)" />
+      <circle cx={20} cy={82} r={17} fill="url(#thermoInnerShadow)" />
+
+      {/* Glass reflection streak — tube and a short arc on the bulb */}
+      <path d="M 17.3 10 L 17.3 74 Q 17.3 78 15.2 80.5" stroke="rgba(255,255,255,0.22)" strokeWidth={1.4} strokeLinecap="round" fill="none" />
+      <path d="M 11.5 75 Q 9.5 82 12.5 90" stroke="rgba(255,255,255,0.16)" strokeWidth={1.4} strokeLinecap="round" fill="none" />
+
+      {/* Graduation ticks — decorative, same spirit as the compass distance rings */}
+      {[18, 30, 42, 54, 66].map((y, i) => (
+        <line key={y} x1={26} y1={y} x2={i % 2 === 0 ? 31 : 29.5} y2={y} stroke="#32324A" strokeWidth={1.5} />
       ))}
-      <circle cx={20} cy={84} r={10} fill={color} />
-      <rect x={17} y={mercuryY} width={6} height={mercuryHeight} rx={3} fill={color} />
+
+      {/* Mercury — bulb always full, column rises with fillPct, soft glow
+          matching the glow treatment already used on the compass ring/buttons */}
+      <g style={{ filter: `drop-shadow(0 0 4px ${hexToRgba(color, 0.85)}) drop-shadow(0 0 9px ${hexToRgba(color, 0.45)})` }}>
+        <circle cx={20} cy={82} r={13} fill={color} />
+        <rect x={17} y={mercuryY} width={6} height={mercuryHeight} rx={3} fill={color} />
+      </g>
     </svg>
   )
 }
@@ -3288,7 +3322,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           </div>
         )}
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
           fontFamily: "'Share Tech Mono', monospace",
           fontSize: 30, fontWeight: 900, letterSpacing: 1,
           color: tempTier?.color || '#F1F0FF', lineHeight: 1.2, minHeight: 36,
