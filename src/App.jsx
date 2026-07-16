@@ -3140,20 +3140,14 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           <circle cx={158} cy={158} r={108} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.35} />
         </svg>
 
-        {/* Cardinal N/E/S/W tick marks. Rotate the whole ring by -deviceHeading
-            so ticks track true north/east/south/west, consistent with
-            needleRotation = toBearing - deviceHeading below — a static ring
-            would mislabel directions since "up" here means "current facing
-            direction", not true north. Falls back to unrotated (0deg) when
-            no heading yet, same convention as arrowDeg's fallback above. */}
+        {/* Cardinal N/E/S/W tick marks — fixed/decorative, not a rotating
+            compass rose. The needle's rotation is relative (turn-this-much-
+            from-where-you're-facing), not an absolute magnetic bearing, so
+            a rotating ring here would create two contradictory reference
+            frames on the same instrument. Static, same as the bezel. */}
         <svg
           viewBox="0 0 316 316"
-          style={{
-            position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none',
-            transform: `rotate(${deviceHeading != null ? -deviceHeading : 0}deg)`,
-            transformOrigin: '158px 158px',
-            transition: searching ? 'none' : 'transform 0.5s ease',
-          }}
+          style={{ position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none' }}
         >
           {['N', 'E', 'S', 'W'].map((label, i) => {
             const angle = i * 90
