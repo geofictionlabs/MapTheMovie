@@ -848,12 +848,12 @@ body {
 /*  Compass screen  */
 .compass-wrap {
   position: relative;
+  background: #08080F;
   padding: 20px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  transition: background 1s ease;
 }
 @keyframes temp-toast-pop {
   0%   { opacity: 0; transform: translate(-50%, -90%); }
@@ -2887,8 +2887,22 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const smoothedDistRef = useRef(null)
   const toastTimeoutRef = useRef(null)
   const [tempToast, setTempToast] = useState(null) // { type: 'warmer' | 'colder' }
+  // Two-slot crossfade for the temperature glow: each slot holds a static
+  // colour, and only `active` toggles between them on tier change, so the
+  // transition is opacity (GPU-composited) rather than animating the
+  // background/gradient string itself (paint-level, unreliable to
+  // interpolate across browsers).
+  const [glowLayers, setGlowLayers] = useState({ active: 0, colors: [null, null] })
   const [debugTargetOverride, setDebugTargetOverride] = useState(null)
   const [showDebug, setShowDebug] = useState(() => window.location.search.includes('debug=true'))
+  const showDebugRef = useRef(showDebug)
+  useEffect(() => { showDebugRef.current = showDebug }, [showDebug])
+  // TEMP — Safari/iOS heading jitter investigation. Logs raw (pre-smoothing)
+  // heading readings with time-since-last-reading and degree-change-since-last
+  // -reading, so real firing frequency and jitter magnitude can be read off
+  // the debug panel on an actual device instead of guessed at. Remove once
+  // the smoothing threshold/outlier-rejection values are picked from real data.
+  const [rawHeadingLog, setRawHeadingLog] = useState([])
   const tapTimeRef = useRef([])
   const [manualLat, setManualLat] = useState('')
   const [manualLon, setManualLon] = useState('')
@@ -2910,6 +2924,11 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
   const accent = hexAccent(hunt?.accent_color)
   const geofence = effectiveTarget?.geofence_m ?? diffGeofence(hunt?.difficulty)
+
+  // WebKit/Safari detection — reused for both the orientation-permission
+  // gate below and the GPS acquisition config, since iOS's Core Location
+  // stack is slower to reach a high-accuracy fix than Chrome/Android.
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
 
   function handleDebugTap() {
     const now = Date.now()
@@ -2964,12 +2983,34 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           // (common on iOS Safari under enableHighAccuracy, especially indoors)
           setGeoError(err.code === 1 ? 'denied' : 'unavailable')
         },
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+        // iOS Core Location is slower to escalate to a high-accuracy fix than
+        // Chrome/Android — a 10s timeout on a cold GPS radio produces
+        // repeated TIMEOUT errors on Safari specifically. Longer timeout and
+        // maximumAge on Safari reduces forced fresh high-accuracy reads;
+        // non-Safari keeps the original values.
+        isSafari
+          ? { enableHighAccuracy: true, maximumAge: 12000, timeout: 25000 }
+          : { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
       )
     }
     getPosition()
     intervalRef.current = setInterval(getPosition, 5000)
+
+    // iOS Safari suspends timers when the screen locks/backgrounds — on
+    // resume, get a fresh fix immediately and restart the poll rather than
+    // waiting out whatever's left of the old 5s interval (which may itself
+    // have been cleared/throttled by the OS while hidden).
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        getPosition()
+        intervalRef.current = setInterval(getPosition, 5000)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
       if (intervalRef.current) clearInterval(intervalRef.current)
       clearTimeout(toastTimeoutRef.current)
     }
@@ -2992,7 +3033,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
   // Device orientation: Safari iOS requires explicit permission; others auto-start
   useEffect(() => {
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
     if (isSafari && typeof DeviceOrientationEvent?.requestPermission === 'function') {
       setOrientState('needs-permission')
     } else if ('DeviceOrientationEvent' in window || 'ondeviceorientation' in window) {
@@ -3000,7 +3040,25 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     } else {
       setOrientState('unsupported')
     }
-    return () => { if (orientCleanupRef.current) orientCleanupRef.current() }
+
+    // iOS Safari stops delivering deviceorientation events when the screen
+    // locks/backgrounds, even with listeners still attached. On resume,
+    // re-attach fresh listeners if we'd already started them (orientCleanupRef
+    // is only ever set by startOrientListener, so this is unset for
+    // needs-permission/denied/unsupported — we never re-prompt for permission
+    // here, only re-attach when it was already granted and running).
+    function handleVisibility() {
+      if (document.visibilityState === 'visible' && orientCleanupRef.current) {
+        orientCleanupRef.current()
+        startOrientListener()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      if (orientCleanupRef.current) orientCleanupRef.current()
+    }
   }, [])
 
   function showTempToast(type) {
@@ -3053,6 +3111,24 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
 
       if (e.type === 'deviceorientationabsolute') absoluteFired = true
       if (!fired) { fired = true; clearTimeout(timeoutId); setOrientState('active') }
+
+      // TEMP — see rawHeadingLog above. Records the raw reading BEFORE
+      // smoothHeading touches it, so the log reflects actual sensor jitter.
+      if (showDebugRef.current) {
+        setRawHeadingLog(prev => {
+          const last = prev[prev.length - 1]
+          const now = performance.now()
+          const dtMs = last ? Math.round(now - last.t) : null
+          let dDeg = null
+          if (last) {
+            const diff = Math.abs(heading - last.heading)
+            dDeg = Math.round((diff > 180 ? 360 - diff : diff) * 10) / 10
+          }
+          const entry = { t: now, heading: Math.round(heading * 10) / 10, dtMs, dDeg }
+          return [...prev.slice(-39), entry]
+        })
+      }
+
       const smoothed = smoothHeading(heading)
       setDeviceHeading(smoothed)
     }
@@ -3135,12 +3211,33 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   // share a colour. Replaces the old 3-tier near-black wash with the full
   // 6-tier temperature band.
   const tempTier = getTemperatureTier(distance)
-  const compassBg = tempTier
-    ? `radial-gradient(ellipse at 50% 30%, ${hexToRgba(tempTier.color, 0.30)} 0%, #08080F 70%)`
-    : '#08080F'
+
+  useEffect(() => {
+    if (!tempTier) return
+    setGlowLayers(prev => {
+      if (prev.colors[prev.active] === tempTier.color) return prev
+      const next = prev.active === 0 ? 1 : 0
+      const colors = [...prev.colors]
+      colors[next] = tempTier.color
+      return { active: next, colors }
+    })
+  }, [tempTier?.key])
 
   return (
-    <div className="compass-wrap" style={{ background: compassBg }}>
+    <div className="compass-wrap">
+      {/* Temperature glow — two static layers crossfading via opacity
+          (GPU-composited) instead of transitioning the background/gradient
+          string itself, which paints every frame and doesn't reliably
+          interpolate between different gradients across browsers. */}
+      {glowLayers.colors.map((c, i) => c && (
+        <div key={i} style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: `radial-gradient(ellipse at 50% 30%, ${hexToRgba(c, 0.30)} 0%, #08080F 70%)`,
+          opacity: glowLayers.active === i ? 1 : 0,
+          transition: 'opacity 1s ease',
+        }} />
+      ))}
+
       {/* Waypoint / destination badge — tap 5× quickly to open debug panel */}
       <div
         onClick={handleDebugTap}
@@ -3576,6 +3673,45 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
                   <span style={{ color: '#F1F0FF', fontSize: 11 }}>{val}</span>
                 </div>
               ))}
+            </div>
+
+            {/* TEMP — Safari/iOS heading jitter investigation. Remove this
+                block once real firing-frequency/jitter data has been used to
+                pick the smoothing threshold and outlier-rejection values. */}
+            <div style={{ marginBottom: 20, border: '1px solid #32324A', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ color: '#F59E0B', fontSize: 10, letterSpacing: 2 }}>RAW HEADING LOG (TEMP)</span>
+                <button
+                  onClick={() => setRawHeadingLog([])}
+                  style={{ background: 'none', border: '1px solid #32324A', borderRadius: 6, color: '#B8B4D8', padding: '3px 10px', cursor: 'pointer', fontSize: 10, letterSpacing: 1, fontFamily: "'Share Tech Mono', monospace" }}
+                >CLEAR</button>
+              </div>
+              {rawHeadingLog.length < 2 ? (
+                <div style={{ color: '#6B67A0', fontSize: 11 }}>Turn/walk with the phone to collect readings...</div>
+              ) : (() => {
+                const dts = rawHeadingLog.slice(1).map(e => e.dtMs).filter(v => v != null)
+                const dDegs = rawHeadingLog.slice(1).map(e => e.dDeg).filter(v => v != null)
+                const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 11 }}>
+                      <span style={{ color: '#8888BB' }}>n=<span style={{ color: '#F1F0FF' }}>{rawHeadingLog.length}</span></span>
+                      <span style={{ color: '#8888BB' }}>avg Δt=<span style={{ color: '#F1F0FF' }}>{avg(dts).toFixed(0)}ms</span></span>
+                      <span style={{ color: '#8888BB' }}>avg Δ°=<span style={{ color: '#F1F0FF' }}>{avg(dDegs).toFixed(1)}°</span></span>
+                      <span style={{ color: '#8888BB' }}>max Δ°=<span style={{ color: '#F1F0FF' }}>{Math.max(...dDegs).toFixed(1)}°</span></span>
+                    </div>
+                    <div style={{ maxHeight: 160, overflowY: 'auto', fontSize: 10 }}>
+                      {rawHeadingLog.slice().reverse().map((e, i) => (
+                        <div key={rawHeadingLog.length - i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #1E1E2E', color: '#8888BB' }}>
+                          <span>{e.heading.toFixed(1)}°</span>
+                          <span>{e.dtMs != null ? `Δt ${e.dtMs}ms` : '--'}</span>
+                          <span>{e.dDeg != null ? `Δ° ${e.dDeg}` : '--'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             {debugTargetOverride && (
