@@ -4496,7 +4496,7 @@ export default function App() {
           masked_lat:       h.masked_lat,
           masked_lon:       h.masked_lon,
           is_free_tier:     h.is_free_tier,
-          business_name:    h.business_name,
+          venue_category:   h.venue_category,
           voucher_headline: h.voucher_headline,
           difficulty:       h.difficulty || 'classic',
           approx_lat:       h.approx_lat,

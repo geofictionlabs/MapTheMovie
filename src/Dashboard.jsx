@@ -1345,15 +1345,29 @@ function HistoryTab({ redemptions }) {
   )
 }
 
+// Venue categories — business-level attribute, not per-hunt genre.
+// Shared list + captions for the Settings dropdown below.
+const VENUE_CATEGORIES = [
+  { value: 'Hospitality',           emoji: '🍴', caption: 'Pubs, cafés, restaurants, bars, tea rooms' },
+  { value: 'Entertainment',         emoji: '🎭', caption: 'Cinemas, arcades, escape rooms, bowling, theatres' },
+  { value: 'Sporting & Leisure',    emoji: '🏃', caption: 'Gyms, climbing walls, golf, swimming pools, sports clubs' },
+  { value: 'Retail',                emoji: '🛍️', caption: 'Shops, boutiques, markets, bookshops' },
+  { value: 'Attraction & Heritage', emoji: '🏛️', caption: 'Museums, galleries, historic sites, castles' },
+  { value: 'Events',                emoji: '🎪', caption: 'Festivals, county shows, food/beer festivals, car shows — temporary, not a fixed venue' },
+  { value: 'Outdoor',               emoji: '🌳', caption: 'Parks, trails, coastal spots, nature reserves' },
+]
+
 //  Settings Tab
 function SettingsTab({ business, showToast, onPinConfigured }) {
   const tier = business?.tier || 'starter'
   const [bizName, setBizName] = useState(business?.name || '')
   const [contactEmail, setContactEmail] = useState(business?.email || '')
+  const [venueCategory, setVenueCategory] = useState(business?.venue_category || '')
   const [saving, setSaving] = useState(false)
   const origBizName = useRef(business?.name || '')
   const origContactEmail = useRef(business?.email || '')
-  const isDirty = bizName !== origBizName.current || contactEmail !== origContactEmail.current
+  const origVenueCategory = useRef(business?.venue_category || '')
+  const isDirty = bizName !== origBizName.current || contactEmail !== origContactEmail.current || venueCategory !== origVenueCategory.current
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [pinSaving, setPinSaving] = useState(false)
@@ -1384,11 +1398,12 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
       if (business?.id) {
         const { error } = await supabase
           .from('businesses')
-          .update({ name: bizName, contact_email: contactEmail })
+          .update({ name: bizName, contact_email: contactEmail, venue_category: venueCategory || null })
           .eq('id', business.id)
         if (error) throw error
         origBizName.current = bizName
         origContactEmail.current = contactEmail
+        origVenueCategory.current = venueCategory
         showToast('Details saved.')
       }
     } catch (err) {
@@ -1465,6 +1480,22 @@ function SettingsTab({ business, showToast, onPinConfigured }) {
           onChange={e => setContactEmail(e.target.value)}
           placeholder="contact@yourbusiness.com"
         />
+        <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Venue category</div>
+        <select
+          style={inputStyle}
+          value={venueCategory}
+          onChange={e => setVenueCategory(e.target.value)}
+        >
+          <option value="" disabled>Select a category…</option>
+          {VENUE_CATEGORIES.map(c => (
+            <option key={c.value} value={c.value}>{c.emoji} {c.value}</option>
+          ))}
+        </select>
+        {venueCategory && (
+          <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: DS.textMuted, fontStyle: 'italic' }}>
+            {VENUE_CATEGORIES.find(c => c.value === venueCategory)?.caption}
+          </div>
+        )}
         <div style={{ marginBottom: 6, fontSize: 12, color: DS.textMuted }}>Subscription tier</div>
         <div style={{
           background: DS.cardAlt,

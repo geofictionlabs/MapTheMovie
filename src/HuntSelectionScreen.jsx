@@ -42,6 +42,19 @@ function useInViewport(ref) {
   return inView;
 }
 
+// ── VENUE CATEGORIES ──────────────────────────────────────────
+// Business-level attribute (not genre) — practical info about the kind
+// of place, shown as a neutral pill, never genre-accent-coloured.
+const VENUE_CATEGORY_EMOJI = {
+  'Hospitality':            '🍴',
+  'Entertainment':          '🎭',
+  'Sporting & Leisure':     '🏃',
+  'Retail':                 '🛍️',
+  'Attraction & Heritage':  '🏛️',
+  'Events':                 '🎪',
+  'Outdoor':                '🌳',
+};
+
 // ── THEME DEFINITIONS ─────────────────────────────────────────
 const THEMES = {
   general: {
@@ -720,6 +733,20 @@ function HuntCard({ hunt, onSelect, index }) {
                 fontFamily: "'Share Tech Mono', monospace",
                 fontSize: '9px', color: 'rgba(255,255,255,0.5)', letterSpacing: '1px',
               }}>{wt} WALK</span>
+            </div>
+          )}
+
+          {VENUE_CATEGORY_EMOJI[hunt.venue_category] && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '4px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '6px', padding: '4px 8px',
+            }}>
+              <span style={{
+                fontFamily: "'Share Tech Mono', monospace",
+                fontSize: '9px', color: 'rgba(255,255,255,0.5)', letterSpacing: '1px',
+              }}>{VENUE_CATEGORY_EMOJI[hunt.venue_category]} {hunt.venue_category.toUpperCase()}</span>
             </div>
           )}
 
