@@ -639,6 +639,9 @@ body {
   color: #000;
   animation: slot-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+.coord-slot-box.solved.tumbling {
+  animation: slot-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), slot-tumble 0.08s linear infinite;
+}
 @keyframes slot-pulse {
   0%, 100% { border-color: #32324A; box-shadow: none; }
   50%       { border-color: #7C3AED; box-shadow: 0 0 8px rgba(124,58,237,0.4); }
@@ -647,6 +650,11 @@ body {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.2); }
   100% { transform: scale(1); }
+}
+@keyframes slot-tumble {
+  0%   { transform: translateY(0); filter: blur(0); }
+  50%  { transform: translateY(-2px); filter: blur(0.5px); }
+  100% { transform: translateY(0); filter: blur(0); }
 }
 .progress-track {
   height: 4px;
@@ -2618,25 +2626,100 @@ function HuntDiscovery({ hunts, loading, error, onStart, userPos, prizePool, onP
   )
 }
 
-//  Coord Display 
+//  Coord Display
+// masked_lat/masked_lon (migration 046) are now fully synthetic -- zero
+// derivation from the real destination, no letter characters embedded.
+// Slot position is resolved by INDEX (coordinate_slots[i] for the lat
+// half, coordinate_slots[i+4] for the lon half), matching the server's
+// own construction order, instead of scanning the string for an
+// embedded letter -- there isn't one anymore.
 function CoordDisplay({ hunt, solved }) {
   const slots = hunt?.coordinate_slots || []
   const accent = hexAccent(hunt?.accent_color)
   const solvedCount = Object.keys(solved).length
   const progress = slots.length > 0 ? (solvedCount / slots.length) * 100 : 0
 
-  function renderStr(str) {
+  // Tumbling reveal: { [slotLetter]: currentRandomDigit } while a slot's
+  // digit box is mid-animation. Purely cosmetic state -- the cycling
+  // digits are Math.random() noise, no relation to the real or fake
+  // value, so there's no risk of a mid-animation frame being meaningful.
+  const [revealing, setRevealing] = useState({})
+  const prevSolvedRef = useRef(solved)
+  const revealTimersRef = useRef({})
+
+  useEffect(() => {
+    const prev = prevSolvedRef.current
+    const newlySolved = Object.keys(solved).filter(
+      k => prev[k] === undefined && solved[k] !== undefined
+    )
+    prevSolvedRef.current = solved
+    if (newlySolved.length === 0) return
+
+    const TUMBLE_STEPS = 7
+    const TUMBLE_INTERVAL_MS = 70
+
+    newlySolved.forEach(slotLetter => {
+      let step = 0
+      setRevealing(prev => ({ ...prev, [slotLetter]: Math.floor(Math.random() * 10) }))
+      const interval = setInterval(() => {
+        step += 1
+        if (step >= TUMBLE_STEPS) {
+          clearInterval(interval)
+          delete revealTimersRef.current[slotLetter]
+          setRevealing(prev => {
+            const next = { ...prev }
+            delete next[slotLetter]
+            return next
+          })
+        } else {
+          setRevealing(prev => ({ ...prev, [slotLetter]: Math.floor(Math.random() * 10) }))
+        }
+      }, TUMBLE_INTERVAL_MS)
+      revealTimersRef.current[slotLetter] = interval
+    })
+  }, [solved])
+
+  // Clear any still-running tumble timers on unmount (e.g. leaving the
+  // puzzles screen mid-animation).
+  useEffect(() => {
+    return () => {
+      Object.values(revealTimersRef.current).forEach(clearInterval)
+    }
+  }, [])
+
+  function renderStr(str, slotOffset) {
     if (!str) return null
+    const decimalIdx = str.indexOf('.')
     return (
       <div className="coord-row">
         {str.split('').map((ch, i) => {
-          if (slots.includes(ch)) {
-            const digit = solved[ch]
-            return digit !== undefined
-              ? <span key={i} className="coord-slot-box solved">{digit}</span>
-              : <span key={i} className="coord-slot-box pending">_</span>
+          // Sign, integer part, and the decimal point itself are never
+          // slot positions -- always fixed, harmless (fully synthetic
+          // digits, matching every other character in this template).
+          if (decimalIdx === -1 || i <= decimalIdx) {
+            return <span key={i} className="coord-fixed">{ch}</span>
           }
-          return <span key={i} className="coord-fixed">{ch}</span>
+          const digitPos = i - decimalIdx - 1
+          const slotLetter = slots[slotOffset + digitPos]
+          if (slotLetter === undefined) {
+            return <span key={i} className="coord-fixed">{ch}</span>
+          }
+          if (solved[slotLetter] === undefined) {
+            return <span key={i} className="coord-slot-box pending">_</span>
+          }
+          const tumbling = revealing[slotLetter]
+          // Always the fake template character once settled -- never
+          // the real solved digit, which is only used above to decide
+          // *whether* to reveal, never *what* to display.
+          const displayChar = tumbling !== undefined ? tumbling : ch
+          return (
+            <span
+              key={i}
+              className={`coord-slot-box solved${tumbling !== undefined ? ' tumbling' : ''}`}
+            >
+              {displayChar}
+            </span>
+          )
         })}
       </div>
     )
@@ -2646,8 +2729,8 @@ function CoordDisplay({ hunt, solved }) {
     <div className="coord-bar">
       <div className="coord-label">TARGET COORDINATES</div>
       <div className="coord-strings">
-        {renderStr(hunt?.masked_lat)}
-        {renderStr(hunt?.masked_lon)}
+        {renderStr(hunt?.masked_lat, 0)}
+        {renderStr(hunt?.masked_lon, 4)}
       </div>
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${progress}%`, background: accent }} />
