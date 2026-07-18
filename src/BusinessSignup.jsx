@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { VENUE_CATEGORIES } from "./lib/venueCategories";
 
 const D = {
   bg:       '#06060E',
@@ -70,12 +71,6 @@ const TIERS = [
       'Monthly analytics call',
     ],
   },
-];
-
-const VENUE_TYPES = [
-  'Bar / Pub', 'Café / Coffee Shop', 'Restaurant',
-  'Retail Shop', 'Hotel', 'Attraction / Museum',
-  'Entertainment Venue', 'Other',
 ];
 
 // ── ANIMATED COUNTER ──────────────────────────────────────
@@ -173,35 +168,6 @@ function Input({ label, value, onChange, placeholder, type = 'text', required, e
   );
 }
 
-function Select({ label, value, onChange, options, required }) {
-  return (
-    <div style={{ marginBottom: '16px' }}>
-      <label style={{
-        display: 'block', fontFamily: D.mono,
-        fontSize: '10px', color: D.textMuted,
-        letterSpacing: '2px', marginBottom: '6px',
-      }}>
-        {label}{required && <span style={{ color: D.purple }}> *</span>}
-      </label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%', padding: '12px 14px',
-          background: D.cardAlt, border: `1px solid ${D.border}`,
-          borderRadius: '8px', color: value ? D.text : D.textDim,
-          fontSize: '15px', fontFamily: D.body,
-          outline: 'none', boxSizing: 'border-box',
-          cursor: 'pointer',
-        }}
-      >
-        <option value="">Select...</option>
-        {options.map(o => <option key={o} value={o} style={{ background: D.card }}>{o}</option>)}
-      </select>
-    </div>
-  );
-}
-
 // ── MAIN COMPONENT ────────────────────────────────────────
 export default function BusinessSignup() {
   const [section, setSection] = useState('pitch'); // pitch | signup | success
@@ -220,7 +186,7 @@ export default function BusinessSignup() {
     businessName: '',
     address: '',
     postcode: '',
-    venueType: '',
+    venueCategory: '',
     website: '',
     // Step 2 — Plan selected above
     // Step 3 — Review & submit
@@ -259,7 +225,7 @@ export default function BusinessSignup() {
       if (!form.businessName.trim()) e.businessName = 'Required';
       if (!form.address.trim()) e.address = 'Required';
       if (!form.postcode.trim()) e.postcode = 'Required';
-      if (!form.venueType) e.venueType = 'Required';
+      if (!form.venueCategory) e.venueCategory = 'Required';
     }
     if (step === 3) {
       if (!form.reward.trim()) e.reward = 'Required — what will players receive?';
@@ -296,9 +262,10 @@ export default function BusinessSignup() {
         .insert({
           name: form.businessName,
           slug,
-          description: `${form.venueType} — ${form.address}`,
+          description: form.address,
           address: form.address,
           postcode: form.postcode.toUpperCase(),
+          venue_category: form.venueCategory,
           contact_name: form.contactName,
           contact_email: form.contactEmail,
           contact_phone: form.contactPhone,
@@ -324,7 +291,7 @@ export default function BusinessSignup() {
           phone: form.contactPhone,
           address: form.address,
           postcode: form.postcode,
-          venueType: form.venueType,
+          venueCategory: form.venueCategory,
           tier: selectedTier,
           reward: form.reward,
           rewardDetail: form.rewardDetail,
@@ -684,7 +651,39 @@ export default function BusinessSignup() {
             <Input label="BUSINESS NAME" value={form.businessName} onChange={v => set('businessName', v)} placeholder="The Anchor Inn" required error={errors.businessName} />
             <Input label="ADDRESS" value={form.address} onChange={v => set('address', v)} placeholder="123 High Street, Chatham" required error={errors.address} />
             <Input label="POSTCODE" value={form.postcode} onChange={v => set('postcode', v.toUpperCase())} placeholder="ME4 1AB" required error={errors.postcode} />
-            <Select label="VENUE TYPE" value={form.venueType} onChange={v => set('venueType', v)} options={VENUE_TYPES} required />
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{
+                display: 'block', fontFamily: D.mono,
+                fontSize: '10px', color: errors.venueCategory ? D.red : D.textMuted,
+                letterSpacing: '2px', marginBottom: '6px',
+              }}>
+                VENUE CATEGORY<span style={{ color: D.purple }}> *</span>
+              </label>
+              <select
+                value={form.venueCategory}
+                onChange={e => set('venueCategory', e.target.value)}
+                style={{
+                  width: '100%', padding: '12px 14px',
+                  background: D.cardAlt,
+                  border: `1px solid ${errors.venueCategory ? D.red : D.border}`,
+                  borderRadius: '8px', color: form.venueCategory ? D.text : D.textDim,
+                  fontSize: '15px', fontFamily: D.body,
+                  outline: 'none', boxSizing: 'border-box',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Select...</option>
+                {VENUE_CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value} style={{ background: D.card }}>{c.emoji} {c.value}</option>
+                ))}
+              </select>
+              {form.venueCategory && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: D.textMuted, fontStyle: 'italic' }}>
+                  {VENUE_CATEGORIES.find(c => c.value === form.venueCategory)?.caption}
+                </div>
+              )}
+              {errors.venueCategory && <div style={{ color: D.red, fontSize: '11px', marginTop: '4px', fontFamily: D.mono }}>{errors.venueCategory}</div>}
+            </div>
             <Input label="WEBSITE (OPTIONAL)" value={form.website} onChange={v => set('website', v)} placeholder="www.yourwebsite.com" />
           </div>
         )}
@@ -775,7 +774,7 @@ export default function BusinessSignup() {
               {[
                 ['Business', form.businessName],
                 ['Location', `${form.address}, ${form.postcode}`],
-                ['Venue type', form.venueType],
+                ['Venue category', form.venueCategory],
                 ['Contact', `${form.contactName} — ${form.contactEmail}`],
                 ['Plan', `${tierData?.name} — £${tierData?.price}/month`],
                 ['First month', 'FREE'],

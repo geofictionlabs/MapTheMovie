@@ -80,6 +80,7 @@ function AlertIcon({ size = 16, style: s }) {
 }
 import { supabase } from '../lib/supabase';
 import { generateTriviaQuestion } from '../lib/triviaApi';
+import { VENUE_CATEGORIES } from '../lib/venueCategories';
 
 const COLORS = {
   bg: '#080810',
@@ -371,7 +372,7 @@ export default function CommandCenter() {
       setBusinessesLoading(true);
       const { data, error } = await supabase
         .from('businesses')
-        .select('id, name')
+        .select('id, name, venue_category')
         .eq('is_active', true)
         .order('name');
       if (!error) setBusinesses(data || []);
@@ -918,9 +919,14 @@ export default function CommandCenter() {
             <option value="" disabled>
               {businessesLoading ? 'Loading businesses…' : 'Select a business…'}
             </option>
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
+            {businesses.map((b) => {
+              const cat = VENUE_CATEGORIES.find((c) => c.value === b.venue_category);
+              return (
+                <option key={b.id} value={b.id}>
+                  {b.name}{cat ? ` — ${cat.emoji} ${cat.value}` : ''}
+                </option>
+              );
+            })}
           </select>
 
           <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
