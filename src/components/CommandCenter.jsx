@@ -345,6 +345,7 @@ export default function CommandCenter() {
   // Campaign fields — required business, everything else defaulted.
   const [businesses, setBusinesses] = useState([]);
   const [businessesLoading, setBusinessesLoading] = useState(true);
+  const [businessesError, setBusinessesError] = useState(null);
   const [selectedBusinessId, setSelectedBusinessId] = useState('');
   const [campaignName, setCampaignName] = useState('');
   const [startsAt, setStartsAt] = useState(() => toDateInputValue(new Date()));
@@ -375,7 +376,13 @@ export default function CommandCenter() {
         .select('id, name, venue_category')
         .eq('is_active', true)
         .order('name');
-      if (!error) setBusinesses(data || []);
+      if (error) {
+        console.error('[CommandCenter] failed to load businesses:', error);
+        setBusinessesError(error.message || 'Failed to load businesses');
+      } else {
+        setBusinessesError(null);
+        setBusinesses(data || []);
+      }
       setBusinessesLoading(false);
     }
     loadBusinesses();
@@ -905,29 +912,35 @@ export default function CommandCenter() {
           <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
             Business <span style={{ color: '#F43F5E' }}>*</span>
           </label>
-          <select
-            value={selectedBusinessId}
-            onChange={(e) => setSelectedBusinessId(e.target.value)}
-            disabled={businessesLoading}
-            style={{
-              width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
-              background: COLORS.bg, border: `1px solid ${COLORS.border}`,
-              color: COLORS.textBright, outline: 'none', marginBottom: 12,
-              boxSizing: 'border-box',
-            }}
-          >
-            <option value="" disabled>
-              {businessesLoading ? 'Loading businesses…' : 'Select a business…'}
-            </option>
-            {businesses.map((b) => {
-              const cat = VENUE_CATEGORIES.find((c) => c.value === b.venue_category);
-              return (
-                <option key={b.id} value={b.id}>
-                  {b.name}{cat ? ` — ${cat.emoji} ${cat.value}` : ''}
-                </option>
-              );
-            })}
-          </select>
+          {businessesError ? (
+            <p style={{ fontSize: 12, margin: '0 0 12px', color: '#F43F5E' }}>
+              Failed to load businesses — {businessesError}
+            </p>
+          ) : (
+            <select
+              value={selectedBusinessId}
+              onChange={(e) => setSelectedBusinessId(e.target.value)}
+              disabled={businessesLoading}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 14,
+                background: COLORS.bg, border: `1px solid ${COLORS.border}`,
+                color: COLORS.textBright, outline: 'none', marginBottom: 12,
+                boxSizing: 'border-box',
+              }}
+            >
+              <option value="" disabled>
+                {businessesLoading ? 'Loading businesses…' : 'Select a business…'}
+              </option>
+              {businesses.map((b) => {
+                const cat = VENUE_CATEGORIES.find((c) => c.value === b.venue_category);
+                return (
+                  <option key={b.id} value={b.id}>
+                    {b.name}{cat ? ` — ${cat.emoji} ${cat.value}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+          )}
 
           <label style={{ display: 'block', fontSize: 11, color: COLORS.textDim, marginBottom: 4 }}>
             Campaign name
