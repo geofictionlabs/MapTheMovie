@@ -25,6 +25,9 @@ dist-ssr
 
 .vercel
 
+# Claude Code local/personal settings — not shared with the team
+.claude/settings.local.json
+
 # Environment — never commit credentials
 .env
 .env.*
