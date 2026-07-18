@@ -65,6 +65,41 @@ function genrePhrase(genre: string | undefined) {
   }
 }
 
+// Hard membership gate, not a prompt instruction -- genrePhrase() alone
+// proved insufficient (a "Family" request with an explicit no-violence
+// clause still selected The Dark Knight; the model's own judgment of
+// content-appropriateness cannot be trusted the way digit arithmetic
+// can). Genres listed here have the model choose from -- and are
+// code-level validated (see the allowlist check in the retry loop) to
+// have actually chosen from -- this specific, human-approved list
+// instead of "any film that fits the genre." Genres not yet listed here
+// fall back to genrePhrase()'s free-text instruction, unenforced, same
+// as before.
+//
+// Each list is curated and explicitly approved title-by-title, not
+// generated. The family list below deliberately excludes Home Alone
+// (slapstick violence) and Matilda (on-screen child abuse is a real
+// plot element) despite both being common "family movie" inclusions
+// elsewhere. Get the same explicit approval before adding entries to
+// an existing list or a new genre key.
+const GENRE_FILM_ALLOWLIST: Record<string, string[]> = {
+  family: [
+    'Toy Story',
+    'Finding Nemo',
+    'The Lion King',
+    'Aladdin',
+    'Shrek',
+    'Frozen',
+    'E.T. the Extra-Terrestrial',
+    'Paddington',
+    'The Incredibles',
+    'Up',
+    'Mary Poppins',
+    'The Wizard of Oz',
+    'Charlie and the Chocolate Factory',
+  ],
+};
+
 // Weak heuristic, not a real language check: does the question describe a
 // calculation the player has to work out? Digit-sequence count deliberately
 // stays loose -- Cipher tier is instructed to obscure numbers as wordplay
@@ -154,22 +189,43 @@ Deno.serve(async (req) => {
   }
 
   const genreRequirement = genrePhrase(genre);
+  const allowlistFilms = GENRE_FILM_ALLOWLIST[genre];
 
   const excludeList = Array.isArray(exclude_movies) ? exclude_movies.filter(Boolean) : [];
   const excludeConstraint = excludeList.length > 0
     ? `\nIMPORTANT: Do not use any of these films in your question: ${excludeList.join(', ')}. Choose a completely different film.\n`
     : '';
 
+  // Allowlist genres: present the specific approved list and require an
+  // exact match (enforced below, code-side). Non-allowlist genres: fall
+  // back to genrePhrase()'s free-text instruction, same as before this
+  // fix -- unenforced until that genre gets its own approved list.
+  let genreInstruction = '';
+  if (allowlistFilms && allowlistFilms.length > 0) {
+    const excludeSet = new Set(excludeList.map((m: string) => m.trim().toLowerCase()));
+    const available = allowlistFilms.filter((f) => !excludeSet.has(f.trim().toLowerCase()));
+    // If every approved title is already used elsewhere in this hunt,
+    // present the full list anyway rather than handing the model nothing
+    // to choose from -- a repeated film is a lesser problem than no
+    // question at all, and this only happens once a hunt has used most
+    // or all of a short list.
+    const presentedList = available.length > 0 ? available : allowlistFilms;
+    genreInstruction = `\nFilm constraint: movie_title MUST be EXACTLY one of the following titles, copied character-for-character -- do not paraphrase, abbreviate, or substitute a different film even if it seems to fit the location better:\n${presentedList.map((f) => `- ${f}`).join('\n')}\n`;
+  } else if (genreRequirement) {
+    genreInstruction = `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n`;
+  }
+  const hasGenreConstraint = genreInstruction !== '';
+
   const prompt = `Generate one movie trivia question for a GPS treasure hunt waypoint.
 Location name: "${locationName}"
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
-${genreRequirement ? `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n` : ''}${excludeConstraint}
+${genreInstruction}${excludeConstraint}
 CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film trivia) MUST naturally contain the digit ${required_digit} somewhere in it. This digit fills one GPS coordinate slot. Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
 
 If the question describes a calculation (e.g. subtracting, adding, or combining numbers or facts), extraction_note must show the actual calculation using the specific numbers/facts referenced in question_text, ending in the final digit -- not just assert the answer. Example of a VALID note: "Quota is 6, minus 10 fingers, plus 12 floors = 8, take the units digit." An INVALID note merely states the answer without deriving it from the question's own numbers, e.g. "The answer is 8, satisfying the requirement" -- this must never be produced.
 
-${genreRequirement ? 'Tie the question thematically to the location name only if doing so does not conflict with the genre constraint above — the genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
+${hasGenreConstraint ? 'Tie the question thematically to the location name only if doing so does not conflict with the constraint above — the film/genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
 
 Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself. extraction_note and question_text must also be completely free of reasoning, self-correction, or alternate attempts. Do not write "wait", "but", "actually", "let me reconsider", "correcting", or show any alternate digit-checking process. If your first idea doesn't satisfy the digit constraint, work it out silently and only output the final, clean, correct version. Never let the reader see you checking or changing your answer.
 
@@ -237,6 +293,20 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     } catch {
       lastFailureReason = 'AI response was not valid JSON';
       continue;
+    }
+
+    // Code-level allowlist membership check -- not model self-report, not
+    // a prompt instruction trusted on faith. This is the actual enforcement
+    // for allowlist genres; genreInstruction above only tells the model
+    // what to do, this verifies it actually did it. Exact match (trimmed,
+    // case-insensitive) against the same list presented in the prompt.
+    if (allowlistFilms && allowlistFilms.length > 0) {
+      const normalizedTitle = String(parsed.movie_title ?? '').trim().toLowerCase();
+      const isAllowed = allowlistFilms.some((f) => f.trim().toLowerCase() === normalizedTitle);
+      if (!isAllowed) {
+        lastFailureReason = `movie_title "${parsed.movie_title}" is not in the approved ${genre} allowlist`;
+        continue;
+      }
     }
 
     // Strict correct_answer validation -- reject anything containing a
