@@ -125,6 +125,71 @@ function hasDerivationSignal(extractionNote: string): boolean {
   return hasOperatorSymbol || hasOperatorWord || distinctNumbers.size >= 2;
 }
 
+// Second, genuinely independent API call, given ONLY the finished
+// question_text/extraction_note/hint_text -- no location, tier, genre, or
+// digit-requirement context from the original generation. Replaces
+// SELF_CORRECTION_PATTERN: that regex could only ever catch phrasing
+// already seen (it missed "actually, let's go with..." and later
+// "reconsidering" -- two different real leaks, two different words never
+// in its list). Asking a fresh call to adversarially judge the finished
+// text, rather than pattern-matching prose for words, isn't phrasing-
+// dependent the same way. Returns null on any failure (network error,
+// non-JSON response) -- treated as a rejection by the caller, same as
+// every other failure mode in this file: fail closed, never pass an
+// unverified question through because verification itself broke.
+async function verifyQuestion(
+  questionText: string,
+  extractionNote: string,
+  hintText: string
+): Promise<{ topicMismatch: boolean; hedgingFound: boolean; evidence: string } | null> {
+  const verificationPrompt = `A trivia question and its answer derivation are shown below. Check for two things: (1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given? (2) Does any of this text contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)? Quote the exact problematic phrase if either is found. Respond with structured JSON: { topic_mismatch: boolean, hedging_found: boolean, evidence: string }.
+
+Question: ${questionText}
+Derivation: ${extractionNote}
+Hint: ${hintText}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "topic_mismatch": false,
+  "hedging_found": false,
+  "evidence": ""
+}`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      messages: [{ role: 'user', content: verificationPrompt }],
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const text = (data.content as any[]).map((b: any) => b.text || '').join('\n');
+
+  const lastOpen = text.lastIndexOf('{');
+  const lastClose = text.lastIndexOf('}');
+  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) return null;
+
+  try {
+    const parsed = JSON.parse(text.slice(lastOpen, lastClose + 1));
+    return {
+      topicMismatch: parsed.topic_mismatch === true,
+      hedgingFound: parsed.hedging_found === true,
+      evidence: String(parsed.evidence ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -247,7 +312,6 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   // constraints (clean fields, digit actually present) is a failed
   // attempt, not a saveable puzzle -- retry rather than pass it through.
   const MAX_ATTEMPTS = 3;
-  const SELF_CORRECTION_PATTERN = /\b(wait|correcting|re-examining|let me|actually the|override)\b/i;
 
   let lastFailureReason = 'unknown';
 
@@ -329,19 +393,10 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       continue;
     }
 
-    // Second line of defense against leaked reasoning even with the
-    // prompt fix in place -- reject on self-correction markers in either
-    // player-facing text field.
     const extractionNote = String(parsed.extraction_note ?? '');
     const questionText   = String(parsed.question_text ?? '');
-    if (SELF_CORRECTION_PATTERN.test(extractionNote) || SELF_CORRECTION_PATTERN.test(questionText)) {
-      lastFailureReason = 'extraction_note or question_text contained self-correction language';
-      continue;
-    }
 
-    // Structural check for the same class of bug SELF_CORRECTION_PATTERN
-    // guards against, but phrasing-independent: rather than pattern-matching
-    // for words like "actually" or "let me", the AI self-reports any OTHER
+    // Phrasing-independent structural check: the AI self-reports any OTHER
     // film title it mentioned anywhere in the text (e.g. one it drifted onto
     // mid-generation before settling on movie_title). A non-empty array
     // means the model itself flagged contamination -- reject regardless of
@@ -361,6 +416,26 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     // in Cipher-tier testing.
     if (impliesCalculation(questionText) && !hasDerivationSignal(extractionNote)) {
       lastFailureReason = 'question_text implies a calculation but extraction_note does not show a derivation';
+      continue;
+    }
+
+    // Independent verification pass -- the last gate, run only once every
+    // other check has already passed. A second, separate API call given
+    // just the finished text (see verifyQuestion above for why this is
+    // stronger than a regex). Fails closed: a verification call that
+    // itself errors is treated as a rejection, not a pass-through.
+    const verification = await verifyQuestion(questionText, extractionNote, String(parsed.hint_text ?? ''));
+    if (!verification) {
+      lastFailureReason = 'Verification pass failed (network error or unparseable response)';
+      continue;
+    }
+    if (verification.topicMismatch || verification.hedgingFound) {
+      const reason = verification.topicMismatch && verification.hedgingFound
+        ? 'topic mismatch and hedging/self-correction'
+        : verification.topicMismatch
+          ? 'topic mismatch'
+          : 'hedging/self-correction';
+      lastFailureReason = `Verification rejected (${reason}): ${verification.evidence || 'no evidence quoted'}`;
       continue;
     }
 
