@@ -37,39 +37,20 @@ export default function StaffRedeem() {
   const [code,       setCode]        = useState('');
   const [state,      setState]       = useState(STATES.IDLE);
   const [voucherData,setVoucherData] = useState(null);
-  const [businessId, setBusinessId]  = useState(null);
-  const [staffPin,   setStaffPin]    = useState(null);
-
-  // On mount — get business from URL or session
-  // /staff?b=business-id or just /staff (uses logged in business)
-  const params     = new URLSearchParams(window.location.search);
-  const bizIdParam = params.get('b');
-
-  // ── LOAD BUSINESS PIN ──────────────────────────────────────
-  const loadBusiness = async () => {
-    const id = bizIdParam || businessId;
-    if (!id) return;
-    const { data } = await supabase
-      .from('businesses')
-      .select('id, name, redemption_pin_hash')
-      .eq('id', id)
-      .single();
-    if (data) {
-      setBusinessId(data.id);
-      setStaffPin(data.redemption_pin_hash);
-    }
-  };
 
   // ── VALIDATE VOUCHER via RPC (bypasses RLS) ────────────────
+  // p_pin is sent on every call -- validate_voucher_code (migration 043)
+  // is the actual PIN check now, server-side against redemption_pin_hash.
+  // There is no client-side PIN verification anymore; a wrong PIN comes
+  // back as data.error === 'invalid_pin', handled below by routing back
+  // to the PIN screen rather than showing a misleading "code not found."
   const validateCode = async () => {
     if (code.length < 4) return;
     setState(STATES.LOADING);
 
     try {
-      console.log('Calling RPC with code:', code.toUpperCase());
       const { data, error } = await supabase
-        .rpc('validate_voucher_code', { p_code: code.toUpperCase() });
-      console.log('RPC result:', data, error);
+        .rpc('validate_voucher_code', { p_code: code.toUpperCase(), p_pin: pin });
 
       if (error || !data) {
         setState(STATES.INVALID);
@@ -78,12 +59,17 @@ export default function StaffRedeem() {
 
       if (!data.success) {
         if (data.error === 'already_redeemed') {
-          setVoucherData({ 
+          setVoucherData({
             voucher_code: code.toUpperCase(),
             redeemed_at: data.redeemed_at,
             campaigns: null,
           });
           setState(STATES.USED);
+        } else if (data.error === 'invalid_pin') {
+          setPinOk(false);
+          setPin('');
+          setPinErr(true);
+          setState(STATES.IDLE);
         } else {
           setState(STATES.INVALID);
         }
@@ -112,17 +98,27 @@ export default function StaffRedeem() {
   };
 
   // ── CONFIRM REDEMPTION via RPC ────────────────────────────
+  // p_pin sent again -- confirm_redemption (migration 044) independently
+  // re-checks it, since this is a separate call from validateCode above.
   const confirmRedemption = async () => {
     if (!voucherData?.voucher_code) return;
     setState(STATES.LOADING);
 
     try {
       const { data, error } = await supabase
-        .rpc('confirm_redemption', { 
-          p_code: voucherData.voucher_code 
+        .rpc('confirm_redemption', {
+          p_code: voucherData.voucher_code,
+          p_pin: pin,
         });
 
       if (error || !data?.success) {
+        if (data?.error === 'invalid_pin') {
+          setPinOk(false);
+          setPin('');
+          setPinErr(true);
+          setState(STATES.IDLE);
+          return;
+        }
         setState(STATES.INVALID);
         return;
       }
@@ -278,11 +274,13 @@ export default function StaffRedeem() {
               value={pin}
               onChange={setPin}
               error={pinErr}
-              onConfirm={async (enteredPin) => {
-                // Check PIN against business
-                // For now simple check — in production hash compare
-                await loadBusiness();
-                // Simple validation — real version uses bcrypt hash compare
+              onConfirm={(enteredPin) => {
+                // This only gates "has the staff member finished typing
+                // 4 digits" -- the real PIN check happens server-side,
+                // in validate_voucher_code, on the first code lookup
+                // (migration 043). A wrong PIN surfaces there and routes
+                // back to this screen (see validateCode's invalid_pin
+                // branch above).
                 if (enteredPin.length === 4) {
                   setPinOk(true);
                   setPinErr(false);
