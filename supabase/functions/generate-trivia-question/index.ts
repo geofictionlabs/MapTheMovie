@@ -32,9 +32,10 @@ function tierGuidance(tier: string) {
   }
 }
 
-// One of the 8 HuntSelectionScreen THEMES keys. 'general' (or anything
-// unrecognised) returns null -- no genre constraint, same as pre-genre
-// behaviour: thematic-to-location if sensible, otherwise any film trivia.
+// One of the 11 keys in CommandCenter.jsx's GENRES / HuntSelectionScreen's
+// THEMES. 'general' (or anything unrecognised) returns null -- no genre
+// constraint, same as pre-genre behaviour: thematic-to-location if
+// sensible, otherwise any film trivia.
 function genrePhrase(genre: string | undefined) {
   switch (genre) {
     case 'horror':
@@ -49,6 +50,14 @@ function genrePhrase(genre: string | undefined) {
       return 'a comedy film (must be a recognised comedy movie)';
     case 'thriller':
       return 'a thriller film (must be a recognised thriller movie)';
+    case 'fantasy':
+      return 'a fantasy film (must be a recognised fantasy movie)';
+    case 'drama':
+      return 'a drama film (must be a recognised drama movie)';
+    case 'mystery':
+      return 'a mystery film (must be a recognised mystery movie)';
+    case 'family':
+      return 'a family film (must be a recognised family-friendly movie, suitable for all ages -- no horror, graphic violence, or adult themes)';
     case 'evergreen_80s':
       return 'a film released in the 1980s (any genre, must be from the decade 1980-1989)';
     default:
@@ -164,6 +173,8 @@ ${genreRequirement ? 'Tie the question thematically to the location name only if
 
 Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself. extraction_note and question_text must also be completely free of reasoning, self-correction, or alternate attempts. Do not write "wait", "but", "actually", "let me reconsider", "correcting", or show any alternate digit-checking process. If your first idea doesn't satisfy the digit constraint, work it out silently and only output the final, clean, correct version. Never let the reader see you checking or changing your answer.
 
+The question must be about exactly one film: movie_title. Before finalising your answer, check question_text, extraction_note, and hint_text yourself for any OTHER film title -- one you considered and moved away from while drafting, a comparison, anything. List every such title in other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films as part of the trivia itself (rare) -- it must never contain a film you were merely deciding between while writing.
+
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
   "question_text": "...",
@@ -172,7 +183,8 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   "movie_emoji": "...",
   "correct_answer": 88,
   "extraction_note": "The tens digit of 88 is 8",
-  "hint_text": "..."
+  "hint_text": "...",
+  "other_films_mentioned": []
 }`;
 
   // Up to 3 attempts total. A generation that fails its own stated
@@ -254,6 +266,21 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     const questionText   = String(parsed.question_text ?? '');
     if (SELF_CORRECTION_PATTERN.test(extractionNote) || SELF_CORRECTION_PATTERN.test(questionText)) {
       lastFailureReason = 'extraction_note or question_text contained self-correction language';
+      continue;
+    }
+
+    // Structural check for the same class of bug SELF_CORRECTION_PATTERN
+    // guards against, but phrasing-independent: rather than pattern-matching
+    // for words like "actually" or "let me", the AI self-reports any OTHER
+    // film title it mentioned anywhere in the text (e.g. one it drifted onto
+    // mid-generation before settling on movie_title). A non-empty array
+    // means the model itself flagged contamination -- reject regardless of
+    // how that drift was phrased.
+    const otherFilms = Array.isArray(parsed.other_films_mentioned)
+      ? parsed.other_films_mentioned.filter((f: unknown) => typeof f === 'string' && f.trim())
+      : [];
+    if (otherFilms.length > 0) {
+      lastFailureReason = `question referenced other film title(s) besides movie_title: ${otherFilms.join(', ')}`;
       continue;
     }
 
