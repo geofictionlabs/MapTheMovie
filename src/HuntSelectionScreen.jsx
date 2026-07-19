@@ -56,7 +56,7 @@ const VENUE_CATEGORY_EMOJI = {
 };
 
 // ── THEME DEFINITIONS ─────────────────────────────────────────
-const THEMES = {
+export const THEMES = {
   general: {
     gradient: 'linear-gradient(145deg, #0D0820 0%, #1A0A3E 50%, #0D0820 100%)',
     accentGradient: 'linear-gradient(90deg, #7C3AED, #9D5FF5)',
@@ -202,7 +202,7 @@ const THEMES = {
   },
 };
 
-function getTheme(hunt) {
+export function getTheme(hunt) {
   const genre = (
     hunt?.puzzle_packs?.genre ||
     hunt?.genre ||
@@ -502,14 +502,19 @@ function GenreFlourish({ genre, theme, active }) {
 }
 
 // ── DIFFICULTY PILL ────────────────────────────────────────────
-function DifficultyPill({ level, theme }) {
-  const cfg = {
-    casual:  { bars: 1, color: '#10B981', label: 'CASUAL' },
-    classic: { bars: 2, color: '#7C3AED', label: 'CLASSIC' },
-    expert:  { bars: 3, color: '#F59E0B', label: 'EXPERT' },
-    cipher:  { bars: 4, color: '#EF4444', label: 'CIPHER' },
-  };
-  const d = cfg[level?.toLowerCase()] || cfg.classic;
+// Canonical tier-color mapping for the whole app -- this is the live
+// discovery screen's mapping, standardized on elsewhere (PassportStamp
+// in PlayerPassport.jsx) after it was found to disagree with its own,
+// independently-invented colors.
+export const DIFFICULTY_COLORS = {
+  casual:  { bars: 1, color: '#10B981', label: 'CASUAL' },
+  classic: { bars: 2, color: '#7C3AED', label: 'CLASSIC' },
+  expert:  { bars: 3, color: '#F59E0B', label: 'EXPERT' },
+  cipher:  { bars: 4, color: '#EF4444', label: 'CIPHER' },
+};
+
+export function DifficultyPill({ level, theme }) {
+  const d = DIFFICULTY_COLORS[level?.toLowerCase()] || DIFFICULTY_COLORS.classic;
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: '7px',

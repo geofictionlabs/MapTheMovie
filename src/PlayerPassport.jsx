@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { getTheme, DIFFICULTY_COLORS, DifficultyPill } from "./HuntSelectionScreen";
 
 // ── DESIGN TOKENS ──────────────────────────────────────────────
 const D = {
@@ -76,13 +77,11 @@ const ACHIEVEMENTS = [
 function PassportStamp({ hunt, index, animate }) {
   const angles = [-8, 5, -3, 10, -6, 7, -12, 4];
   const rotation = angles[index % angles.length];
-  const colors = {
-    casual:  { ring: '#7C3AED', text: '#9D5FF5', bg: 'rgba(124,58,237,0.08)' },
-    classic: { ring: '#F59E0B', text: '#F59E0B', bg: 'rgba(245,158,11,0.08)' },
-    expert:  { ring: '#EF4444', text: '#EF4444', bg: 'rgba(239,68,68,0.08)'  },
-    cipher:  { ring: '#10B981', text: '#10B981', bg: 'rgba(16,185,129,0.08)' },
-  };
-  const c = colors[hunt.difficulty?.toLowerCase()] || colors.classic;
+  // Standardized on HuntSelectionScreen's DIFFICULTY_COLORS (the live
+  // discovery screen's mapping) -- this used to have its own,
+  // independently-invented colors that disagreed tier-for-tier.
+  const tier = DIFFICULTY_COLORS[hunt.difficulty?.toLowerCase()] || DIFFICULTY_COLORS.classic;
+  const c = { ring: tier.color, text: tier.color, bg: `${tier.color}14` };
   const date = new Date(hunt.completed_at);
   const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' }).toUpperCase();
 
@@ -151,7 +150,10 @@ function PassportStamp({ hunt, index, animate }) {
 function AchievementBadge({ achievement, unlocked }) {
   return (
     <div style={{
-      background: unlocked ? D.card : D.surface,
+      backgroundColor: unlocked ? D.card : D.surface,
+      backgroundImage: unlocked ? 'none' : 'linear-gradient(135deg, transparent 40%, rgba(245,158,11,0.15) 50%, transparent 60%)',
+      backgroundSize: unlocked ? 'auto' : '250% 100%',
+      animation: unlocked ? 'none' : 'tease 6s linear infinite',
       border: `1px solid ${unlocked ? D.border : D.borderMid}`,
       borderRadius: '12px', padding: '14px 12px',
       display: 'flex', flexDirection: 'column',
@@ -253,6 +255,223 @@ function RankLadder({ totalHunts }) {
   );
 }
 
+// ── PRIZE WEDGE RING ───────────────────────────────────────────
+// Prize Qualification (Passport & Compass spec, section 4). Real,
+// persisted version of the cosmetic 5-star strip on the arrival-reveal
+// screen -- see join_prize_draw() (migration 048) for the server-side
+// source of truth this mirrors for display.
+//
+// Wedge paths are the mockup's own pre-computed 5-equal-72-degree
+// slices (radius 88, center 100,100) -- geometry is fixed regardless
+// of lock state, only fill/stroke changes per position.
+const WEDGE_PATHS = [
+  'M 100,100 L 103.07,12.05 A 88 88 0 0 1 182.69,69.90 Z',
+  'M 100,100 L 184.59,75.74 A 88 88 0 0 1 154.18,169.34 Z',
+  'M 100,100 L 149.21,172.96 A 88 88 0 0 1 50.79,172.96 Z',
+  'M 100,100 L 45.82,169.34 A 88 88 0 0 1 15.41,75.74 Z',
+  'M 100,100 L 17.31,69.90 A 88 88 0 0 1 96.93,12.05 Z',
+];
+// Reference-key colors only -- wedges themselves all turn D.gold when
+// unlocked (confirmed design decision), never these individual colors.
+const WEDGE_TIER_KEY = [
+  { label: 'CASUAL',  color: '#5DCAA5' },
+  { label: 'CLASSIC', color: '#9D6FFF' },
+  { label: 'CLASSIC', color: '#9D6FFF' },
+  { label: 'EXPERT',  color: '#F59E0B' },
+  { label: 'CIPHER',  color: '#C4396A' },
+];
+const WEDGE_REQUIRED = ['casual', 'classic', 'classic', 'expert', 'cipher'];
+
+// Europe/London offset (minutes ahead of UTC -- BST=60, GMT=0) at a
+// given instant, via Intl rather than a timezone library.
+function getLondonOffsetMinutes(date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/London', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date);
+  const get = t => parseInt(parts.find(p => p.type === t).value, 10);
+  const asUTC = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  return (asUTC - date.getTime()) / 60000;
+}
+
+// Current calendar-quarter boundaries in Europe/London wall-clock time.
+// Display-only -- join_prize_draw() re-derives this itself server-side
+// as the actual source of truth, so any DST-edge drift here is cosmetic.
+function getLondonQuarterBounds() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', year: 'numeric', month: '2-digit',
+  }).formatToParts(now);
+  const year = parseInt(parts.find(p => p.type === 'year').value, 10);
+  const month = parseInt(parts.find(p => p.type === 'month').value, 10);
+  const quarter = Math.floor((month - 1) / 3) + 1;
+  const startMonth = (quarter - 1) * 3;
+
+  const londonWallClockToUTC = (y, mo) => {
+    const utcGuess = new Date(Date.UTC(y, mo, 1, 0, 0, 0));
+    return new Date(utcGuess.getTime() - getLondonOffsetMinutes(utcGuess) * 60000);
+  };
+
+  const start = londonWallClockToUTC(year, startMonth);
+  const endMonth = startMonth + 3;
+  const end = endMonth >= 12
+    ? londonWallClockToUTC(year + 1, endMonth - 12)
+    : londonWallClockToUTC(year, endMonth);
+
+  return { start, end, quarterLabel: `${year}-Q${quarter}` };
+}
+
+// Same strict-pointer walk as join_prize_draw() -- a hunt only advances
+// the pointer if its tier matches the CURRENT required position; anything
+// out of turn is skipped, never banked.
+function calcWedgesFilled(hunts, start, end) {
+  const inQuarter = hunts
+    .filter(h => {
+      const t = new Date(h.completed_at).getTime();
+      return t >= start.getTime() && t < end.getTime();
+    })
+    .sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
+  let pointer = 0;
+  for (const h of inQuarter) {
+    if (pointer < WEDGE_REQUIRED.length && h.difficulty === WEDGE_REQUIRED[pointer]) {
+      pointer += 1;
+    }
+  }
+  return pointer;
+}
+
+function PrizeWedgeRing({ hunts, user }) {
+  const [alreadyEntered, setAlreadyEntered] = useState(false);
+  const [joinedJustNow, setJoinedJustNow] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
+  const { start, end, quarterLabel } = getLondonQuarterBounds();
+  const wedgesFilled = calcWedgesFilled(hunts, start, end);
+  const remaining = Math.max(0, WEDGE_REQUIRED.length - wedgesFilled);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('prize_draw_entries').select('quarter_label')
+      .eq('user_id', user.id).eq('quarter_label', quarterLabel).maybeSingle()
+      .then(({ data }) => setAlreadyEntered(!!data));
+  }, [user, quarterLabel]);
+
+  const handleJoinDraw = async () => {
+    setJoining(true); setJoinError('');
+    try {
+      const { data, error } = await supabase.rpc('join_prize_draw');
+      if (error) throw error;
+      if (data.success) {
+        setAlreadyEntered(true);
+        setJoinedJustNow(!data.already_entered);
+      } else {
+        setJoinError("Doesn't look like all 5 wedges are filled yet — refresh and try again.");
+      }
+    } catch (e) {
+      setJoinError('Something went wrong, try again.');
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: D.card, border: `1px solid ${D.border}`,
+      borderRadius: '16px', padding: '20px 20px 24px',
+      marginBottom: '20px', textAlign: 'center',
+    }}>
+      <div style={{
+        fontFamily: D.mono, fontSize: '9px', textAlign: 'left',
+        color: D.textMuted, letterSpacing: '3px', marginBottom: '16px',
+      }}>PRIZE QUALIFICATION</div>
+
+      <div style={{ marginBottom: '18px' }}>
+        <div style={{ fontFamily: D.mono, fontSize: '11px', letterSpacing: '2px', color: D.gold, fontWeight: 700, marginBottom: '4px' }}>
+          QUARTERLY PRIZE POOL
+        </div>
+        <div style={{ fontSize: '12px', color: '#8B8B9A' }}>
+          Complete hunts across all tiers to qualify
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        {WEDGE_TIER_KEY.map((t, i) => (
+          <span key={i} style={{
+            fontFamily: D.mono, fontSize: '8px', letterSpacing: '0.5px',
+            display: 'flex', alignItems: 'center', gap: '4px', color: '#8B8B9A',
+          }}>
+            <i style={{ width: '7px', height: '7px', borderRadius: '50%', display: 'inline-block', background: t.color }} />
+            {t.label}
+          </span>
+        ))}
+      </div>
+
+      <div style={{ position: 'relative', width: '180px', height: '180px', margin: '4px auto 10px' }}>
+        <svg viewBox="0 0 200 200" style={{ width: '100%', height: '100%' }}>
+          {WEDGE_PATHS.map((d, i) => {
+            const unlocked = i < wedgesFilled;
+            return (
+              <path key={i} d={d}
+                fill={unlocked ? D.gold : 'rgba(255,255,255,0.05)'}
+                stroke={unlocked ? 'none' : 'rgba(255,255,255,0.12)'}
+                strokeWidth={unlocked ? 0 : 1}
+                strokeDasharray={unlocked ? 'none' : '3 4'}
+                style={{
+                  transition: 'fill 0.3s ease',
+                  filter: unlocked ? 'drop-shadow(0 0 8px rgba(245,158,11,0.6))' : 'none',
+                }}
+              />
+            );
+          })}
+          <circle cx="100" cy="100" r="46" fill="#080810" />
+          <circle cx="100" cy="100" r="46" fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth="1.5" />
+        </svg>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ fontFamily: D.display, fontWeight: 900, fontSize: '30px', lineHeight: 1, color: D.text }}>
+            {wedgesFilled}<span style={{ fontSize: '15px', color: '#8B8B9A', fontWeight: 600 }}>/5</span>
+          </div>
+          <div style={{ fontFamily: D.mono, fontSize: '8px', letterSpacing: '1.5px', color: '#8B8B9A', marginTop: '4px' }}>
+            REELS COMPLETE
+          </div>
+        </div>
+      </div>
+
+      {wedgesFilled >= WEDGE_REQUIRED.length ? (
+        alreadyEntered ? (
+          <div style={{ fontSize: '10.5px', color: D.green, fontFamily: D.mono, letterSpacing: '1px', marginTop: '8px' }}>
+            {joinedJustNow ? "YOU'RE IN — GOOD LUCK!" : `ENTERED FOR ${quarterLabel}`}
+          </div>
+        ) : (
+          <button
+            onClick={handleJoinDraw}
+            disabled={joining}
+            style={{
+              display: 'inline-block', fontFamily: D.mono, fontSize: '12px',
+              letterSpacing: '1.5px', color: '#080810',
+              background: `linear-gradient(135deg,${D.goldLight},${D.gold})`,
+              padding: '12px 26px', borderRadius: '999px', fontWeight: 700,
+              marginTop: '6px', border: 'none', cursor: joining ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 20px rgba(245,158,11,0.4)',
+              animation: joining ? 'none' : 'cta-pulse 2s ease-in-out infinite',
+            }}
+          >{joining ? 'JOINING...' : 'JOIN THE DRAW'}</button>
+        )
+      ) : (
+        <div style={{ fontSize: '10.5px', color: '#8B8B9A', marginTop: '8px' }}>
+          {remaining} more hunt{remaining === 1 ? '' : 's'} to unlock the draw
+        </div>
+      )}
+
+      {joinError && <div style={{ color: D.red, fontSize: '11px', fontFamily: D.mono, marginTop: '10px' }}>{joinError}</div>}
+    </div>
+  );
+}
+
 // ── STAT CARD ──────────────────────────────────────────────────
 function StatCard({ label, value, accent, sub }) {
   return (
@@ -273,7 +492,7 @@ function StatCard({ label, value, accent, sub }) {
       }}>{value}</div>
       <div style={{
         fontFamily: D.mono, fontSize: '9px',
-        color: D.textDim, letterSpacing: '2px',
+        color: D.textMuted, letterSpacing: '2px',
       }}>{label}</div>
       {sub && <div style={{ fontSize: '11px', color: D.textMuted, marginTop: '2px' }}>{sub}</div>}
     </div>
@@ -419,10 +638,11 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── AUTH SCREEN ────────────────────────────────────────────────
 function AuthScreen() {
-  // 'link' = magic-link (existing, untouched flow) | 'password' = new
-  const [authMode, setAuthMode] = useState('link');
+  // 'password' = default | 'link' = magic-link (existing, untouched flow)
+  const [authMode, setAuthMode] = useState('password');
   // Within password mode: signing into an existing account vs creating one
   const [passwordMode, setPasswordMode] = useState('login');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -537,8 +757,8 @@ function AuthScreen() {
           borderRadius: '10px', padding: '4px',
         }}>
           {[
-            { id: 'link', label: 'SIGN-IN LINK' },
             { id: 'password', label: 'PASSWORD' },
+            { id: 'link', label: 'SIGN-IN LINK' },
           ].map(m => (
             <button
               key={m.id}
@@ -573,21 +793,47 @@ function AuthScreen() {
         />
 
         {authMode === 'password' && (
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Password"
-            onKeyDown={e => e.key === 'Enter' && handlePasswordAuth()}
-            style={{
-              width: '100%', padding: '12px 14px',
-              background: D.cardAlt, border: `1px solid ${D.border}`,
-              borderRadius: '10px', color: D.text,
-              fontSize: '15px', fontFamily: D.body,
-              outline: 'none', marginBottom: '16px',
-              boxSizing: 'border-box',
-            }}
-          />
+          <div style={{ position: 'relative', marginBottom: '10px' }}>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Password"
+              onKeyDown={e => e.key === 'Enter' && handlePasswordAuth()}
+              style={{
+                width: '100%', padding: '12px 54px 12px 14px',
+                background: D.cardAlt, border: `1px solid ${D.border}`,
+                borderRadius: '10px', color: D.text,
+                fontSize: '15px', fontFamily: D.body,
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(s => !s)}
+              style={{
+                position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
+                background: 'transparent', border: 'none',
+                color: D.textMuted, fontSize: '9px', fontFamily: D.mono,
+                letterSpacing: '1px', cursor: 'pointer', padding: '6px 8px',
+              }}
+            >{showPassword ? 'HIDE' : 'SHOW'}</button>
+          </div>
+        )}
+
+        {authMode === 'password' && passwordMode === 'login' && (
+          <div style={{ textAlign: 'right', marginBottom: '12px' }}>
+            <button
+              type="button"
+              onClick={() => switchAuthMode('link')}
+              style={{
+                background: 'transparent', border: 'none',
+                color: D.textMuted, fontSize: '12px',
+                cursor: 'pointer', fontFamily: D.body, textDecoration: 'underline',
+              }}
+            >Forgot password?</button>
+          </div>
         )}
 
         {error && <div style={{ color: D.red, fontSize: '12px', fontFamily: D.mono, marginBottom: '12px', textAlign: 'center' }}>{error}</div>}
@@ -684,7 +930,7 @@ export default function PlayerPassport({ onClose }) {
           id, status, started_at, completed_at,
           arrival_distance_m, time_taken_seconds,
           puzzles(
-            puzzle_packs(name, genre, theme_tag)
+            puzzle_packs(name, genre, theme_tag, emoji)
           ),
           redemptions(
             id, voucher_code, redeemed_at,
@@ -705,6 +951,7 @@ export default function PlayerPassport({ onClose }) {
         return {
           id: s.id,
           pack_name: s.puzzles?.puzzle_packs?.name || 'Mystery Hunt',
+          pack_emoji: s.puzzles?.puzzle_packs?.emoji || '🎬',
           business_name: campaign?.businesses?.name || 'Hidden Venue',
           genre: s.puzzles?.puzzle_packs?.genre || 'general',
           difficulty: campaign?.difficulty || 'classic',
@@ -759,7 +1006,7 @@ export default function PlayerPassport({ onClose }) {
       <div style={{
         background: D.bg, minHeight: '100vh',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: D.mono, fontSize: '11px', color: D.textDim,
+        fontFamily: D.mono, fontSize: '11px', color: D.textMuted,
         letterSpacing: '3px',
       }}>
         LOADING PASSPORT...
@@ -838,7 +1085,7 @@ export default function PlayerPassport({ onClose }) {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px', fontFamily: D.mono, fontSize: '11px', color: D.textDim, letterSpacing: '3px' }}>
+        <div style={{ textAlign: 'center', padding: '60px', fontFamily: D.mono, fontSize: '11px', color: D.textMuted, letterSpacing: '3px' }}>
           LOADING PASSPORT...
         </div>
       ) : (
@@ -873,7 +1120,7 @@ export default function PlayerPassport({ onClose }) {
                   }}>GEOFICTION LABS</div>
                   <div style={{
                     fontFamily: D.display, fontWeight: 900,
-                    fontSize: '11px', color: D.textDim,
+                    fontSize: '11px', color: D.textMuted,
                     letterSpacing: '8px', marginBottom: '20px',
                   }}>HUNTER'S PASSPORT</div>
 
@@ -912,6 +1159,8 @@ export default function PlayerPassport({ onClose }) {
                 </div>
               </div>
 
+              <PrizeWedgeRing hunts={hunts} user={user} />
+
               {/* Passport stamps */}
               <div style={{
                 background: D.card, border: `1px solid ${D.border}`,
@@ -920,7 +1169,7 @@ export default function PlayerPassport({ onClose }) {
               }}>
                 <div style={{
                   fontFamily: D.mono, fontSize: '9px',
-                  color: D.textDim, letterSpacing: '3px', marginBottom: '16px',
+                  color: D.textMuted, letterSpacing: '3px', marginBottom: '16px',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 }}>
                   <span>HUNT STAMPS</span>
@@ -977,7 +1226,7 @@ export default function PlayerPassport({ onClose }) {
             <div>
               <div style={{
                 fontFamily: D.mono, fontSize: '9px',
-                color: D.textDim, letterSpacing: '3px',
+                color: D.textMuted, letterSpacing: '3px',
                 marginBottom: '16px',
               }}>COMPLETED HUNTS — {hunts.length} TOTAL</div>
 
@@ -995,25 +1244,36 @@ export default function PlayerPassport({ onClose }) {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {hunts.map((hunt, i) => (
+                  {hunts.map((hunt, i) => {
+                    const theme = getTheme(hunt);
+                    return (
                     <div key={hunt.id} style={{
-                      background: D.card, border: `1px solid ${D.border}`,
+                      background: theme.gradient,
+                      border: `1px solid ${theme.borderColor}`,
                       borderRadius: '14px', padding: '18px 18px',
                       position: 'relative', overflow: 'hidden',
                       animation: `cardReveal 0.5s ease ${i*0.08}s both`,
                     }}>
                       <div style={{
-                        position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
-                        background: `linear-gradient(90deg,transparent,${D.purple}60,transparent)`,
+                        position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+                        background: theme.accentGradient,
                       }} />
-                      {/* Hunt name + venue */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '16px', color: D.text, marginBottom: '2px' }}>
-                            {hunt.pack_name}
-                          </div>
-                          <div style={{ fontFamily: D.mono, fontSize: '10px', color: D.gold, letterSpacing: '1px' }}>
-                            📍 {hunt.business_name}
+                      {/* Emoji + hunt name + venue */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0,
+                            background: `${theme.accent}20`, border: `1px solid ${theme.accent}40`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '20px',
+                          }}>{hunt.pack_emoji}</div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '16px', color: D.text, marginBottom: '2px' }}>
+                              {hunt.pack_name}
+                            </div>
+                            <div style={{ fontFamily: D.mono, fontSize: '10px', color: theme.accent, letterSpacing: '1px' }}>
+                              📍 {hunt.business_name}
+                            </div>
                           </div>
                         </div>
                         <div style={{
@@ -1022,10 +1282,15 @@ export default function PlayerPassport({ onClose }) {
                           borderRadius: '20px', padding: '3px 10px',
                           fontFamily: D.mono, fontSize: '8px',
                           color: hunt.redeemed ? D.green : D.purple,
-                          letterSpacing: '1px',
+                          letterSpacing: '1px', flexShrink: 0,
                         }}>
                           {hunt.redeemed ? 'REDEEMED' : 'COMPLETED'}
                         </div>
+                      </div>
+
+                      {/* Difficulty pill — same component/colors as the discovery screen */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <DifficultyPill level={hunt.difficulty} theme={theme} />
                       </div>
 
                       {/* Stats row */}
@@ -1034,7 +1299,6 @@ export default function PlayerPassport({ onClose }) {
                           { l: 'DATE', v: new Date(hunt.completed_at).toLocaleDateString('en-GB') },
                           { l: 'TIME', v: hunt.duration_mins ? `${hunt.duration_mins} min` : '—' },
                           { l: 'DISTANCE', v: hunt.distance_km ? `${hunt.distance_km} km` : '—' },
-                          { l: 'DIFFICULTY', v: hunt.difficulty?.toUpperCase() || '—' },
                         ].map(s => (
                           <div key={s.l}>
                             <div style={{ fontFamily: D.mono, fontSize: '8px', color: D.textDim, letterSpacing: '1px', marginBottom: '2px' }}>{s.l}</div>
@@ -1068,7 +1332,8 @@ export default function PlayerPassport({ onClose }) {
                           letterSpacing: '1px',
                         }}>SHARE THIS HUNT</button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1081,7 +1346,7 @@ export default function PlayerPassport({ onClose }) {
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', marginBottom: '16px',
               }}>
-                <div style={{ fontFamily: D.mono, fontSize: '9px', color: D.textDim, letterSpacing: '3px' }}>
+                <div style={{ fontFamily: D.mono, fontSize: '9px', color: D.textMuted, letterSpacing: '3px' }}>
                   ACHIEVEMENTS
                 </div>
                 <div style={{ fontFamily: D.mono, fontSize: '9px', color: D.purple, letterSpacing: '1px' }}>
@@ -1187,7 +1452,7 @@ export default function PlayerPassport({ onClose }) {
 
               {/* How it works */}
               <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: '14px', padding: '20px' }}>
-                <div style={{ fontFamily: D.mono, fontSize: '9px', color: D.textDim, letterSpacing: '3px', marginBottom: '14px' }}>HOW REFERRALS WORK</div>
+                <div style={{ fontFamily: D.mono, fontSize: '9px', color: D.textMuted, letterSpacing: '3px', marginBottom: '14px' }}>HOW REFERRALS WORK</div>
                 {[
                   { n:'01', t:'Share your code', b:'Send your unique link to a friend via WhatsApp, text or social media.' },
                   { n:'02', t:'Friend signs up', b:'They create their passport using your referral link.' },
@@ -1288,6 +1553,14 @@ export default function PlayerPassport({ onClose }) {
         @keyframes pulse-dot {
           0%, 100% { box-shadow: 0 0 0 4px rgba(245,158,11,0.25), 0 0 14px #F59E0B; }
           50% { box-shadow: 0 0 0 8px rgba(245,158,11,0.12), 0 0 18px #F59E0B; }
+        }
+        @keyframes cta-pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 4px 20px rgba(245,158,11,0.4); }
+          50% { transform: scale(1.03); box-shadow: 0 6px 28px rgba(245,158,11,0.6); }
+        }
+        @keyframes tease {
+          0%, 84% { background-position: 200% 0; }
+          92%, 100% { background-position: 0% 0; }
         }
       `}</style>
     </div>
