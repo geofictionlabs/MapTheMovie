@@ -464,34 +464,42 @@ export default function PlayerPassport({ onClose }) {
       const { data: sessions } = await supabase
         .from('hunt_sessions')
         .select(`
-          id, status, started_at, completed_at, difficulty,
-          distance_metres, duration_seconds,
-          campaigns(
-            name, voucher_headline,
-            businesses(name),
+          id, status, started_at, completed_at,
+          arrival_distance_m, time_taken_seconds,
+          puzzles(
             puzzle_packs(name, genre, theme_tag)
           ),
-          redemptions(id, voucher_code, redeemed_at)
+          redemptions(
+            id, voucher_code, redeemed_at,
+            campaigns(
+              name, voucher_headline, difficulty,
+              businesses(name)
+            )
+          )
         `)
-        .eq('player_id', user.id)
+        .eq('user_id', user.id)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false });
 
       // Shape data
-      const shaped = (sessions || []).map(s => ({
-        id: s.id,
-        pack_name: s.campaigns?.puzzle_packs?.name || 'Mystery Hunt',
-        business_name: s.campaigns?.businesses?.name || 'Hidden Venue',
-        genre: s.campaigns?.puzzle_packs?.genre || 'general',
-        difficulty: s.difficulty || 'classic',
-        completed_at: s.completed_at,
-        duration_mins: s.duration_seconds ? Math.round(s.duration_seconds / 60) : null,
-        distance_km: s.distance_metres ? (s.distance_metres / 1000).toFixed(1) : null,
-        voucher_code: s.redemptions?.[0]?.voucher_code || null,
-        redeemed: !!s.redemptions?.[0]?.redeemed_at,
-        slots_solved: 12,
-        won_prize: false,
-      }));
+      const shaped = (sessions || []).map(s => {
+        const redemption = s.redemptions?.[0];
+        const campaign = redemption?.campaigns;
+        return {
+          id: s.id,
+          pack_name: s.puzzles?.puzzle_packs?.name || 'Mystery Hunt',
+          business_name: campaign?.businesses?.name || 'Hidden Venue',
+          genre: s.puzzles?.puzzle_packs?.genre || 'general',
+          difficulty: campaign?.difficulty || 'classic',
+          completed_at: s.completed_at,
+          duration_mins: s.time_taken_seconds ? Math.round(s.time_taken_seconds / 60) : null,
+          distance_km: s.arrival_distance_m ? (s.arrival_distance_m / 1000).toFixed(1) : null,
+          voucher_code: redemption?.voucher_code || null,
+          redeemed: !!redemption?.redeemed_at,
+          slots_solved: 12,
+          won_prize: false,
+        };
+      });
 
       setHunts(shaped);
     } catch(e) {
