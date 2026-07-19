@@ -3,7 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 import { VENUE_CATEGORIES } from './lib/venueCategories'
-import { DIFFICULTY_COLORS } from './HuntSelectionScreen'
+import { DIFFICULTY_COLORS } from './lib/theme'
 
 const DS = {
   bg: '#080810',

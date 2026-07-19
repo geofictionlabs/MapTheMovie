@@ -81,7 +81,7 @@ function AlertIcon({ size = 16, style: s }) {
 import { supabase } from '../lib/supabase';
 import { generateTriviaQuestion } from '../lib/triviaApi';
 import { VENUE_CATEGORIES } from '../lib/venueCategories';
-import { DIFFICULTY_COLORS } from '../HuntSelectionScreen';
+import { DIFFICULTY_COLORS } from '../lib/theme';
 
 const COLORS = {
   bg: '#080810',

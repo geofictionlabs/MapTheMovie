@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
-import HuntSelectionScreen, { DIFFICULTY_COLORS } from './HuntSelectionScreen'
+import HuntSelectionScreen from './HuntSelectionScreen'
+import { DIFFICULTY_COLORS } from './lib/theme'
 
 // ── Question variety helpers ──────────────────────────────────────────────────
 // Persist seen question IDs per user in localStorage so repeated play sessions

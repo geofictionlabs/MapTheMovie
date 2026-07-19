@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
-import { getTheme, DIFFICULTY_COLORS, DifficultyPill } from "./HuntSelectionScreen";
+import { getTheme, DIFFICULTY_COLORS, DifficultyPill } from "./lib/theme";
 
 // ── DESIGN TOKENS ──────────────────────────────────────────────
 const D = {
