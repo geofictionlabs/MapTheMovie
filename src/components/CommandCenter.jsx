@@ -81,6 +81,7 @@ function AlertIcon({ size = 16, style: s }) {
 import { supabase } from '../lib/supabase';
 import { generateTriviaQuestion } from '../lib/triviaApi';
 import { VENUE_CATEGORIES } from '../lib/venueCategories';
+import { DIFFICULTY_COLORS } from '../HuntSelectionScreen';
 
 const COLORS = {
   bg: '#080810',
@@ -93,10 +94,10 @@ const COLORS = {
 };
 
 const TIERS = {
-  casual: { label: 'Casual', color: '#34D399' },
-  classic: { label: 'Classic', color: '#7C3AED' },
-  expert: { label: 'Expert', color: '#F59E0B' },
-  cipher: { label: 'Cipher', color: '#F43F5E' },
+  casual: { label: 'Casual', color: DIFFICULTY_COLORS.casual.color },
+  classic: { label: 'Classic', color: DIFFICULTY_COLORS.classic.color },
+  expert: { label: 'Expert', color: DIFFICULTY_COLORS.expert.color },
+  cipher: { label: 'Cipher', color: DIFFICULTY_COLORS.cipher.color },
 };
 
 // trivia_pool.difficulty (and trivia_variables.difficulty, which it's

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
-import HuntSelectionScreen from './HuntSelectionScreen'
+import HuntSelectionScreen, { DIFFICULTY_COLORS } from './HuntSelectionScreen'
 
 // ── Question variety helpers ──────────────────────────────────────────────────
 // Persist seen question IDs per user in localStorage so repeated play sessions
@@ -1744,7 +1744,7 @@ function HuntCard({ hunt, onTap, distLabel }) {
   const badgeColor = tier === 'elite' ? '#FCD34D' : tier === 'premium' ? '#F59E0B' : '#10B981'
   const diff = hunt.difficulty || 'classic'
   const diffLabel = diff === 'casual' ? 'CASUAL' : diff === 'expert' ? 'EXPERT' : 'CLASSIC'
-  const diffColor = diff === 'casual' ? '#10B981' : diff === 'expert' ? '#EF4444' : '#7C3AED'
+  const diffColor = DIFFICULTY_COLORS[diff]?.color || DIFFICULTY_COLORS.classic.color
 
   return (
     <div
@@ -2287,7 +2287,7 @@ function PreferencesScreen({ initialPrefs, userId, onBack, onSaved }) {
     { id: 'classic', label: 'Classic', note: 'Mixed films, hints on request' },
     { id: 'expert',  label: 'Expert',  note: 'Deep cuts, no hints' },
   ]
-  const DIFF_COLOR = { casual: '#10B981', classic: '#7C3AED', expert: '#EF4444' }
+  const DIFF_COLOR = { casual: DIFFICULTY_COLORS.casual.color, classic: DIFFICULTY_COLORS.classic.color, expert: DIFFICULTY_COLORS.expert.color }
 
   function SectionHead({ children }) {
     return (
@@ -3942,10 +3942,10 @@ const REVEAL_PURPLE_TONES = ['#7C3AED', '#9D5FF5']
 // from this hunt's own tier rather than a persisted cross-hunt counter that
 // doesn't exist yet.
 const TIER_STAMP = {
-  casual:  { label: 'CASUAL',  emoji: '🎬', color: '#34D399', rotate: -7 },
-  classic: { label: 'CLASSIC', emoji: '🎭', color: '#7C3AED', rotate: 5 },
-  expert:  { label: 'EXPERT',  emoji: '🏆', color: '#F59E0B', rotate: -4 },
-  cipher:  { label: 'CIPHER',  emoji: '🔐', color: '#F43F5E', rotate: 6 },
+  casual:  { label: 'CASUAL',  emoji: '🎬', color: DIFFICULTY_COLORS.casual.color, rotate: -7 },
+  classic: { label: 'CLASSIC', emoji: '🎭', color: DIFFICULTY_COLORS.classic.color, rotate: 5 },
+  expert:  { label: 'EXPERT',  emoji: '🏆', color: DIFFICULTY_COLORS.expert.color, rotate: -4 },
+  cipher:  { label: 'CIPHER',  emoji: '🔐', color: DIFFICULTY_COLORS.cipher.color, rotate: 6 },
 }
 const TIER_STARS = { casual: 1, classic: 2, expert: 3, cipher: 4 }
 function buildRevealParticles() {

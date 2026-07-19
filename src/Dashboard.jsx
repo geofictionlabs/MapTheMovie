@@ -3,6 +3,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from './lib/supabase'
 import { VENUE_CATEGORIES } from './lib/venueCategories'
+import { DIFFICULTY_COLORS } from './HuntSelectionScreen'
 
 const DS = {
   bg: '#080810',
@@ -1151,9 +1152,9 @@ function ThemesTab({ business, campaigns, showToast }) {
       <div className="page-sub">Controls question difficulty, hint visibility, and arrival geofence radius</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {[
-          { id: 'casual',  label: 'CASUAL',  color: '#10B981', desc: 'Easy films, hints shown, 25m radius' },
-          { id: 'classic', label: 'CLASSIC', color: '#7C3AED', desc: 'Mixed, hints hidden, 15m radius' },
-          { id: 'expert',  label: 'EXPERT',  color: '#EF4444', desc: 'Deep cuts, no hints, 10m radius' },
+          { id: 'casual',  label: 'CASUAL',  color: DIFFICULTY_COLORS.casual.color, desc: 'Easy films, hints shown, 25m radius' },
+          { id: 'classic', label: 'CLASSIC', color: DIFFICULTY_COLORS.classic.color, desc: 'Mixed, hints hidden, 15m radius' },
+          { id: 'expert',  label: 'EXPERT',  color: DIFFICULTY_COLORS.expert.color, desc: 'Deep cuts, no hints, 10m radius' },
         ].map(d => (
           <button
             key={d.id}
