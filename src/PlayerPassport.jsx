@@ -350,7 +350,10 @@ function AuthScreen() {
     if (!email) { setError('Enter your email address'); return; }
     setLoading(true); setError(''); setSuccess('');
     try {
-      const { error: e } = await supabase.auth.signInWithOtp({ email });
+      const { error: e } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href },
+      });
       if (e) throw e;
       setSuccess('Check your email for your sign-in link.');
     } catch(e) {
