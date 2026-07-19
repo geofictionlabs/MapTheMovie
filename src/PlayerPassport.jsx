@@ -25,6 +25,26 @@ const D = {
 };
 
 // ── ACHIEVEMENTS CATALOGUE ──────────────────────────────────────
+// Testers who created their account before public launch keep the
+// Founding Hunter badge permanently — adjust this date, not the req below.
+const PUBLIC_LAUNCH_DATE = new Date('2026-08-01');
+
+// Longest run of consecutive calendar days with at least one completed hunt.
+function calcLongestStreak(hunts) {
+  if (!hunts.length) return 0;
+  const days = [...new Set(hunts.map(h => new Date(h.completed_at).toDateString()))]
+    .map(d => new Date(d).getTime())
+    .sort((a, b) => a - b);
+  let longest = 1, current = 1;
+  for (let i = 1; i < days.length; i++) {
+    const diffDays = Math.round((days[i] - days[i - 1]) / 86400000);
+    if (diffDays === 1) current += 1;
+    else if (diffDays > 1) current = 1;
+    longest = Math.max(longest, current);
+  }
+  return longest;
+}
+
 const ACHIEVEMENTS = [
   { id:'first_hunt',    icon:'🎬', name:'First Frame',     desc:'Completed your first hunt',          req: h => h.length >= 1 },
   { id:'five_hunts',    icon:'🗺️', name:'Explorer',        desc:'Completed 5 hunts',                  req: h => h.length >= 5 },
@@ -37,7 +57,7 @@ const ACHIEVEMENTS = [
   { id:'night',         icon:'🌙', name:'Night Hunter',    desc:'Completed a hunt after 8pm',         req: h => h.some(x => new Date(x.completed_at).getHours() >= 20) },
   { id:'streak_3',      icon:'🔥', name:'On Fire',         desc:'3 hunts in 3 days',                  req: (h,s) => s.streak >= 3 },
   { id:'prize',         icon:'🏆', name:'Prize Winner',    desc:'Won a Quarterly Cipher',             req: h => h.some(x => x.won_prize) },
-  { id:'founder',       icon:'⭐', name:'Founding Hunter', desc:'Beta player — you were first',       req: () => true },
+  { id:'founder',       icon:'⭐', name:'Founding Hunter', desc:'Beta player — you were first',       req: (h,s,u) => !!u && new Date(u.created_at) < PUBLIC_LAUNCH_DATE },
 ];
 
 // ── PASSPORT STAMP ─────────────────────────────────────────────
@@ -514,7 +534,7 @@ export default function PlayerPassport({ onClose }) {
     total: hunts.length,
     totalKm: hunts.reduce((s, h) => s + (parseFloat(h.distance_km) || 0), 0).toFixed(1),
     fastestMins: hunts.filter(h => h.duration_mins).reduce((min, h) => Math.min(min, h.duration_mins), 999) || null,
-    streak: 0, // TODO: compute streak
+    streak: calcLongestStreak(hunts),
     byDifficulty: {
       casual: hunts.filter(h => h.difficulty === 'casual').length,
       classic: hunts.filter(h => h.difficulty === 'classic').length,
@@ -533,7 +553,7 @@ export default function PlayerPassport({ onClose }) {
   };
 
   // Unlocked achievements
-  const unlocked = ACHIEVEMENTS.filter(a => a.req(hunts, stats));
+  const unlocked = ACHIEVEMENTS.filter(a => a.req(hunts, stats, user));
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Hunter';
 
