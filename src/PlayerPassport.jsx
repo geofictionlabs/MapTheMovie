@@ -12,6 +12,7 @@ const D = {
   purple:   '#7C3AED',
   purpleL:  '#9D5FF5',
   gold:     '#F59E0B',
+  goldLight:'#FCD34D',
   goldDim:  '#78490A',
   green:    '#10B981',
   red:      '#EF4444',
@@ -44,6 +45,17 @@ function calcLongestStreak(hunts) {
   }
   return longest;
 }
+
+// Rank Ladder (Passport & Compass spec, section 1). Lifetime hunt count,
+// all tiers equal weight. The 5th rung (Premiere) is trophy-gated (World
+// Premiere, spec section 2/4) -- not built yet, so it never lights here.
+const RANKS = [
+  { id:'extra',    dotLabel:'EXTRA',    title:'EXTRA',             hunts:1  },
+  { id:'support',  dotLabel:'SUPPORT',  title:'SUPPORTING ACTOR',  hunts:5  },
+  { id:'lead',     dotLabel:'LEAD',     title:'LEAD ROLE',         hunts:15 },
+  { id:'director', dotLabel:'DIRECTOR', title:'DIRECTOR',          hunts:30 },
+  { id:'premiere', dotLabel:'PREMIERE', title:'PREMIERE',          hunts:null },
+];
 
 const ACHIEVEMENTS = [
   { id:'first_hunt',    icon:'🎬', name:'First Frame',     desc:'Completed your first hunt',          req: h => h.length >= 1 },
@@ -170,6 +182,72 @@ function AchievementBadge({ achievement, unlocked }) {
           width: '6px', height: '6px', borderRadius: '50%',
           background: D.green,
         }} />
+      )}
+    </div>
+  );
+}
+
+// ── RANK LADDER ────────────────────────────────────────────────
+function RankLadder({ totalHunts }) {
+  const rankIndex = totalHunts >= 30 ? 3 : totalHunts >= 15 ? 2 : totalHunts >= 5 ? 1 : totalHunts >= 1 ? 0 : -1;
+  const nextRank = rankIndex < 3 ? RANKS[rankIndex + 1] : null;
+  const remaining = nextRank ? nextRank.hunts - totalHunts : 0;
+  const article = nextRank && /^[aeiou]/i.test(nextRank.title) ? 'an' : 'a';
+
+  return (
+    <div>
+      {rankIndex >= 0 && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          fontFamily: D.mono, fontSize: '11px', letterSpacing: '2px',
+          color: D.gold, background: 'rgba(245,158,11,0.1)',
+          border: '1px solid rgba(245,158,11,0.3)', borderRadius: '999px',
+          padding: '5px 14px', marginTop: '8px',
+        }}>
+          🎞 {RANKS[rankIndex].title}
+        </div>
+      )}
+
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+        margin: '20px 0 4px', padding: '0 4px', position: 'relative',
+      }}>
+        <div style={{
+          position: 'absolute', left: '20px', right: '20px', top: '18px', height: '2px',
+          background: `linear-gradient(90deg, ${D.borderMid}, ${D.gold}, ${D.borderMid})`,
+          zIndex: 0,
+        }} />
+        {RANKS.map((rank, i) => {
+          const isPremiere = rank.id === 'premiere';
+          const isDone = !isPremiere && i < rankIndex;
+          const isCurrent = !isPremiere && i === rankIndex;
+          const lit = isDone || isCurrent;
+          return (
+            <div key={rank.id} style={{ textAlign: 'center', position: 'relative', zIndex: 1, flex: 1 }}>
+              <div style={{
+                width: isCurrent ? '18px' : '12px',
+                height: isCurrent ? '18px' : '12px',
+                borderRadius: '50%', margin: '0 auto 6px',
+                background: lit ? D.gold : D.borderMid,
+                border: '2px solid #080810',
+                boxShadow: isCurrent
+                  ? '0 0 0 4px rgba(245,158,11,0.25), 0 0 14px #F59E0B'
+                  : isDone ? '0 0 10px #F59E0B' : 'none',
+                animation: isCurrent ? 'pulse-dot 2s ease-in-out infinite' : 'none',
+              }} />
+              <div style={{
+                fontSize: '8.5px', letterSpacing: '0.5px', fontWeight: 600,
+                color: lit ? D.goldLight : D.textMuted,
+              }}>{rank.dotLabel}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {nextRank && (
+        <div style={{ textAlign: 'center', fontSize: '10.5px', color: '#8B8B9A', marginTop: '10px' }}>
+          Complete <b style={{ color: D.text }}>{remaining} more hunt{remaining === 1 ? '' : 's'}</b> to become {article} {nextRank.title}
+        </div>
       )}
     </div>
   );
@@ -341,10 +419,20 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── AUTH SCREEN ────────────────────────────────────────────────
 function AuthScreen() {
+  // 'link' = magic-link (existing, untouched flow) | 'password' = new
+  const [authMode, setAuthMode] = useState('link');
+  // Within password mode: signing into an existing account vs creating one
+  const [passwordMode, setPasswordMode] = useState('login');
+
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const switchAuthMode = (m) => {
+    setAuthMode(m); setError(''); setSuccess('');
+  };
 
   const handleSendLink = async () => {
     if (!email) { setError('Enter your email address'); return; }
@@ -362,6 +450,34 @@ function AuthScreen() {
       setError(isRateLimited
         ? "You've already requested a link — check your email, or wait a moment before trying again."
         : 'Something went wrong, try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordAuth = async () => {
+    if (!email || !password) { setError('Email and password required'); return; }
+    setLoading(true); setError(''); setSuccess('');
+    try {
+      if (passwordMode === 'signup') {
+        const { data, error: e } = await supabase.auth.signUp({ email, password });
+        if (e) throw e;
+        // If the project requires email confirmation, Supabase withholds
+        // the session until that link is clicked -- nothing in this code
+        // can force a session into existing early. Show a soft note and
+        // drop back to login rather than pretending it worked.
+        if (!data.session) {
+          setSuccess("Account created — check your email to confirm, then sign in below.");
+          setPasswordMode('login');
+        }
+        // If a session DID come back, onAuthStateChange in the parent
+        // picks it up automatically and this screen unmounts.
+      } else {
+        const { error: e } = await supabase.auth.signInWithPassword({ email, password });
+        if (e) throw e;
+      }
+    } catch(e) {
+      setError(e.message || 'Something went wrong, try again.');
     } finally {
       setLoading(false);
     }
@@ -402,11 +518,41 @@ function AuthScreen() {
             fontFamily: D.display, fontWeight: 900,
             fontSize: '28px', color: D.text, letterSpacing: '-0.5px',
           }}>
-            Welcome back.
+            {authMode === 'link' ? 'Welcome back.' : passwordMode === 'signup' ? 'Start your journey.' : 'Welcome back.'}
           </div>
           <div style={{ fontSize: '14px', color: D.textMuted, marginTop: '6px' }}>
-            Enter your email and we'll send you a sign-in link.
+            {authMode === 'link'
+              ? "Enter your email and we'll send you a sign-in link."
+              : passwordMode === 'signup'
+                ? 'Create your hunter profile with an email and password.'
+                : 'Sign in with your email and password.'}
           </div>
+        </div>
+
+        {/* Equal-weight toggle between the two sign-in methods */}
+        <div style={{
+          display: 'flex', gap: '8px',
+          marginBottom: '20px',
+          background: D.cardAlt, border: `1px solid ${D.border}`,
+          borderRadius: '10px', padding: '4px',
+        }}>
+          {[
+            { id: 'link', label: 'SIGN-IN LINK' },
+            { id: 'password', label: 'PASSWORD' },
+          ].map(m => (
+            <button
+              key={m.id}
+              onClick={() => switchAuthMode(m.id)}
+              style={{
+                flex: 1, padding: '10px',
+                background: authMode === m.id ? `linear-gradient(135deg,${D.purple},${D.purpleL})` : 'transparent',
+                color: authMode === m.id ? '#FFF' : D.textMuted,
+                border: 'none', borderRadius: '7px',
+                fontSize: '10px', fontFamily: D.mono, letterSpacing: '1px',
+                fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
+              }}
+            >{m.label}</button>
+          ))}
         </div>
 
         {/* Form */}
@@ -415,35 +561,73 @@ function AuthScreen() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           placeholder="Email address"
-          onKeyDown={e => e.key === 'Enter' && handleSendLink()}
+          onKeyDown={e => e.key === 'Enter' && (authMode === 'link' ? handleSendLink() : handlePasswordAuth())}
           style={{
             width: '100%', padding: '12px 14px',
             background: D.cardAlt, border: `1px solid ${D.border}`,
             borderRadius: '10px', color: D.text,
             fontSize: '15px', fontFamily: D.body,
-            outline: 'none', marginBottom: '16px',
+            outline: 'none', marginBottom: '10px',
             boxSizing: 'border-box',
           }}
         />
+
+        {authMode === 'password' && (
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            onKeyDown={e => e.key === 'Enter' && handlePasswordAuth()}
+            style={{
+              width: '100%', padding: '12px 14px',
+              background: D.cardAlt, border: `1px solid ${D.border}`,
+              borderRadius: '10px', color: D.text,
+              fontSize: '15px', fontFamily: D.body,
+              outline: 'none', marginBottom: '16px',
+              boxSizing: 'border-box',
+            }}
+          />
+        )}
 
         {error && <div style={{ color: D.red, fontSize: '12px', fontFamily: D.mono, marginBottom: '12px', textAlign: 'center' }}>{error}</div>}
         {success && <div style={{ color: D.green, fontSize: '12px', fontFamily: D.mono, marginBottom: '12px', textAlign: 'center', lineHeight: 1.5 }}>{success}</div>}
 
         <button
-          onClick={handleSendLink}
+          onClick={authMode === 'link' ? handleSendLink : handlePasswordAuth}
           disabled={loading}
           style={{
-            width: '100%', padding: '14px',
+            width: authMode === 'link' ? '100%' : '100%',
+            padding: '14px',
+            marginTop: authMode === 'link' ? 0 : '4px',
             background: loading ? D.border : `linear-gradient(135deg,${D.purple},${D.purpleL})`,
             color: '#FFF', border: 'none',
             borderRadius: '10px', fontSize: '15px',
             fontWeight: 700, fontFamily: D.body,
             cursor: loading ? 'not-allowed' : 'pointer',
+            marginBottom: authMode === 'password' ? '16px' : 0,
             boxShadow: loading ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
           }}
         >
-          {loading ? 'Sending...' : 'Send me a sign-in link'}
+          {authMode === 'link'
+            ? (loading ? 'Sending...' : 'Send me a sign-in link')
+            : (loading ? 'Please wait...' : passwordMode === 'signup' ? 'Create Passport' : 'Sign In')}
         </button>
+
+        {authMode === 'password' && (
+          <div style={{ textAlign: 'center' }}>
+            <button
+              onClick={() => { setPasswordMode(passwordMode === 'login' ? 'signup' : 'login'); setError(''); setSuccess(''); }}
+              style={{
+                background: 'transparent', border: 'none',
+                color: D.purple, fontSize: '14px',
+                cursor: 'pointer', fontFamily: D.body,
+              }}
+            >
+              {passwordMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -483,6 +667,16 @@ export default function PlayerPassport({ onClose }) {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Load profile (Rank Ladder needs the atomically-incremented lifetime
+      // counter, not hunts.length from the query below, which could differ
+      // if pagination/limits ever apply)
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('total_hunts_completed')
+        .eq('id', user.id)
+        .single();
+      setProfile(profileRow);
+
       // Load completed hunt sessions
       const { data: sessions } = await supabase
         .from('hunt_sessions')
@@ -704,8 +898,10 @@ export default function PlayerPassport({ onClose }) {
                     </div>
                   </div>
 
+                  <RankLadder totalHunts={profile?.total_hunts_completed ?? 0} />
+
                   {/* Stats row */}
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '20px' }}>
                     <StatCard label="HUNTS" value={stats.total} accent={D.purple} />
                     <StatCard label="KM WALKED" value={stats.totalKm} accent={D.gold} />
                     <StatCard label="BADGES" value={unlocked.length} accent={D.green} sub={`of ${ACHIEVEMENTS.length}`} />
@@ -1088,6 +1284,10 @@ export default function PlayerPassport({ onClose }) {
           from { opacity:0; transform:scale(0.3) rotate(var(--r,0deg)); }
           60% { transform:scale(1.1) rotate(var(--r,0deg)); }
           to { opacity:1; transform:scale(1) rotate(var(--r,0deg)); }
+        }
+        @keyframes pulse-dot {
+          0%, 100% { box-shadow: 0 0 0 4px rgba(245,158,11,0.25), 0 0 14px #F59E0B; }
+          50% { box-shadow: 0 0 0 8px rgba(245,158,11,0.12), 0 0 18px #F59E0B; }
         }
       `}</style>
     </div>
