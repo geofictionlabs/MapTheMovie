@@ -49,7 +49,8 @@ function calcLongestStreak(hunts) {
 
 // Rank Ladder (Passport & Compass spec, section 1). Lifetime hunt count,
 // all tiers equal weight. The 5th rung (Premiere) is trophy-gated (World
-// Premiere, spec section 2/4) -- not built yet, so it never lights here.
+// Premiere, spec section 2) -- lit by premiereUnlocked (>= 1 trophy),
+// independent of the hunt-count rankIndex the first 4 rungs use.
 const RANKS = [
   { id:'extra',    dotLabel:'EXTRA',    title:'EXTRA',             hunts:1  },
   { id:'support',  dotLabel:'SUPPORT',  title:'SUPPORTING ACTOR',  hunts:5  },
@@ -57,6 +58,12 @@ const RANKS = [
   { id:'director', dotLabel:'DIRECTOR', title:'DIRECTOR',          hunts:30 },
   { id:'premiere', dotLabel:'PREMIERE', title:'PREMIERE',          hunts:null },
 ];
+
+// Tier -> emoji for the World Premiere laurel badge (Passport & Compass
+// spec, section 2). Distinct from ACHIEVEMENTS' icons above (those are
+// per-badge flourishes, not a tier identity) -- this is the canonical
+// tier emoji used wherever a trophy's own tier needs a single glyph.
+const TIER_EMOJI = { casual: '🎬', classic: '🎭', expert: '🔥', cipher: '🔐' };
 
 const ACHIEVEMENTS = [
   { id:'first_hunt',    icon:'🎬', name:'First Frame',     desc:'Completed your first hunt',          req: h => h.length >= 1 },
@@ -190,7 +197,7 @@ function AchievementBadge({ achievement, unlocked }) {
 }
 
 // ── RANK LADDER ────────────────────────────────────────────────
-function RankLadder({ totalHunts }) {
+function RankLadder({ totalHunts, premiereUnlocked }) {
   const rankIndex = totalHunts >= 30 ? 3 : totalHunts >= 15 ? 2 : totalHunts >= 5 ? 1 : totalHunts >= 1 ? 0 : -1;
   const nextRank = rankIndex < 3 ? RANKS[rankIndex + 1] : null;
   const remaining = nextRank ? nextRank.hunts - totalHunts : 0;
@@ -223,7 +230,7 @@ function RankLadder({ totalHunts }) {
           const isPremiere = rank.id === 'premiere';
           const isDone = !isPremiere && i < rankIndex;
           const isCurrent = !isPremiere && i === rankIndex;
-          const lit = isDone || isCurrent;
+          const lit = isPremiere ? !!premiereUnlocked : (isDone || isCurrent);
           return (
             <div key={rank.id} style={{ textAlign: 'center', position: 'relative', zIndex: 1, flex: 1 }}>
               <div style={{
@@ -468,6 +475,111 @@ function PrizeWedgeRing({ hunts, user }) {
       )}
 
       {joinError && <div style={{ color: D.red, fontSize: '11px', fontFamily: D.mono, marginTop: '10px' }}>{joinError}</div>}
+    </div>
+  );
+}
+
+// ── LATEST PREMIERE ────────────────────────────────────────────
+// World Premiere trophy hero card (Passport & Compass spec, section 2).
+// Trophies are inherently scarce -- most players will never hold one --
+// so unlike the achievement badge grid, an empty state renders nothing
+// at all here: no label, no locked placeholder tile. `trophies` is
+// pre-sorted earned_at descending by loadData(); trophies[0] is the hero,
+// the rest collapse into the "+N more" row.
+function LatestPremiere({ trophies }) {
+  const [flash, setFlash] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  if (!trophies.length) return null;
+
+  const latest = trophies[0];
+  const rest = trophies.slice(1);
+  const tierKey = latest.difficulty?.toLowerCase() || 'classic';
+  const tier = DIFFICULTY_COLORS[tierKey] || DIFFICULTY_COLORS.classic;
+  const emoji = TIER_EMOJI[tierKey] || TIER_EMOJI.classic;
+
+  const triggerFlash = () => {
+    setFlash(false);
+    requestAnimationFrame(() => setFlash(true));
+  };
+
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <div style={{
+        fontFamily: D.mono, fontSize: '11px', letterSpacing: '3px',
+        color: D.textMuted, marginBottom: '10px', textTransform: 'uppercase',
+      }}>LATEST PREMIERE</div>
+
+      <div className={`premiere-card${flash ? ' flash' : ''}`} onClick={triggerFlash}>
+        <div className="flash-veil" />
+        <div className="spotlight" />
+        <div className="premiere-eyebrow">
+          ★ {tierKey.toUpperCase()} TIER · WORLD PREMIERE ★
+        </div>
+        <div className="laurel-badge">
+          <svg className="laurel-svg" viewBox="0 0 120 120">
+            <g fill="none" stroke="#F59E0B" strokeWidth="2.5" opacity="0.9">
+              <path d="M40 20 Q20 40 22 70 Q24 95 42 108" strokeLinecap="round"/>
+              <path d="M32 30 Q28 32 26 36" strokeLinecap="round"/>
+              <path d="M28 45 Q24 47 22 51" strokeLinecap="round"/>
+              <path d="M26 60 Q21 61 19 64" strokeLinecap="round"/>
+              <path d="M26 75 Q21 77 19 80" strokeLinecap="round"/>
+              <path d="M30 90 Q26 93 24 97" strokeLinecap="round"/>
+            </g>
+            <g fill="none" stroke="#F59E0B" strokeWidth="2.5" opacity="0.9">
+              <path d="M80 20 Q100 40 98 70 Q96 95 78 108" strokeLinecap="round"/>
+              <path d="M88 30 Q92 32 94 36" strokeLinecap="round"/>
+              <path d="M92 45 Q96 47 98 51" strokeLinecap="round"/>
+              <path d="M94 60 Q99 61 101 64" strokeLinecap="round"/>
+              <path d="M94 75 Q99 77 101 80" strokeLinecap="round"/>
+              <path d="M90 90 Q94 93 96 97" strokeLinecap="round"/>
+            </g>
+          </svg>
+          <div className="laurel-icon">{emoji}</div>
+        </div>
+        <div className="premiere-title">{latest.hunt_name}</div>
+        <div className="premiere-sub">{latest.business_name}</div>
+        <div className="premiere-meta">
+          <span>DIFFICULTY<b>{tierKey.toUpperCase()}</b></span>
+          <span>PLAYERS<b>1st EVER</b></span>
+          <span>STARS<b>{tier.bars} / 4</b></span>
+        </div>
+      </div>
+
+      {rest.length > 0 && (
+        <>
+          <div className={`more-row${expanded ? ' open' : ''}`} onClick={() => setExpanded(e => !e)}>
+            <span>+ {rest.length} more premiere{rest.length === 1 ? '' : 's'}</span>
+            <span className="chev">›</span>
+          </div>
+          {expanded && (
+            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {rest.map(t => {
+                const rKey = t.difficulty?.toLowerCase() || 'classic';
+                const rTier = DIFFICULTY_COLORS[rKey] || DIFFICULTY_COLORS.classic;
+                return (
+                  <div key={t.puzzle_id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                    padding: '10px 14px', background: D.cardAlt, border: `1px solid ${D.border}`, borderRadius: '10px',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '12.5px', fontWeight: 700, color: D.text }}>{t.hunt_name}</div>
+                      <div style={{ fontFamily: D.mono, fontSize: '9.5px', color: D.textDim, marginTop: '2px' }}>
+                        {new Date(t.earned_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }).toUpperCase()}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontFamily: D.mono, fontSize: '9px', fontWeight: 700, letterSpacing: '1px',
+                      padding: '3px 8px', borderRadius: '999px', whiteSpace: 'nowrap',
+                      background: `${rTier.color}22`, color: rTier.color,
+                    }}>{rKey.toUpperCase()}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -889,6 +1001,7 @@ export default function PlayerPassport({ onClose }) {
   const [shareHunt, setShareHunt] = useState(null);
   const [referralCopied, setReferralCopied] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [trophies, setTrophies] = useState([]);
 
   // Check auth
   useEffect(() => {
@@ -966,6 +1079,56 @@ export default function PlayerPassport({ onClose }) {
       });
 
       setHunts(shaped);
+
+      // Load World Premiere trophies (migration 049). world_premiere_trophies
+      // has no FK to hunt_sessions/redemptions/campaigns -- only puzzle_id +
+      // user_id -- so difficulty/business_name need a second lookup through
+      // the winning hunt_sessions row (confirmed live 2026-07-20: campaigns.pack_id
+      // references puzzle_packs, not puzzles, so puzzles -> campaigns is not a
+      // valid join; hunt_sessions -> redemptions -> campaigns is the only
+      // unambiguous path back to the specific campaign that was actually redeemed).
+      const { data: trophyRows } = await supabase
+        .from('world_premiere_trophies')
+        .select('puzzle_id, hunt_name, earned_at')
+        .eq('user_id', user.id)
+        .order('earned_at', { ascending: false });
+
+      if (trophyRows && trophyRows.length > 0) {
+        const puzzleIds = trophyRows.map(t => t.puzzle_id);
+        const { data: sessionRows } = await supabase
+          .from('hunt_sessions')
+          .select(`
+            puzzle_id, completed_at,
+            redemptions( campaigns( difficulty, businesses(name) ) )
+          `)
+          .eq('user_id', user.id)
+          .eq('status', 'completed')
+          .in('puzzle_id', puzzleIds);
+
+        // A puzzle_id could in theory have more than one completed session
+        // for the same player (e.g. a replay after winning) -- pick whichever
+        // session's completed_at sits closest to the trophy's earned_at,
+        // since the trophy was inserted inside that exact confirm_arrival() call.
+        const shapedTrophies = trophyRows.map(t => {
+          const candidates = (sessionRows || []).filter(s => s.puzzle_id === t.puzzle_id);
+          let best = null, bestDiff = Infinity;
+          for (const s of candidates) {
+            const diff = Math.abs(new Date(s.completed_at) - new Date(t.earned_at));
+            if (diff < bestDiff) { best = s; bestDiff = diff; }
+          }
+          const campaign = best?.redemptions?.[0]?.campaigns;
+          return {
+            puzzle_id: t.puzzle_id,
+            hunt_name: t.hunt_name,
+            earned_at: t.earned_at,
+            difficulty: campaign?.difficulty || 'classic',
+            business_name: campaign?.businesses?.name || 'Hidden Venue',
+          };
+        });
+        setTrophies(shapedTrophies);
+      } else {
+        setTrophies([]);
+      }
     } catch(e) {
       console.error(e);
     } finally {
@@ -1145,7 +1308,7 @@ export default function PlayerPassport({ onClose }) {
                     </div>
                   </div>
 
-                  <RankLadder totalHunts={profile?.total_hunts_completed ?? 0} />
+                  <RankLadder totalHunts={profile?.total_hunts_completed ?? 0} premiereUnlocked={trophies.length >= 1} />
 
                   {/* Stats row */}
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '20px' }}>
@@ -1158,6 +1321,8 @@ export default function PlayerPassport({ onClose }) {
                   </div>
                 </div>
               </div>
+
+              <LatestPremiere trophies={trophies} />
 
               <PrizeWedgeRing hunts={hunts} user={user} />
 
@@ -1562,6 +1727,89 @@ export default function PlayerPassport({ onClose }) {
           0%, 84% { background-position: 200% 0; }
           92%, 100% { background-position: 0% 0; }
         }
+
+        /* ── premiere card (fixed red/gold trophy identity, never tier-coded) ── */
+        .premiere-card {
+          position: relative; border-radius: 18px; overflow: hidden;
+          background: radial-gradient(ellipse at 50% -20%, rgba(139,21,56,0.35), #0E0E1A 60%);
+          border: 1px solid rgba(196,57,106,0.3);
+          padding: 28px 20px 22px; text-align: center;
+          cursor: pointer;
+        }
+        .spotlight {
+          position: absolute; top: -60%; left: 50%; width: 300px; height: 300px;
+          transform: translateX(-50%);
+          background: conic-gradient(from 200deg, transparent, rgba(255,255,255,0.06), transparent 40deg);
+          pointer-events: none;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          .spotlight { animation: sweep 5s ease-in-out infinite; }
+        }
+        @keyframes sweep {
+          0%, 100% { transform: translateX(-50%) rotate(-12deg); }
+          50% { transform: translateX(-50%) rotate(12deg); }
+        }
+        .premiere-eyebrow {
+          font-family: 'Share Tech Mono', monospace; font-size: 9.5px; letter-spacing: 3px;
+          color: #C4396A; margin-bottom: 14px; position: relative;
+        }
+        .laurel-badge {
+          width: 120px; height: 120px; margin: 0 auto 14px; position: relative;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .laurel-svg { width: 100%; height: 100%; position: absolute; inset: 0; }
+        .laurel-icon { font-size: 38px; z-index: 2; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
+        .premiere-title { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 19px; margin-bottom: 4px; }
+        .premiere-sub { font-size: 12px; color: #8B8B9A; font-style: italic; margin-bottom: 14px; }
+        .premiere-meta {
+          display: flex; justify-content: center; gap: 18px; font-family: 'Share Tech Mono', monospace;
+          font-size: 10px; color: #6B67A0;
+        }
+        .premiere-meta span b { color: #FCD34D; display: block; font-size: 13px; margin-top: 2px; }
+
+        .flash-veil {
+          position: absolute; inset: 0; background: #fff; opacity: 0;
+          pointer-events: none; border-radius: 18px;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          .premiere-card.flash { animation: flash-pulse 0.5s ease; }
+          .premiere-card.flash .flash-veil { animation: flash-veil 0.5s ease; }
+        }
+        @keyframes flash-pulse {
+          0% { transform: scale(1); } 30% { transform: scale(1.03); } 100% { transform: scale(1); }
+        }
+        @keyframes flash-veil {
+          0% { opacity: 0; } 15% { opacity: 0.35; } 100% { opacity: 0; }
+        }
+        /* Reduced motion: spotlight is decorative-only (same treatment as
+           reveal-flash/reveal-shimmer on Arrival Reveal) -- dropped entirely
+           rather than left static, since a frozen conic-gradient wedge reads
+           as a rendering glitch. Tap-to-flash keeps a plain opacity fade on
+           the veil so the tap still gets acknowledgement, with the card's
+           scale-pulse removed -- same "content fades, decoration drops" split
+           as revealSimpleFade. */
+        @media (prefers-reduced-motion: reduce) {
+          .spotlight { display: none; }
+          .premiere-card.flash .flash-veil {
+            animation: flash-veil-simple 240ms ease-out both;
+            transform: none;
+          }
+        }
+        @keyframes flash-veil-simple {
+          0%   { opacity: 0.25; }
+          100% { opacity: 0; }
+        }
+
+        .more-row {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-top: 10px; padding: 12px 16px;
+          background: #0E0E1A; border: 1px solid #2A2A3A;
+          border-radius: 12px; cursor: pointer;
+          font-family: 'Share Tech Mono', monospace; font-size: 11.5px; color: #B8B4D8;
+          letter-spacing: 0.5px;
+        }
+        .more-row .chev { color: #6B67A0; display: inline-block; transition: transform 0.2s; }
+        .more-row.open .chev { transform: rotate(90deg); }
       `}</style>
     </div>
   );
