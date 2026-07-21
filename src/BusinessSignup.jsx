@@ -256,7 +256,14 @@ export default function BusinessSignup() {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') + '-' + Date.now();
 
-      // Create business record
+      // Create business record. billing_tier/subscription_active/
+      // is_active/monthly_redemption_limit are deliberately NOT sent --
+      // those are set by manual review when the signup is processed,
+      // same pattern as every other business-critical field. The
+      // businesses INSERT grant (migration 051c) only permits the
+      // columns below anyway; is_active's column default is now FALSE
+      // (051c), so a fresh signup starts inactive/unreviewed rather
+      // than immediately live.
       const { data: biz, error: bizErr } = await supabase
         .from('businesses')
         .insert({
@@ -269,18 +276,16 @@ export default function BusinessSignup() {
           contact_name: form.contactName,
           contact_email: form.contactEmail,
           contact_phone: form.contactPhone,
-          billing_tier: selectedTier,
-          subscription_active: false,
-          is_active: true,
           location: `SRID=4326;POINT(0 51.5)`, // placeholder — updated when they Go Live
-          monthly_redemption_limit: selectedTier === 'starter' ? 100 : selectedTier === 'featured' ? 300 : 9999,
         })
         .select()
         .single();
 
       if (bizErr) throw bizErr;
 
-      // Send notification email via Formspree
+      // Send notification email via Formspree. selectedTier travels here
+      // as the business's stated preference only -- the real billing_tier
+      // is set manually when the signup is processed, not from this form.
       await fetch('https://formspree.io/f/YOUR_FORM_ID', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
