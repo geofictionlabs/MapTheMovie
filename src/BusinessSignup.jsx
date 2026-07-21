@@ -264,7 +264,14 @@ export default function BusinessSignup() {
       // columns below anyway; is_active's column default is now FALSE
       // (051c), so a fresh signup starts inactive/unreviewed rather
       // than immediately live.
-      const { data: biz, error: bizErr } = await supabase
+      // No .select() -- the result is never read below, and requesting
+      // it back would ask PostgREST for select=* (every column), which
+      // anon doesn't have SELECT on for most of these (migration 021
+      // only grants id/name/location/is_active/billing_tier/
+      // subscription_active). RETURNING's privilege check runs as part
+      // of the same atomic INSERT statement, so that 403 was aborting
+      // the whole insert, not just a separate read-back step.
+      const { error: bizErr } = await supabase
         .from('businesses')
         .insert({
           name: form.businessName,
@@ -277,9 +284,7 @@ export default function BusinessSignup() {
           contact_email: form.contactEmail,
           contact_phone: form.contactPhone,
           location: `SRID=4326;POINT(0 51.5)`, // placeholder — updated when they Go Live
-        })
-        .select()
-        .single();
+        });
 
       if (bizErr) throw bizErr;
 
