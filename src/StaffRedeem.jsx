@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from './lib/supabase';
 
 const D = {
@@ -37,6 +37,37 @@ export default function StaffRedeem() {
   const [code,       setCode]        = useState('');
   const [state,      setState]       = useState(STATES.IDLE);
   const [voucherData,setVoucherData] = useState(null);
+  const [lockedOut,  setLockedOut]   = useState(false);
+  // Wrong-PIN count -- a ref, not state, since nothing ever displays the
+  // running count (only the final locked/not-locked boolean renders).
+  const attemptsRef = useRef(0);
+  const lockTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => { if (lockTimerRef.current) clearTimeout(lockTimerRef.current); };
+  }, []);
+
+  // ── WRONG PIN -- shared by both RPC call sites below ───────
+  // Ported from the old ArrivedScreen PIN flow (this is the screen that
+  // actually belongs on a staff-owned device, so this is where the
+  // lockout belongs now too). 3 wrong PINs locks staff entry out for 5
+  // minutes -- counted across both validateCode and confirmRedemption,
+  // since either can independently return invalid_pin.
+  const registerWrongPin = () => {
+    setPinOk(false);
+    setPin('');
+    setPinErr(true);
+    setState(STATES.IDLE);
+    attemptsRef.current += 1;
+    if (attemptsRef.current >= 3) {
+      setLockedOut(true);
+      setPinErr(false);
+      lockTimerRef.current = setTimeout(() => {
+        setLockedOut(false);
+        attemptsRef.current = 0;
+      }, 5 * 60 * 1000);
+    }
+  };
 
   // ── VALIDATE VOUCHER via RPC (bypasses RLS) ────────────────
   // p_pin is sent on every call -- validate_voucher_code (migration 043)
@@ -66,10 +97,7 @@ export default function StaffRedeem() {
           });
           setState(STATES.USED);
         } else if (data.error === 'invalid_pin') {
-          setPinOk(false);
-          setPin('');
-          setPinErr(true);
-          setState(STATES.IDLE);
+          registerWrongPin();
         } else {
           setState(STATES.INVALID);
         }
@@ -91,6 +119,7 @@ export default function StaffRedeem() {
           }
         }
       });
+      attemptsRef.current = 0;
       setState(STATES.VALID);
     } catch (err) {
       setState(STATES.INVALID);
@@ -113,16 +142,14 @@ export default function StaffRedeem() {
 
       if (error || !data?.success) {
         if (data?.error === 'invalid_pin') {
-          setPinOk(false);
-          setPin('');
-          setPinErr(true);
-          setState(STATES.IDLE);
+          registerWrongPin();
           return;
         }
         setState(STATES.INVALID);
         return;
       }
 
+      attemptsRef.current = 0;
       setState(STATES.CONFIRMED);
     } catch (err) {
       setState(STATES.INVALID);
@@ -254,8 +281,25 @@ export default function StaffRedeem() {
         alignItems: 'center', justifyContent: 'center',
       }}>
 
+        {/* ── LOCKED OUT ── */}
+        {lockedOut && (
+          <div style={{ width: '100%', textAlign: 'center' }}>
+            <div style={{
+              fontFamily: D.mono, fontSize: '12px', color: D.red,
+              letterSpacing: '3px', marginBottom: '16px',
+            }}>ACCESS LOCKED</div>
+            <div style={{
+              fontFamily: D.display, fontWeight: 900, fontSize: '22px',
+              color: D.text, marginBottom: '10px',
+            }}>Too many attempts</div>
+            <div style={{ fontSize: '14px', color: D.textMuted, lineHeight: 1.6 }}>
+              Locked for 5 minutes. Contact your PIN's owner to confirm it, or wait and try again.
+            </div>
+          </div>
+        )}
+
         {/* ── PIN GATE ── */}
-        {!pinOk && (
+        {!lockedOut && !pinOk && (
           <div style={{ width: '100%', textAlign: 'center' }}>
             <div style={{
               fontFamily: D.mono, fontSize: '10px', color: D.purple,

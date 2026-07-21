@@ -1294,6 +1294,16 @@ body {
   margin-bottom: 18px;
   opacity: 0;
 }
+.handoff-waiting-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #F59E0B; display: inline-block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .handoff-waiting-dot { animation: handoff-waiting-pulse 1.6s ease-in-out infinite; }
+}
+@keyframes handoff-waiting-pulse {
+  0%, 100% { opacity: 0.35; } 50% { opacity: 1; }
+}
 .reveal-star-row {
   display: flex; justify-content: center; gap: 8px;
   margin-bottom: 8px;
@@ -3966,20 +3976,11 @@ function buildRevealParticles() {
 
 //  Arrived Screen
 function ArrivedScreen({ voucher }) {
-  const pinHash = voucher?.redemption_pin_hash || null
-  const businessId = String(voucher?.business_id || '')
-
   const [entered, setEntered] = useState(false)
   const [step, setStep] = useState('view')
-  const [pinEntered, setPinEntered] = useState('')
-  const [attempts, setAttempts] = useState(0)
-  const [pinMsg, setPinMsg] = useState('')
-  const [holdProgress, setHoldProgress] = useState(0)
-  const holdTimerRef = useRef(null)
-  const lockTimerRef = useRef(null)
+  const [redeemed, setRedeemed] = useState(false)
   const [particles] = useState(buildRevealParticles)
   const [showSave, setShowSave] = useState(false)
-  const [accountPromptDismissed, setAccountPromptDismissed] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [reportText, setReportText] = useState('')
   const [reportSent, setReportSent] = useState(false)
@@ -4018,207 +4019,68 @@ function ArrivedScreen({ voucher }) {
     return () => clearTimeout(t)
   }, [])
 
+  // Live "staff just confirmed" update -- subscribes the moment the code
+  // display step is shown, unsubscribes on leaving it or unmount. Scoped
+  // to this exact redemption row; redemptions_select_own RLS (auth.uid()
+  // = user_id) is enforced on the realtime stream the same as a direct
+  // SELECT, so this can only ever see this player's own redemption
+  // (migration 053).
   useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) clearInterval(holdTimerRef.current)
-      if (lockTimerRef.current) clearTimeout(lockTimerRef.current)
-    }
-  }, [])
-
-  async function checkPin(digits) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(digits + businessId))
-    const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-    return hex === pinHash
-  }
-
-  async function handleDigit(d) {
-    const next = pinEntered + d
-    if (next.length > 4) return
-    setPinEntered(next)
-    if (next.length < 4) return
-    const correct = await checkPin(next)
-    if (correct) {
-      setStep('success')
-      return
-    }
-    const newAttempts = attempts + 1
-    setAttempts(newAttempts)
-    setPinEntered('')
-    if (newAttempts >= 3) {
-      setStep('lockedout')
-      setPinMsg('Too many attempts - please contact staff')
-      lockTimerRef.current = setTimeout(() => {
-        setStep('handoff')
-        setAttempts(0)
-        setPinMsg('')
-      }, 5 * 60 * 1000)
-    } else {
-      setPinMsg('Incorrect PIN - ' + (3 - newAttempts) + ' attempt' + (3 - newAttempts === 1 ? '' : 's') + ' remaining')
-    }
-  }
-
-  function startHold() {
-    setHoldProgress(0)
-    const start = Date.now()
-    holdTimerRef.current = setInterval(() => {
-      const pct = Math.min(100, ((Date.now() - start) / 3000) * 100)
-      setHoldProgress(pct)
-      if (pct >= 100) {
-        clearInterval(holdTimerRef.current)
-        holdTimerRef.current = null
-        setStep('success')
-      }
-    }, 50)
-  }
-
-  function endHold() {
-    if (holdTimerRef.current) { clearInterval(holdTimerRef.current); holdTimerRef.current = null }
-    if (step !== 'success') setHoldProgress(0)
-  }
-
-  if (step === 'success') {
-    return (
-      <div className="arrived-wrap">
-        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#10B981', margin: '0 auto 24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 28, color: '#fff', fontWeight: 700 }}>OK</div>
-          </div>
-          <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 26, color: '#F1F0FF', marginBottom: 10 }}>
-            Redeemed Successfully
-          </div>
-          <div style={{ color: '#B8B4D8', fontSize: 14, lineHeight: 1.6 }}>
-            Thank you for visiting and playing MapTheMovie
-          </div>
-        </div>
-        {!accountPromptDismissed && (
-          <div style={{ width: '100%' }}>
-            <AccountPrompt onDismiss={() => setAccountPromptDismissed(true)} />
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (step === 'lockedout') {
-    return (
-      <div className="arrived-wrap">
-        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 2, color: '#EF4444', marginBottom: 16 }}>
-            ACCESS LOCKED
-          </div>
-          <div style={{ color: '#B8B4D8', fontSize: 14, lineHeight: 1.6 }}>
-            {pinMsg}
-          </div>
-          <div style={{ marginTop: 16, color: '#8888BB', fontSize: 13 }}>
-            Locked for 5 minutes
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (step === 'pinentry') {
-    const KEYS = ['1','2','3','4','5','6','7','8','9','','0','']
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 24 }}>
-        <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 15, letterSpacing: 3, color: '#F1F0FF', marginBottom: 8 }}>
-          STAFF PIN REQUIRED
-        </div>
-        <div style={{ color: '#8888BB', fontSize: 13, marginBottom: 32 }}>
-          Enter your 4-digit staff PIN
-        </div>
-        <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-          {[0,1,2,3].map(i => (
-            <div key={i} style={{
-              width: 16, height: 16, borderRadius: '50%',
-              border: '2px solid #7C3AED',
-              background: pinEntered.length > i ? '#7C3AED' : 'transparent',
-              transition: 'background 0.12s',
-            }} />
-          ))}
-        </div>
-        {pinMsg && (
-          <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 16, textAlign: 'center' }}>
-            {pinMsg}
-          </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 72px)', gap: 12, marginBottom: 32 }}>
-          {KEYS.map((k, i) => (
-            k === '' ? <div key={i} /> :
-            <button
-              key={i}
-              onClick={() => handleDigit(k)}
-              style={{
-                width: 72, height: 72,
-                background: '#1C1C26',
-                border: '1px solid #32324A',
-                borderRadius: '50%',
-                fontSize: 24, color: '#F1F0FF',
-                cursor: 'pointer',
-                fontFamily: "'Space Grotesk', system-ui, sans-serif",
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >{k}</button>
-          ))}
-        </div>
-        <button
-          onClick={() => { setStep('handoff'); setPinEntered(''); setPinMsg('') }}
-          style={{ background: 'none', border: 'none', color: '#8888BB', fontSize: 14, cursor: 'pointer', padding: '10px 24px' }}
-        >
-          Cancel
-        </button>
-      </div>
-    )
-  }
-
-  const circumference = 2 * Math.PI * 42
+    if (step !== 'handoff' || !voucher?.redemption_id) return
+    const channel = supabase
+      .channel(`redemption-${voucher.redemption_id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'redemptions', filter: `id=eq.${voucher.redemption_id}` },
+        payload => {
+          if (payload.new?.redeemed_at) setRedeemed(true)
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [step, voucher?.redemption_id])
 
   return (
     <div className="arrived-wrap">
       {step === 'handoff' && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 32 }}>
-          <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 22, color: '#F1F0FF', textAlign: 'center', marginBottom: 12, lineHeight: 1.3 }}>
-            Hand your phone to a member of staff
-          </div>
-          <div style={{ color: '#B8B4D8', fontSize: 14, marginBottom: 40, textAlign: 'center' }}>
-            Staff: tap below to enter your PIN
-          </div>
-          {pinHash ? (
-            <button
-              onClick={() => { setPinMsg(''); setPinEntered(''); setStep('pinentry') }}
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #9D5FF5)', color: '#fff', border: 'none', borderRadius: 12, fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 2, fontWeight: 700, padding: '18px 40px', cursor: 'pointer', marginBottom: 24 }}
-            >
-              STAFF REDEMPTION
-            </button>
-          ) : (
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ color: '#8888BB', fontSize: 13, marginBottom: 16 }}>Hold to confirm redemption</div>
-              <div style={{ position: 'relative', width: 100, height: 100, margin: '0 auto' }}>
-                <svg width="100" height="100" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#32324A" strokeWidth="6" />
-                  <circle
-                    cx="50" cy="50" r="42" fill="none" stroke="#7C3AED" strokeWidth="6"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={circumference * (1 - holdProgress / 100)}
-                    style={{ transition: 'stroke-dashoffset 0.05s linear' }}
-                  />
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 32 }}>
+          {redeemed ? (
+            <>
+              <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(16,185,129,0.12)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
+                  <path d="M 6 16 L 13 23 L 26 9" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <button
-                  onMouseDown={startHold}
-                  onMouseUp={endHold}
-                  onMouseLeave={endHold}
-                  onTouchStart={e => { e.preventDefault(); startHold() }}
-                  onTouchEnd={endHold}
-                  style={{ position: 'absolute', inset: 8, background: '#1C1C26', border: 'none', borderRadius: '50%', color: '#F1F0FF', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1, cursor: 'pointer' }}
-                >
-                  HOLD
-                </button>
               </div>
-            </div>
+              <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, letterSpacing: 3, color: '#10B981', marginBottom: 6 }}>
+                REDEEMED
+              </div>
+              <div style={{ color: '#8888BB', fontSize: 13 }}>Thanks for visiting</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 20, color: '#F1F0FF', textAlign: 'center', marginBottom: 8 }}>
+                Show this to a member of staff
+              </div>
+              <div style={{ color: '#8888BB', fontSize: 13, marginBottom: 36, textAlign: 'center', maxWidth: 280 }}>
+                They'll enter it on their own device to confirm your reward
+              </div>
+              <div style={{
+                fontFamily: "'Share Tech Mono', monospace", fontSize: 38, fontWeight: 700, letterSpacing: 3,
+                color: '#F59E0B', textAlign: 'center', padding: '20px 26px', borderRadius: 16,
+                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.5)',
+                textShadow: '0 0 20px rgba(245,158,11,0.35)', marginBottom: 28, wordBreak: 'break-all',
+              }}>
+                {voucher?.voucher_code || '---'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8888BB', fontSize: 11, fontFamily: "'Share Tech Mono', monospace", letterSpacing: 1.5 }}>
+                <span className="handoff-waiting-dot" />
+                WAITING FOR STAFF TO CONFIRM
+              </div>
+            </>
           )}
           <button
             onClick={() => setStep('view')}
-            style={{ background: 'none', border: 'none', color: '#8888BB', fontSize: 14, cursor: 'pointer', padding: '10px 24px' }}
+            style={{ background: 'none', border: 'none', color: '#8888BB', fontSize: 14, cursor: 'pointer', padding: '10px 24px', marginTop: 32 }}
           >
             Back
           </button>
