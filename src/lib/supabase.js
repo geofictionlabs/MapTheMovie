@@ -7,7 +7,7 @@ if (!url || !key) {
   console.error('Missing Supabase env vars')
 }
 
-const cleanUrl = url ? url.replace(/[^\x00-\x7F]/g, '') : ''
-const cleanKey = key ? key.replace(/[^\x00-\x7F]/g, '') : ''
+export const cleanUrl = url ? url.replace(/[^\x00-\x7F]/g, '') : ''
+export const cleanKey = key ? key.replace(/[^\x00-\x7F]/g, '') : ''
 
 export const supabase = createClient(cleanUrl, cleanKey)

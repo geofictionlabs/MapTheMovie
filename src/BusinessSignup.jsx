@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { supabaseAnon } from "./lib/supabaseAnon";
 import { VENUE_CATEGORIES } from "./lib/venueCategories";
 
 const D = {
@@ -271,7 +272,15 @@ export default function BusinessSignup() {
       // subscription_active). RETURNING's privilege check runs as part
       // of the same atomic INSERT statement, so that 403 was aborting
       // the whole insert, not just a separate read-back step.
-      const { error: bizErr } = await supabase
+      //
+      // supabaseAnon, not supabase -- this page is public/pre-auth, but
+      // the shared client carries whatever session already exists in
+      // this browser (e.g. a real player's anonymous session from
+      // playing a hunt earlier). `authenticated` has no INSERT grant on
+      // businesses at all, so a real player visiting this page would
+      // hit this same 403 in production. supabaseAnon never reads or
+      // attaches a session, guaranteeing this always runs as true anon.
+      const { error: bizErr } = await supabaseAnon
         .from('businesses')
         .insert({
           name: form.businessName,
