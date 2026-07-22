@@ -21,5 +21,14 @@ import { cleanUrl, cleanKey } from './supabase'
 // sign back into, so signing it out would permanently orphan that
 // player's own hunt history/Passport progress from this browser.
 export const supabaseAnon = createClient(cleanUrl, cleanKey, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  auth: {
+    persistSession: false, autoRefreshToken: false, detectSessionInUrl: false,
+    // Pure no-op given persistSession: false above (this client never reads
+    // or writes storage at all) -- set anyway to fully silence supabase-js's
+    // "Multiple GoTrueClient instances detected" console warning, rather
+    // than leave it as an assumed-harmless message. That warning exists to
+    // catch two clients fighting over the same storage key; distinct keys
+    // makes it structurally not that situation, not just unlikely to be.
+    storageKey: 'sb-anon-noop',
+  },
 })
