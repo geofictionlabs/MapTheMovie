@@ -2988,9 +2988,27 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   // interpolate across browsers).
   const [glowLayers, setGlowLayers] = useState({ active: 0, colors: [null, null] })
   const [debugTargetOverride, setDebugTargetOverride] = useState(null)
-  const [showDebug, setShowDebug] = useState(() => window.location.search.includes('debug=true'))
+  const [showDebug, setShowDebug] = useState(false)
   const showDebugRef = useRef(showDebug)
   useEffect(() => { showDebugRef.current = showDebug }, [showDebug])
+  // Resolved once per mount, not per tap -- handleDebugTap and the ?debug=true
+  // check below both read this ref instead of re-querying is_platform_admin()
+  // on every tap, so rapid tapping can't fire overlapping RPC calls or land
+  // on an inconsistent in-flight result. Replaces the old bare
+  // window.location.search.includes('debug=true') gate, which any player
+  // could trigger just by guessing the URL param.
+  const isAdminRef = useRef(false)
+  useEffect(() => {
+    let cancelled = false
+    supabase.rpc('is_platform_admin').then(({ data, error }) => {
+      if (cancelled) return
+      isAdminRef.current = !error && data === true
+      if (isAdminRef.current && window.location.search.includes('debug=true')) {
+        setShowDebug(true)
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
   // TEMP — Safari/iOS heading jitter investigation. Logs raw (pre-smoothing)
   // heading readings with time-since-last-reading and degree-change-since-last
   // -reading, so real firing frequency and jitter magnitude can be read off
@@ -3025,6 +3043,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
 
   function handleDebugTap() {
+    if (!isAdminRef.current) return
     const now = Date.now()
     tapTimeRef.current = tapTimeRef.current.filter(t => now - t < 2000)
     tapTimeRef.current.push(now)
