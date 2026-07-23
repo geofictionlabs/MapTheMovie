@@ -4862,41 +4862,39 @@ export default function App() {
     }
   }
 
-  async function handleSimulateArrival() {
+  // Dev-only testing shortcut for skipping a real GPS walk. Ternary'd on
+  // import.meta.env.DEV (not an internal early-return) so Vite's
+  // production build can constant-fold the whole branch to `null` and
+  // strip this function's body from the bundle entirely -- not just
+  // hide it at runtime. Never fabricates a voucher: a failure (wrong/
+  // missing destination, outside_geofence, an actual RPC error) always
+  // surfaces as a real message via compassMsg, the same channel
+  // handleArrived already uses -- never a fake success screen.
+  const handleSimulateArrival = import.meta.env.DEV ? async () => {
+    if (!compassTarget) {
+      setCompassMsg('No active destination -- solve the puzzle first.')
+      return
+    }
     const stats = arrivalStats(0)
     try {
       const { data, error } = await supabase.rpc('confirm_arrival', {
         p_session_id:  activeSession?.id,
         p_campaign_id: activeSession?.campaign_id,
-        p_arrival_lat: compassTarget?.lat ?? 51.3963,
-        p_arrival_lon: compassTarget?.lon ?? 0.5277,
+        p_arrival_lat: compassTarget.lat,
+        p_arrival_lon: compassTarget.lon,
       })
       if (data?.success) {
         setVoucher({ ...data, ...stats, difficulty: activePack?.difficulty || 'classic' })
         setScreen('arrived')
+      } else if (data?.error === 'outside_geofence') {
+        setCompassMsg(`${Math.round(data.distance_m)}m away - get a bit closer!`)
       } else {
-        setVoucher({
-          voucher_code:     'MTM-TEST-' + (Math.floor(Math.random() * 9000) + 1000),
-          voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
-          voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
-          business_name:    activePack?.business_name || '',
-          difficulty:       activePack?.difficulty || 'classic',
-          ...stats,
-        })
-        setScreen('arrived')
+        setCompassMsg(data?.message || error?.message || 'Could not confirm arrival -- try again.')
       }
-    } catch (e) {
-      setVoucher({
-        voucher_code:     'MTM-' + (Math.floor(Math.random() * 9000) + 1000),
-        voucher_headline: activePack?.voucher_headline || 'Your reward is waiting',
-        voucher_detail:   activePack?.voucher_detail || 'Show this screen to the venue to claim',
-        business_name:    activePack?.business_name || '',
-        difficulty:       activePack?.difficulty || 'classic',
-        ...stats,
-      })
-      setScreen('arrived')
+    } catch {
+      setCompassMsg('Could not confirm arrival -- try again.')
     }
-  }
+  } : null
 
   const handleArrived = useCallback(
     async (lat, lon, legDist) => {
@@ -5115,15 +5113,17 @@ export default function App() {
               onWaypointReached={handleWaypointReached}
               compassMsg={compassMsg}
             />
-            <button
-              className="sim-btn"
-              onClick={() => {
-                if (compassTarget.isWaypoint) handleWaypointReached()
-                else handleSimulateArrival()
-              }}
-            >
-              {compassTarget.isWaypoint ? 'SIMULATE WAYPOINT' : 'SIMULATE ARRIVAL'}
-            </button>
+            {import.meta.env.DEV && (
+              <button
+                className="sim-btn"
+                onClick={() => {
+                  if (compassTarget.isWaypoint) handleWaypointReached()
+                  else handleSimulateArrival()
+                }}
+              >
+                {compassTarget.isWaypoint ? 'SIMULATE WAYPOINT' : 'SIMULATE ARRIVAL'}
+              </button>
+            )}
           </div>
         )}
 
