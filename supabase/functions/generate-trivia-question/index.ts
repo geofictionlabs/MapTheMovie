@@ -254,6 +254,28 @@ const GENRE_FILM_ALLOWLIST: Record<string, string[]> = {
     'Furiosa: A Mad Max Saga',
     'The Beekeeper',
   ],
+  romance: [
+    'Titanic',
+    'The Notebook',
+    'Pretty Woman',
+    'Dirty Dancing',
+    'Ghost',
+    'Sleepless in Seattle',
+    'When Harry Met Sally',
+    'Notting Hill',
+    'Love Actually',
+    '10 Things I Hate About You',
+    'Crazy Rich Asians',
+    'La La Land',
+    'Casablanca',
+    'Roman Holiday',
+    'An Affair to Remember',
+    'Jerry Maguire',
+    'Four Weddings and a Funeral',
+    'You\'ve Got Mail',
+    'About Time',
+    'Pride & Prejudice',
+  ],
 };
 
 // Weak heuristic, not a real language check: does the question describe a
