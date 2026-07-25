@@ -51,40 +51,70 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
     003_functions_only.sql - corrected get_active_hunts (starts_at/ends_at)
 ```
 
-## SECURITY — HIGH PRIORITY, UNFIXED
+## SECURITY
 
-- **`puzzles.real_lat`/`real_lon` are directly readable via the anon key.**
-  `puzzles_select_active` RLS policy is `FOR SELECT USING (is_active = TRUE)` —
-  a full-row policy with no column restriction. The schema comment even
-  documents the assumption: "RLS allows reading the full row; the RPC
-  controls which columns are returned" — but nothing stops a client from
-  calling `.from('puzzles').select('real_lat,real_lon')` directly via the
-  anon key and reading the real destination before solving anything,
-  bypassing the entire trivia mechanic. Violates the project's hard rule
-  that real coordinates are never client-accessible before solving.
-  **Not fixed as of this entry — next security item after tonight's
-  waypoints work.** Likely fix: move `real_lat`/`real_lon` (and
-  `real_location`) to a locked side table with no RLS policies (same
-  pattern as `trivia_variables`/`puzzle_waypoints`), or revoke column-level
-  SELECT and force all reads through existing RPCs.
+- **RESOLVED — verified live in production 2026-07-25 (this entry previously
+  said "Not fixed"; kept rather than deleted so the before/after and the
+  verification method are on record).** `puzzles.real_lat`/`real_lon` are NOT
+  readable via the anon key or a real anonymous-auth session, despite
+  `puzzles_select_active` still being a full-row RLS policy with no column
+  restriction (`FOR SELECT USING (is_active = TRUE)`). The actual fix is at
+  the grant level, not RLS: `migrations/028_fix_real_coordinate_exposure.sql`
+  runs `REVOKE ALL ON public.puzzles FROM anon, authenticated` followed by a
+  column-level `GRANT SELECT (id, pack_id, title, description, sort_order,
+  masked_lat, masked_lon, coordinate_slots, difficulty, walk_time_min,
+  is_active)` — 11 columns, with `real_lat`/`real_lon`/`real_location`/
+  `geofence_radius_m` deliberately absent. Verified two independent ways:
+  (1) `information_schema.column_privileges` shows exactly those 11 columns
+  granted to `anon`/`authenticated`, nothing else; (2) live REST tests
+  against production — bare anon key AND a real anonymous-auth session
+  (`role: authenticated`, `is_anonymous: true` — the actual state a player
+  is in mid-hunt, not the bare `anon` role) both return `42501 permission
+  denied for table puzzles` when `real_lat`/`real_lon` are requested, while
+  permitted columns (`id`, `title`, `masked_lat`, etc.) return real rows
+  normally in the same session.
 
-- **`get_puzzle_waypoints` is callable via the anon key despite being
-  revoked from it.** Migration `014_real_multistop_waypoints.sql` runs
-  `REVOKE ALL ON FUNCTION get_puzzle_waypoints(uuid) FROM PUBLIC` then
-  `GRANT EXECUTE ... TO authenticated` — intended to restrict the RPC to
-  signed-in (including anonymous-auth) sessions only. Verified live
-  against the production Supabase project: calling it with the anon key
-  and no session returns the function's own `{"success": false, "error":
-  "Session not found"}` response (HTTP 200), not a permission-denied
-  error — meaning the anon role can still execute it. Likely cause:
+  **Warning for whoever hits this 42501 next:** it is EXPECTED for
+  coordinate columns. PostgREST's own error hint reads "Grant the required
+  privileges to the current role with: GRANT SELECT ON public.puzzles TO
+  anon" — **do NOT follow that hint.** Running it grants table-wide SELECT
+  and re-exposes every real coordinate to any client, silently undoing
+  migration 028's column allowlist. If a new feature genuinely needs a
+  currently-excluded column, add that one column to the existing `GRANT
+  SELECT (...)` list in a new migration — never re-grant the whole table.
+
+- **STILL UNFIXED — re-verified live in production 2026-07-25 (not stale,
+  confirmed accurate, unlike the item above).** `get_puzzle_waypoints` is
+  callable via the anon key despite being revoked from it. Migration
+  `014_real_multistop_waypoints.sql` runs `REVOKE ALL ON FUNCTION
+  get_puzzle_waypoints(uuid) FROM PUBLIC` then `GRANT EXECUTE ... TO
+  authenticated` — intended to restrict the RPC to signed-in (including
+  anonymous-auth) sessions only. Re-tested two ways against production
+  today: bare anon key, and a real anonymous-auth session (`role:
+  authenticated`, `is_anonymous: true` — the actual state a player is in
+  mid-hunt). **Both return HTTP 200 with `{"success": false, "error":
+  "Session not found"}`, not `42501`** — confirming the anon role can
+  still execute the function; it just doesn't own a real `hunt_sessions`
+  row in this test, so no coordinates come back. Likely cause unchanged:
   Supabase grants `EXECUTE` to `anon`/`authenticated` directly (not via
   the `PUBLIC` pseudo-role) at function-creation time, so `REVOKE ALL ...
   FROM PUBLIC` doesn't touch that grant. The RPC itself is SECURITY
   DEFINER and still requires a valid, owned `hunt_sessions` row to return
   real coordinates, so this isn't currently exploitable the same way the
-  `real_lat`/`real_lon` issue above is — but the intended access
-  restriction is silently not enforced. **Not fixed as of this entry.**
-  Same category as the `real_lat`/`real_lon` issue — treat both as one
+  `real_lat`/`real_lon` issue above was — but the intended access
+  restriction is silently not enforced.
+
+  **Migration 029 does NOT fix this — confirmed by reading it, not
+  assumed.** `029_enforce_sequential_slot_solving.sql` only touches
+  `validate_answer` (closes a *different* gap: out-of-order slot solving
+  that could otherwise inflate `solved_count` and cause migration 028's
+  phase-gating inside `get_puzzle_waypoints` to hand back coordinates for
+  unsolved slots). Migration 028 itself rewrote `get_puzzle_waypoints`'s
+  *body* to add that phase-gating, but never touched its `GRANT`/`REVOKE`
+  — the anon-execute grant is still exactly what migration 014 left it as.
+  No migration after 014 changes the grant on this function.
+
+  Same category as the `real_lat`/`real_lon` issue was — treat both as one
   combined security pass rather than fixing piecemeal; likely fix is an
   explicit `REVOKE EXECUTE ... FROM anon` (and audit other RPCs created
   the same way for the same gap).
