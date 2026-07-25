@@ -98,6 +98,28 @@ const GENRE_FILM_ALLOWLIST: Record<string, string[]> = {
     'The Wizard of Oz',
     'Charlie and the Chocolate Factory',
   ],
+  horror: [
+    'The Shining',
+    'Halloween',
+    'A Nightmare on Elm Street',
+    'The Exorcist',
+    'Poltergeist',
+    'Scream',
+    'The Conjuring',
+    'Get Out',
+    'It',
+    'Psycho',
+    'Carrie',
+    'Rosemary\'s Baby',
+    'The Ring',
+    'Hereditary',
+    'A Quiet Place',
+    'The Babadook',
+    'Child\'s Play',
+    'Insidious',
+    'The Others',
+    'The Witch',
+  ],
 };
 
 // Weak heuristic, not a real language check: does the question describe a
