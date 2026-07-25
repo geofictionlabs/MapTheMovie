@@ -150,6 +150,28 @@ const GENRE_FILM_ALLOWLIST: Record<string, string[]> = {
     'Late Night with the Devil',
     'The Black Phone',
   ],
+  scifi: [
+    'Jurassic Park',
+    'The Matrix',
+    'Back to the Future',
+    'Alien',
+    'Star Wars: A New Hope',
+    'Blade Runner',
+    'The Terminator',
+    'Terminator 2: Judgment Day',
+    'Inception',
+    'Interstellar',
+    'Close Encounters of the Third Kind',
+    '2001: A Space Odyssey',
+    'Independence Day',
+    'Men in Black',
+    'Jurassic World',
+    'War of the Worlds',
+    'District 9',
+    'Edge of Tomorrow',
+    'Minority Report',
+    'Arrival',
+  ],
 };
 
 // Weak heuristic, not a real language check: does the question describe a
