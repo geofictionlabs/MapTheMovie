@@ -818,32 +818,63 @@ Deno.serve(async (req) => {
     ? `\nIMPORTANT: Do not use any of these films in your question: ${excludeList.join(', ')}. Choose a completely different film.\n`
     : '';
 
-  // Allowlist genres: present the specific approved list and require an
-  // exact match (enforced below, code-side). Non-allowlist genres: fall
-  // back to genrePhrase()'s free-text instruction, same as before this
-  // fix -- unenforced until that genre gets its own approved list.
-  let genreInstruction = '';
-  if (allowlistFilms && allowlistFilms.length > 0) {
-    const excludeSet = new Set(excludeList.map((m: string) => m.trim().toLowerCase()));
-    const available = allowlistFilms.filter((f) => !excludeSet.has(f.trim().toLowerCase()));
-    // If every approved title is already used elsewhere in this hunt,
-    // present the full list anyway rather than handing the model nothing
-    // to choose from -- a repeated film is a lesser problem than no
-    // question at all, and this only happens once a hunt has used most
-    // or all of a short list.
-    const presentedList = available.length > 0 ? available : allowlistFilms;
-    genreInstruction = `\nFilm constraint: movie_title MUST be EXACTLY one of the following titles, copied character-for-character -- do not paraphrase, abbreviate, or substitute a different film even if it seems to fit the location better:\n${presentedList.map((f) => `- ${f}`).join('\n')}\n`;
-  } else if (genreRequirement) {
-    genreInstruction = `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n`;
+  // Builds the approved-film-list section fresh per attempt so titles that
+  // already failed THIS call (attemptedTitles, reset per generation
+  // request, distinct from excludeList which is other waypoints in the
+  // same hunt) get removed from the menu on retries, on top of the
+  // existing hunt-level exclusion. Same "fall back to the full list rather
+  // than hand the model nothing" safety net as before if every title ends
+  // up excluded. Allowlist genres: present the specific approved list and
+  // require an exact match (enforced below, code-side, UNCHANGED). Non-
+  // allowlist genres: fall back to genrePhrase()'s free-text instruction,
+  // unenforced until that genre gets its own approved list.
+  function buildFilmSection(attemptedTitles: string[]): { instruction: string; hasConstraint: boolean } {
+    if (allowlistFilms && allowlistFilms.length > 0) {
+      const excludeSet = new Set([
+        ...excludeList.map((m: string) => m.trim().toLowerCase()),
+        ...attemptedTitles.map((m) => m.trim().toLowerCase()),
+      ]);
+      const available = allowlistFilms.filter((f) => !excludeSet.has(f.trim().toLowerCase()));
+      const presentedList = available.length > 0 ? available : allowlistFilms;
+      return {
+        instruction: `\nApproved films for this genre -- your numeric fact must come from one of these, copied character-for-character as movie_title:\n${presentedList.map((f) => `- ${f}`).join('\n')}\n`,
+        hasConstraint: true,
+      };
+    }
+    if (genreRequirement) {
+      return {
+        instruction: `\nGenre constraint: the question MUST be about ${genreRequirement}. Do not use movies outside this genre, even if the location name suggests a different theme.\n`,
+        hasConstraint: true,
+      };
+    }
+    return { instruction: '', hasConstraint: false };
   }
-  const hasGenreConstraint = genreInstruction !== '';
 
-  const prompt = `Generate one movie trivia question for a GPS treasure hunt waypoint.
+  // Digit constraint now comes FIRST, before film selection -- the search
+  // should be "find a number containing the digit, then see which approved
+  // film it naturally belongs to", not "pick a film, then hope a fitting
+  // number turns up" (the old ordering, which is what was actually
+  // failing: two hard constraints handed to the model in film-first order
+  // gave it no structured way to satisfy both at once). Retry feedback
+  // (attempt > 1) is prepended ahead of everything else, naming the
+  // previous failure reason and the films already tried and rejected this
+  // round, so attempts 2+ are genuinely different tries rather than
+  // identical dice rolls against an unchanged prompt.
+  function buildPrompt(attempt: number, priorFailureReason: string, attemptedTitles: string[]): string {
+    const { instruction: genreInstruction, hasConstraint: hasGenreConstraint } = buildFilmSection(attemptedTitles);
+
+    const retryFeedback = attempt > 1
+      ? `Your previous attempt failed: ${priorFailureReason}. That film/fact did not work -- choose a DIFFERENT film from the approved list below and a different numeric fact. Films already tried and rejected this round: ${attemptedTitles.length > 0 ? attemptedTitles.join(', ') : 'none yet'}.\n\n`
+      : '';
+
+    return `${retryFeedback}Generate one movie trivia question for a GPS treasure hunt waypoint.
 Location name: "${locationName}"
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
+
+CRITICAL CONSTRAINT -- SOLVE THIS FIRST, BEFORE PICKING A FILM: you need a real-world number from film trivia that naturally contains the digit ${required_digit} somewhere in it (this digit fills one GPS coordinate slot). Films are full of numbers to draw on -- flight numbers, room numbers, years spoken in dialogue, counts of objects, a character's age, a street address, a vault or locker number, a platform number, a quantity, a date. Search for a number containing ${required_digit} FIRST, across the approved films listed below, THEN build the question around whichever film has the best-fitting number. Do not pick a film first and hope a fitting number turns up afterward -- that ordering is exactly what has been causing failures.
 ${genreInstruction}${excludeConstraint}
-CRITICAL CONSTRAINT: The player's correct_answer (a real-world number from film trivia) MUST naturally contain the digit ${required_digit} somewhere in it. This digit fills one GPS coordinate slot. Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
+Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
 
 If the question describes a calculation (e.g. subtracting, adding, or combining numbers or facts), extraction_note must show the actual calculation using the specific numbers/facts referenced in question_text, ending in the final digit -- not just assert the answer. Example of a VALID note: "Quota is 6, minus 10 fingers, plus 12 floors = 8, take the units digit." An INVALID note merely states the answer without deriving it from the question's own numbers, e.g. "The answer is 8, satisfying the requirement" -- this must never be produced.
 
@@ -864,15 +895,22 @@ Return ONLY valid JSON with no markdown fences and no preamble:
   "hint_text": "...",
   "other_films_mentioned": []
 }`;
+  }
 
-  // Up to 3 attempts total. A generation that fails its own stated
-  // constraints (clean fields, digit actually present) is a failed
-  // attempt, not a saveable puzzle -- retry rather than pass it through.
-  const MAX_ATTEMPTS = 3;
+  // Up to 5 attempts total (raised from 3 -- only meaningful now that
+  // retry feedback and film exclusion between attempts make each retry a
+  // genuinely different attempt rather than a repeated identical roll).
+  // A generation that fails its own stated constraints (clean fields,
+  // digit actually present) is a failed attempt, not a saveable puzzle --
+  // retry rather than pass it through.
+  const MAX_ATTEMPTS = 5;
 
   let lastFailureReason = 'unknown';
+  const attemptedTitles: string[] = [];
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const prompt = buildPrompt(attempt, lastFailureReason, attemptedTitles);
+
     const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -914,6 +952,14 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     } catch {
       lastFailureReason = 'AI response was not valid JSON';
       continue;
+    }
+
+    // Record the attempted title (if any) BEFORE any validation below, so
+    // a subsequent retry excludes it from the presented list and can name
+    // it in the retry-feedback text -- regardless of which check below
+    // ends up rejecting this attempt.
+    if (typeof parsed.movie_title === 'string' && parsed.movie_title.trim()) {
+      attemptedTitles.push(parsed.movie_title.trim());
     }
 
     // Code-level allowlist membership check -- not model self-report, not
