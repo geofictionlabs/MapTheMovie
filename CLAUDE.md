@@ -277,9 +277,17 @@ Each question object from `get_puzzle_for_player` has:
     additional dedup logic needed *if* questions actually get promoted
     into the pool regularly — this only helps hunts that draw from the
     pool, not ones still generating fresh via AI every time.
-  - **Not yet true today**: the Command-Center-integration step that
-    actually tries the pool first and falls back to AI (mentioned in
-    migration 017's own header) hasn't been built — see that migration's
-    comments. Until it exists, every hunt still generates fresh via AI
-    with no cross-hunt awareness at all; this section describes the
-    intended fix, not current live behaviour.
+  - **STALE — this was true when written, not true now (third stale doc
+    entry corrected today, same day as the real_lat/real_lon and
+    get_puzzle_waypoints re-verifications above).** The pool-first
+    integration this bullet describes as "not yet built" is live: verified
+    directly in `CommandCenter.jsx`'s `fetchQuestionFor` (~line 498) —
+    every waypoint generation calls `supabase.rpc('get_pooled_question', ...)`
+    first and only falls through to `generateTriviaQuestion` (AI) when the
+    pool call returns no match (`.maybeSingle()` unwraps zero rows to a
+    real `null`, migration 034). So cross-hunt dedup via the pool genuinely
+    is active for any genre/digit/difficulty combination that already has
+    promoted rows — it just does nothing for a genre with no pool history
+    yet (e.g. a newly-added allowlist genre on day one), which will always
+    miss the pool and fall through to cold AI generation regardless of
+    this code path working correctly.
