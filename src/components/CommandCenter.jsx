@@ -769,6 +769,9 @@ function QuestionPoolTab() {
                   <div style={{ fontSize: 13, fontWeight: 600, color: POOL_COLORS.text, marginBottom: 4 }}>
                     {r.movie_title || 'Unknown'} — <span style={{ fontFamily: 'monospace' }}>{r.correct_answer ?? '?'}</span>
                   </div>
+                  {r.question_text && (
+                    <div style={{ fontSize: 13, color: POOL_COLORS.dimmer, marginBottom: 6 }}>{r.question_text}</div>
+                  )}
                   <div style={{ fontSize: 12, color: POOL_COLORS.red }}>{r.rejection_reason}</div>
                 </div>
               ))}
