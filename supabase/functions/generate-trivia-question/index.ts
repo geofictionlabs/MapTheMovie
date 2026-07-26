@@ -1050,6 +1050,34 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 }`;
 }
 
+// Runs `fn` over `items` with at most `limit` in flight at once, preserving
+// each result at its original index. No external dependency -- a simple
+// worker-pool: each worker pulls the next unclaimed index until none
+// remain. Used to bound the concurrent Anthropic verification calls in
+// batch mode (see handleBatchMode below) so a 10-candidate batch's ~20
+// sequential verifier calls (the actual cause of batches hitting
+// Supabase's 150s wall-clock limit) don't have to run one at a time,
+// without firing all of them at once and risking rate limits.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
 // Batch mode: one Anthropic call generates up to `count` candidate
 // questions with no required_digit at all -- which digits each survivor
 // covers is computed afterward (computeAvailableDigits), never demanded
@@ -1062,6 +1090,22 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 // ENTIRE call fails outright -- network error, or the top-level JSON
 // never parses at all -- since a single transient failure shouldn't
 // waste the whole admin request.
+//
+// Deterministic gates (allowlist, format, answer-in-title, answer-in-
+// question, other-films, calculation-derivation, self-correction, dedup)
+// run sequentially, in candidate order, exactly as before -- dedup via
+// seenPairs is order-dependent (each surviving candidate claims its fact
+// immediately, so a later duplicate in the same batch is caught). Only
+// the two verifier API calls per candidate -- independent of every other
+// candidate -- run concurrently afterward, capped at
+// VERIFICATION_CONCURRENCY so a full batch doesn't run ~20 sequential
+// ~5-7s Anthropic calls and exceed the wall-clock limit, without firing
+// all of them at once and risking rate limits. The two calls WITHIN one
+// candidate (factual, then hygiene) stay sequential rather than also
+// parallelised against each other -- at a concurrency of 5, a 10-candidate
+// batch is already comfortably under the limit (2 rounds x ~14s), and
+// doubling the simultaneous request count to shave off the remaining
+// time wasn't worth the added rate-limit exposure.
 async function handleBatchMode(
   supabase: any,
   genre: string,
@@ -1174,6 +1218,18 @@ async function handleBatchMode(
   const survivors: any[] = [];
   const rejected: any[] = [];
 
+  // Phase 1 -- deterministic gates only, sequential, in candidate order.
+  // Candidates that pass are queued for verification (Phase 2, concurrent)
+  // rather than verified inline here.
+  type PendingVerification = {
+    q: any;
+    correctAnswer: number;
+    questionText: string;
+    extractionNote: string;
+    hintText: string;
+  };
+  const pendingVerification: PendingVerification[] = [];
+
   for (const q of candidates) {
     const reject = (reason: string) => rejected.push({ ...q, rejection_reason: reason });
 
@@ -1233,59 +1289,84 @@ async function handleBatchMode(
     // Duplicate check (batch-specific): rejects a candidate matching an
     // existing trivia_pool row for this genre+difficulty on BOTH
     // movie_title and correct_answer, and also matching an earlier
-    // survivor already accepted from this same batch (seenPairs gets a
-    // survivor's pair added below, so later candidates are checked
-    // against both). difficulty is included in the key explicitly (not
-    // just relied on via the query scoping above) so this stays correct
-    // if this function is ever called for more than one difficulty at a
-    // time.
+    // candidate that already claimed this fact in this same batch.
+    // difficulty is included in the key explicitly (not just relied on
+    // via the query scoping above) so this stays correct if this function
+    // is ever called for more than one difficulty at a time.
     const pairKey = `${String(q?.movie_title ?? '').trim().toLowerCase()}::${correctAnswer}::${difficulty}`;
     if (seenPairs.has(pairKey)) {
       reject(`duplicate: movie_title "${q?.movie_title}" with correct_answer ${correctAnswer} already exists in trivia_pool for genre "${genre}" at this difficulty (or earlier in this batch)`);
       continue;
     }
 
-    const factualCheck = await verifyFactualAccuracy(
-      questionText,
-      extractionNote,
-      String(q?.movie_title ?? ''),
-      correctAnswer
-    );
-    if ('failureReason' in factualCheck) {
-      reject(`Factual verification pass failed: ${factualCheck.failureReason}`);
-      continue;
-    }
-    if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
-      const reasons = [
-        factualCheck.topicMismatch ? 'topic mismatch' : null,
-        factualCheck.contrivedAnswer ? 'contrived/fabricated answer' : null,
-        factualCheck.nonDiegeticFact ? 'non-diegetic (production/marketing) fact' : null,
-      ].filter(Boolean).join(' and ');
-      reject(`Factual verification rejected (${reasons}): ${factualCheck.evidence || 'no evidence quoted'}`);
-      continue;
-    }
-
-    const hygieneCheck = await verifyTextHygiene(questionText, extractionNote, hintText);
-    if ('failureReason' in hygieneCheck) {
-      reject(`Text-hygiene verification pass failed: ${hygieneCheck.failureReason}`);
-      continue;
-    }
-    if (hygieneCheck.hedgingFound) {
-      reject(`Text-hygiene verification rejected (hedging/self-correction): ${hygieneCheck.evidence || 'no evidence quoted'}`);
-      continue;
-    }
-
+    // Claimed here, before verification, not after -- required for
+    // correctness now that verification (Phase 2) runs concurrently and
+    // can no longer be relied on to resolve in candidate order. Real
+    // consequence, flagged rather than silently accepted: a candidate
+    // that clears the deterministic gates but later fails verification
+    // still "used up" this fact -- a later duplicate in the same batch
+    // will be rejected as a duplicate rather than getting its own
+    // independent shot at verification, which is what happened before
+    // this change.
     seenPairs.add(pairKey);
+    pendingVerification.push({ q, correctAnswer, questionText, extractionNote, hintText });
+  }
+
+  // Phase 2 -- the two verifier calls per candidate are independent of
+  // every other candidate, so this is the part that actually parallelises.
+  // Capped rather than firing all of them at once (see VERIFICATION_CONCURRENCY
+  // comment on handleBatchMode above).
+  const VERIFICATION_CONCURRENCY = 5;
+
+  const verificationResults = await mapWithConcurrency(
+    pendingVerification,
+    VERIFICATION_CONCURRENCY,
+    async (item) => {
+      const factualCheck = await verifyFactualAccuracy(
+        item.questionText,
+        item.extractionNote,
+        String(item.q?.movie_title ?? ''),
+        item.correctAnswer
+      );
+      if ('failureReason' in factualCheck) {
+        return { item, rejectionReason: `Factual verification pass failed: ${factualCheck.failureReason}` };
+      }
+      if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
+        const reasons = [
+          factualCheck.topicMismatch ? 'topic mismatch' : null,
+          factualCheck.contrivedAnswer ? 'contrived/fabricated answer' : null,
+          factualCheck.nonDiegeticFact ? 'non-diegetic (production/marketing) fact' : null,
+        ].filter(Boolean).join(' and ');
+        return { item, rejectionReason: `Factual verification rejected (${reasons}): ${factualCheck.evidence || 'no evidence quoted'}` };
+      }
+
+      const hygieneCheck = await verifyTextHygiene(item.questionText, item.extractionNote, item.hintText);
+      if ('failureReason' in hygieneCheck) {
+        return { item, rejectionReason: `Text-hygiene verification pass failed: ${hygieneCheck.failureReason}` };
+      }
+      if (hygieneCheck.hedgingFound) {
+        return { item, rejectionReason: `Text-hygiene verification rejected (hedging/self-correction): ${hygieneCheck.evidence || 'no evidence quoted'}` };
+      }
+
+      return { item, rejectionReason: null as string | null };
+    }
+  );
+
+  for (const { item, rejectionReason } of verificationResults) {
+    if (rejectionReason) {
+      rejected.push({ ...item.q, rejection_reason: rejectionReason });
+      continue;
+    }
     survivors.push({
-      question_text: q.question_text,
-      movie_title: q.movie_title,
-      movie_year: q.movie_year ?? null,
-      movie_emoji: q.movie_emoji || '🎬',
-      correct_answer: correctAnswer,
-      extraction_note: q.extraction_note,
-      hint_text: q.hint_text,
-      fact_category: typeof q?.fact_category === 'string' ? q.fact_category : null,
-      available_digits: computeAvailableDigits(correctAnswer),
+      question_text: item.q.question_text,
+      movie_title: item.q.movie_title,
+      movie_year: item.q.movie_year ?? null,
+      movie_emoji: item.q.movie_emoji || '🎬',
+      correct_answer: item.correctAnswer,
+      extraction_note: item.q.extraction_note,
+      hint_text: item.q.hint_text,
+      fact_category: typeof item.q?.fact_category === 'string' ? item.q.fact_category : null,
+      available_digits: computeAvailableDigits(item.correctAnswer),
     });
   }
 
