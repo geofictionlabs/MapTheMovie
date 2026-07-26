@@ -947,18 +947,32 @@ Return ONLY valid JSON, no markdown fences, no preamble:
 // the whole point -- see handleBatchMode below), asking instead for N
 // genuinely distinct real facts across N different approved films, with
 // an explicit push toward varied fact KINDS (not just varied films) and a
-// preference for multi-digit answers. filmSection is buildFilmSection([])
-// from the enclosing request handler -- called with no attempted-titles
-// exclusion since batch mode has no per-attempt retry loop to accumulate
-// one.
+// preference for multi-digit answers. filmSection is buildFilmSection from
+// the enclosing request handler, called with existingTitles -- films
+// already banked in trivia_pool for this genre+difficulty -- as the
+// exclusion list, same role exclude_movies plays for single-question mode.
+// Without this, every batch got an empty exclusion list and the model kept
+// re-proposing the same handful of iconic titles regardless of the rest of
+// the allowlist; buildFilmSection's own existing safety net (present the
+// full list if every title is excluded) is unchanged and still applies.
+// The prompt text itself also now states the breadth goal explicitly (this
+// batch is one contribution to an ongoing pool, not a self-contained set)
+// and pushes back on the specific bias that caused the clustering in the
+// first place -- asking for a "numeric fact" naturally pulls toward films
+// where a number IS the famous thing (Spinal Tap's eleven, Home Alone's
+// address, a quoted price), so the prompt now says most films have SOME
+// usable number even without one being iconic.
 function buildBatchPrompt(
   count: number,
   tier: string,
+  existingTitles: string[],
   filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
 ): string {
-  const { instruction: genreInstruction } = filmSection([]);
+  const { instruction: genreInstruction } = filmSection(existingTitles);
 
-  return `Generate ${count} DISTINCT movie trivia questions for a treasure-hunt trivia pool. Each question must be about a different approved film -- do not repeat a film across this batch.
+  return `Generate ${count} DISTINCT movie trivia questions for a treasure-hunt trivia pool. Each question must be about a different approved film -- do not repeat a film across this batch. This batch is one contribution to a larger, ongoing pool for this genre and difficulty, not a self-contained set -- the actual goal is breadth across the full approved list over many batches, not just variety within these ${count} questions. Films already well-represented in the pool have already been excluded from the list below; among what remains, favour titles you would not otherwise reach for first, rather than defaulting to the same few most iconic ones whenever several approved films would work equally well.
+
+Don't limit yourself to films whose number is already a famous, oft-quoted detail (an amplifier that goes to eleven, a suite number in a film's own title, a specific price). Most approved films contain a genuinely usable number somewhere even without one being iconic -- a count of characters or objects, a quantity mentioned once, a street or room number, a running time or countdown, an age stated in dialogue. Look for one of these before assuming a film has nothing to offer.
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
 
@@ -1014,11 +1028,43 @@ async function handleBatchMode(
   const count = Number.isInteger(rawCount) && (rawCount as number) > 0 ? (rawCount as number) : 10;
   const BATCH_MAX_ATTEMPTS = 2;
 
+  // trivia_pool.difficulty is capped at 3 (see CommandCenter.jsx's
+  // TIER_TO_INT comment -- there's no question-level "4", only a
+  // puzzle-level one). Mirrored here rather than imported since this is a
+  // separate Deno runtime from the client app; same fallback (|| 2) and
+  // cap as fetchQuestionFor/the Question Pool tab use.
+  const difficulty = Math.min({ casual: 1, classic: 2, expert: 3, cipher: 4 }[tier] || 2, 3);
+
+  // Existing trivia_pool rows for this genre+difficulty, fetched BEFORE
+  // generation this time, not just after for post-hoc dedup -- also
+  // feeds buildBatchPrompt's film-exclusion list below. Without this, the
+  // prompt was built with an empty exclusion list every batch (unlike
+  // single-question mode, which excludes other waypoints' films via
+  // exclude_movies), so the model had no way to know which films were
+  // already well-represented in the pool and kept gravitating to the
+  // same handful of iconic titles (Home Alone, Spinal Tap, Ghostbusters,
+  // Ferris Bueller, The Hangover) regardless of what the rest of a
+  // 50-title allowlist actually offers. Fetched via the service-role
+  // client already in scope (bypasses RLS, same client used for the
+  // auth/admin checks above it). Authoritative, live state -- not a
+  // client-supplied list that could be stale.
+  const { data: existingPoolRows } = await supabase
+    .from('trivia_pool')
+    .select('movie_title, correct_answer')
+    .eq('genre', genre)
+    .eq('difficulty', difficulty);
+
+  const existingTitles = (existingPoolRows ?? []).map((r: any) => String(r.movie_title));
+
+  const seenPairs = new Set(
+    (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}::${difficulty}`)
+  );
+
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
-    const prompt = buildBatchPrompt(count, tier, buildFilmSectionFn);
+    const prompt = buildBatchPrompt(count, tier, existingTitles, buildFilmSectionFn);
 
     // 900/question (raised from 600 -- see comment below on why 600 was
     // suspect, not confirmed insufficient). Not empirically verified
@@ -1080,30 +1126,6 @@ async function handleBatchMode(
   // Deno.serve -- recomputed locally rather than reused from the request
   // handler's own copy, which is out of scope here.
   const allowlistFilms = GENRE_FILM_ALLOWLIST[genre];
-
-  // trivia_pool.difficulty is capped at 3 (see CommandCenter.jsx's
-  // TIER_TO_INT comment -- there's no question-level "4", only a
-  // puzzle-level one). Mirrored here rather than imported since this is a
-  // separate Deno runtime from the client app; same fallback (|| 2) and
-  // cap as fetchQuestionFor/the Question Pool tab use.
-  const difficulty = Math.min({ casual: 1, classic: 2, expert: 3, cipher: 4 }[tier] || 2, 3);
-
-  // Dedup source of truth: existing trivia_pool rows for this genre AND
-  // difficulty -- scoped to both, not genre alone, so the same fact can
-  // exist once per genre+difficulty rather than being permanently blocked
-  // at every other tier the moment it's banked at one. Fetched via the
-  // service-role client already in scope (bypasses RLS, same client used
-  // for the auth/admin checks above it). Authoritative, live state -- not
-  // a client-supplied list that could be stale.
-  const { data: existingPoolRows } = await supabase
-    .from('trivia_pool')
-    .select('movie_title, correct_answer')
-    .eq('genre', genre)
-    .eq('difficulty', difficulty);
-
-  const seenPairs = new Set(
-    (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}::${difficulty}`)
-  );
 
   const survivors: any[] = [];
   const rejected: any[] = [];
