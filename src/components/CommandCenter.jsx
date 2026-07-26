@@ -419,11 +419,20 @@ function QuestionPoolTab() {
         // Same extraction discipline as triviaApi.js's generateTriviaQuestion
         // -- FunctionsHttpError's own .message is a fixed generic string,
         // the real reason lives in the response body via error.context.
+        // body.error is ALWAYS truthy on the Edge Function's 502 (it's the
+        // fixed "Batch generation failed after N attempts" wrapper text) --
+        // an `||` between body.error and body.lastFailureReason would
+        // always pick the generic wrapper and silently drop the actual
+        // reason. Combine both when present instead.
         let detail = null;
         if (error.context) {
           try {
             const body = await error.context.json();
-            detail = body?.error || body?.lastFailureReason;
+            if (body?.error && body?.lastFailureReason) {
+              detail = `${body.error}: ${body.lastFailureReason}`;
+            } else {
+              detail = body?.error || body?.lastFailureReason;
+            }
           } catch {
             // Response body wasn't valid JSON -- fall through to the generic message.
           }
