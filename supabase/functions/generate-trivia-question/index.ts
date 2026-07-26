@@ -768,19 +768,64 @@ function computeAvailableDigits(value: number): number[] {
   return Array.from(digits).sort((a, b) => a - b);
 }
 
-// Shared JSON-extraction logic for both verification calls below -- the
-// model reasons before answering, so the clean JSON object is always the
-// LAST one in the response (same reasoning as the main generation loop's
-// lastOpen/lastClose extraction).
+// Shared JSON-extraction logic -- used by both generation modes below and
+// by both verification calls further down. Finds the first "{" (stripping
+// any leading prose/reasoning before it -- the model reasons before
+// answering, so real JSON is often preceded by explanatory text) and
+// walks forward from there, tracking brace depth while respecting string
+// literals and escape sequences (so a brace inside a quoted string, e.g.
+// inside question_text, never miscounts), to find that opening brace's
+// actual matching close. Replaces a lastIndexOf('{')/lastIndexOf('}')
+// heuristic that only worked for a single flat object: for a NESTED
+// response (an object containing an array of objects, e.g. batch mode's
+// {"questions": [...]} wrapper), the last "{" belongs to the final inner
+// object and the last "}" belongs to the outer wrapper -- sliced
+// together, that's an unbalanced fragment that never parses.
+// Depth-tracking handles arbitrary nesting and still strips leading
+// preamble, which is the actual thing the old heuristic was reaching for.
+// Single-question mode's flat-object response also parses correctly
+// under this (a single top-level "{" with no nested "{" inside, since
+// other_films_mentioned is an array, not an object, so depth simply
+// reaches 0 at that object's own closing brace).
 function extractLastJsonObject(text: string): any | null {
-  const lastOpen = text.lastIndexOf('{');
-  const lastClose = text.lastIndexOf('}');
-  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) return null;
-  try {
-    return JSON.parse(text.slice(lastOpen, lastClose + 1));
-  } catch {
-    return null;
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
   }
+
+  return null; // never closed -- truncated (see stop_reason check at the batch call site) or genuinely malformed
 }
 
 async function callVerifier(prompt: string): Promise<any | null> {
@@ -962,13 +1007,6 @@ async function handleBatchMode(
 
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
-  // TEMPORARY diagnostics -- last attempt's raw-response evidence, surfaced
-  // in the 502 body below so a real failure can be read directly instead of
-  // guessed at. Remove once the actual root cause of "Could not locate a
-  // valid questions array" (confirmed NOT max_tokens truncation -- that
-  // path already reports separately, see stop_reason check below) is
-  // identified and fixed.
-  let lastDiagnostics: unknown = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
     const prompt = buildBatchPrompt(count, tier, buildFilmSectionFn);
@@ -1015,15 +1053,6 @@ async function handleBatchMode(
       batchFailureReason = aiData.stop_reason === 'max_tokens'
         ? `Response truncated at max_tokens (${maxTokens} tokens for ${count} questions) before a complete JSON object could be parsed -- raise max_tokens or reduce count`
         : 'Could not locate a valid questions array in the AI response';
-
-      // TEMPORARY -- see declaration above.
-      lastDiagnostics = {
-        stop_reason: aiData.stop_reason ?? null,
-        text_length: text.length,
-        text_head: text.slice(0, 300),
-        text_tail: text.slice(-300),
-        parsed_keys: obj ? Object.keys(obj) : null,
-      };
       continue;
     }
 
@@ -1033,8 +1062,7 @@ async function handleBatchMode(
 
   if (!candidates) {
     return new Response(
-      // debug is TEMPORARY -- see lastDiagnostics declaration above.
-      JSON.stringify({ error: `Batch generation failed after ${BATCH_MAX_ATTEMPTS} attempts`, lastFailureReason: batchFailureReason, debug: lastDiagnostics }),
+      JSON.stringify({ error: `Batch generation failed after ${BATCH_MAX_ATTEMPTS} attempts`, lastFailureReason: batchFailureReason }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -1382,24 +1410,15 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     const aiData = await aiResponse.json();
     const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
 
-    // The AI reasons before answering, so the clean JSON object is always the
-    // LAST one in the response -- a greedy first-{-to-last-} match can span
-    // across reasoning text that itself contains braces, leaking reasoning
-    // into the parsed fields. Find the last "{" and the last "}" instead,
-    // which isolates the final JSON object regardless of what precedes it.
-    const lastOpen = text.lastIndexOf('{');
-    const lastClose = text.lastIndexOf('}');
-    if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) {
-      lastFailureReason = 'Could not locate a JSON object in the AI response';
-      continue;
-    }
-    const jsonSlice = text.slice(lastOpen, lastClose + 1);
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(jsonSlice);
-    } catch {
-      lastFailureReason = 'AI response was not valid JSON';
+    // Shared with batch mode -- see extractLastJsonObject's own comment for
+    // why a depth-tracking scan replaced the previous lastIndexOf('{')/
+    // lastIndexOf('}') heuristic used here directly (that heuristic broke
+    // on nested JSON; it happened to work for this flat single-question
+    // schema, but was a duplicate of the same flawed logic, not a
+    // deliberately different implementation).
+    const parsed = extractLastJsonObject(text);
+    if (!parsed) {
+      lastFailureReason = 'Could not parse a JSON object from the AI response';
       continue;
     }
 

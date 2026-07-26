@@ -433,13 +433,6 @@ function QuestionPoolTab() {
             } else {
               detail = body?.error || body?.lastFailureReason;
             }
-            // TEMPORARY -- surfaces the Edge Function's debug diagnostics
-            // (stop_reason, raw response length/head/tail, parsed keys)
-            // directly in the banner so this is readable without devtools.
-            // Remove once the batch-generation failure root cause is fixed.
-            if (body?.debug) {
-              detail = `${detail}\n\nDEBUG: ${JSON.stringify(body.debug, null, 2)}`;
-            }
           } catch {
             // Response body wasn't valid JSON -- fall through to the generic message.
           }
@@ -608,7 +601,6 @@ function QuestionPoolTab() {
         <div style={{
           padding: 12, borderRadius: 6, marginBottom: 20,
           background: '#2A1518', border: '1px solid #E24B4A', color: POOL_COLORS.red, fontSize: 13,
-          whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace',
         }}>
           {generationError}
         </div>
