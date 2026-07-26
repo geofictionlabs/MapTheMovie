@@ -837,25 +837,59 @@ function extractLastJsonObject(text: string): any | null {
   return null; // never closed -- truncated (see stop_reason check at the batch call site) or genuinely malformed
 }
 
-async function callVerifier(prompt: string): Promise<any | null> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+type VerifierCallResult = { ok: true; data: any } | { ok: false; reason: string };
 
-  if (!response.ok) return null;
+// One attempt at the verifier call -- separated from callVerifier itself so
+// the retry below is a second, independent attempt rather than a loop
+// wrapped around shared mutable state. Distinguishes the two ways this can
+// fail (HTTP-level vs unparseable JSON) instead of collapsing both into a
+// bare null -- a rejection reason quoting the actual status/body or the
+// actual unparseable text is directly actionable; "network error or
+// unparseable response" told you nothing about which one happened or why.
+async function attemptVerifierCall(prompt: string): Promise<VerifierCallResult> {
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+  } catch (err) {
+    return { ok: false, reason: `verifier request threw: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '(could not read response body)');
+    return { ok: false, reason: `verifier HTTP ${response.status}: ${bodyText.slice(0, 300)}` };
+  }
+
   const data = await response.json();
   const text = (data.content as any[]).map((b: any) => b.text || '').join('\n');
-  return extractLastJsonObject(text);
+  const parsed = extractLastJsonObject(text);
+  if (!parsed) {
+    return { ok: false, reason: `verifier response did not contain a parseable JSON object (last 300 chars): "${text.slice(-300)}"` };
+  }
+  return { ok: true, data: parsed };
+}
+
+// One retry, specifically for the verifier call -- failing closed (which
+// this file does deliberately everywhere else) means a bare network blip
+// here discards an otherwise-good, already-fully-validated candidate. A
+// single retry catches the transient case without weakening the fail-
+// closed discipline for a genuinely broken verifier (two failures in a
+// row still rejects, with the second attempt's reason reported).
+async function callVerifier(prompt: string): Promise<VerifierCallResult> {
+  const first = await attemptVerifierCall(prompt);
+  if (first.ok) return first;
+  return await attemptVerifierCall(prompt);
 }
 
 // Call A: factual/provenance judgment -- does correct_answer genuinely mean
@@ -866,15 +900,22 @@ async function callVerifier(prompt: string): Promise<any | null> {
 // this factual judgment doesn't compete for attention with the separate
 // text-hygiene judgment in one response -- five simultaneous checks in one
 // call risked each getting less scrutiny than a focused two-call split.
-// Returns null on any failure (network error, non-JSON response) --
-// treated as a rejection by the caller: fail closed, never pass an
-// unverified question through because verification itself broke.
+// Returns a { failureReason } object on failure (network error, non-JSON
+// response, one retry already attempted inside callVerifier) -- treated
+// as a rejection by the caller: fail closed, never pass an unverified
+// question through because verification itself broke. failureReason
+// carries the actual HTTP status/body or unparseable text, not a generic
+// message, so a rejection like this is distinguishable from a genuine
+// content rejection and actionable on its own.
 async function verifyFactualAccuracy(
   questionText: string,
   extractionNote: string,
   movieTitle: string,
   correctAnswer: number
-): Promise<{ topicMismatch: boolean; contrivedAnswer: boolean; nonDiegeticFact: boolean; evidence: string } | null> {
+): Promise<
+  | { topicMismatch: boolean; contrivedAnswer: boolean; nonDiegeticFact: boolean; evidence: string }
+  | { failureReason: string }
+> {
   const factualPrompt = `A trivia question and its answer derivation are shown below, for the film "${movieTitle}". Check for three things:
 
 (1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given?
@@ -896,8 +937,9 @@ Return ONLY valid JSON, no markdown fences, no preamble:
   "evidence": ""
 }`;
 
-  const parsed = await callVerifier(factualPrompt);
-  if (!parsed) return null;
+  const result = await callVerifier(factualPrompt);
+  if (!result.ok) return { failureReason: result.reason };
+  const parsed = result.data;
   return {
     topicMismatch: parsed.topic_mismatch === true,
     contrivedAnswer: parsed.contrived_answer === true,
@@ -911,12 +953,13 @@ Return ONLY valid JSON, no markdown fences, no preamble:
 // Replaces the old SELF_CORRECTION_PATTERN regex (could only ever catch
 // phrasing already seen -- it missed "actually, let's go with..." and
 // later "reconsidering", two different real leaks never in its list).
-// Fails closed the same way as Call A.
+// Fails closed the same way as Call A -- see verifyFactualAccuracy's
+// comment for why failure returns { failureReason } rather than null.
 async function verifyTextHygiene(
   questionText: string,
   extractionNote: string,
   hintText: string
-): Promise<{ hedgingFound: boolean; evidence: string } | null> {
+): Promise<{ hedgingFound: boolean; evidence: string } | { failureReason: string }> {
   const hygienePrompt = `A trivia question and its answer derivation are shown below. Check for two things:
 
 (2) Does the derivation itself contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)?
@@ -935,8 +978,9 @@ Return ONLY valid JSON, no markdown fences, no preamble:
   "evidence": ""
 }`;
 
-  const parsed = await callVerifier(hygienePrompt);
-  if (!parsed) return null;
+  const result = await callVerifier(hygienePrompt);
+  if (!result.ok) return { failureReason: result.reason };
+  const parsed = result.data;
   return {
     hedgingFound: parsed.hedging_found === true,
     evidence: String(parsed.evidence ?? ''),
@@ -1207,8 +1251,8 @@ async function handleBatchMode(
       String(q?.movie_title ?? ''),
       correctAnswer
     );
-    if (!factualCheck) {
-      reject('Factual verification pass failed (network error or unparseable response)');
+    if ('failureReason' in factualCheck) {
+      reject(`Factual verification pass failed: ${factualCheck.failureReason}`);
       continue;
     }
     if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
@@ -1222,8 +1266,8 @@ async function handleBatchMode(
     }
 
     const hygieneCheck = await verifyTextHygiene(questionText, extractionNote, hintText);
-    if (!hygieneCheck) {
-      reject('Text-hygiene verification pass failed (network error or unparseable response)');
+    if ('failureReason' in hygieneCheck) {
+      reject(`Text-hygiene verification pass failed: ${hygieneCheck.failureReason}`);
       continue;
     }
     if (hygieneCheck.hedgingFound) {
@@ -1596,8 +1640,8 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       String(parsed.movie_title ?? ''),
       correctAnswer
     );
-    if (!factualCheck) {
-      lastFailureReason = 'Factual verification pass failed (network error or unparseable response)';
+    if ('failureReason' in factualCheck) {
+      lastFailureReason = `Factual verification pass failed: ${factualCheck.failureReason}`;
       continue;
     }
     if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
@@ -1611,8 +1655,8 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     }
 
     const hygieneCheck = await verifyTextHygiene(questionText, extractionNote, hintText);
-    if (!hygieneCheck) {
-      lastFailureReason = 'Text-hygiene verification pass failed (network error or unparseable response)';
+    if ('failureReason' in hygieneCheck) {
+      lastFailureReason = `Text-hygiene verification pass failed: ${hygieneCheck.failureReason}`;
       continue;
     }
     if (hygieneCheck.hedgingFound) {
