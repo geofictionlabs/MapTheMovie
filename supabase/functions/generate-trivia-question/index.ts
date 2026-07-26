@@ -966,6 +966,14 @@ async function handleBatchMode(
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
     const prompt = buildBatchPrompt(count, tier, buildFilmSectionFn);
 
+    // 900/question (raised from 600 -- see comment below on why 600 was
+    // suspect, not confirmed insufficient). Not empirically verified
+    // against a real successful batch run (batch mode has not yet
+    // completed end to end) -- if this is still too low, the stop_reason
+    // check right below will now say so explicitly instead of presenting
+    // as an identical, unexplained "malformed response" failure.
+    const maxTokens = 900 * count;
+
     const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -975,7 +983,7 @@ async function handleBatchMode(
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 600 * count,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -990,7 +998,16 @@ async function handleBatchMode(
     const obj = extractLastJsonObject(text);
 
     if (!obj || !Array.isArray(obj.questions)) {
-      batchFailureReason = 'Could not locate a valid questions array in the AI response';
+      // Anthropic sets stop_reason: 'max_tokens' when a response is cut
+      // off by the token budget, distinct from the model genuinely
+      // finishing (stop_reason: 'end_turn') with malformed output. Without
+      // this check, a truncated response (mid-JSON, so extractLastJsonObject
+      // correctly fails to find a balanced object) presents identically to
+      // a genuinely malformed one -- this distinguishes them using the
+      // authoritative signal instead of guessing from the text alone.
+      batchFailureReason = aiData.stop_reason === 'max_tokens'
+        ? `Response truncated at max_tokens (${maxTokens} tokens for ${count} questions) before a complete JSON object could be parsed -- raise max_tokens or reduce count`
+        : 'Could not locate a valid questions array in the AI response';
       continue;
     }
 
