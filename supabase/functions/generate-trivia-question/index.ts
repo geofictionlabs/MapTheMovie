@@ -682,6 +682,81 @@ function hasDerivationSignal(extractionNote: string): boolean {
   return hasOperatorSymbol || hasOperatorWord || distinctNumbers.size >= 2;
 }
 
+// Cheap, phrasing-list first line of defence against visible self-correction
+// (e.g. "what is the number of the chamber... No -- let's go with a cleaner
+// fact... Actually, clean question:..."), checked before the more expensive
+// verifyQuestion API call so an obvious leak never needs a second round-trip
+// to catch. "actually"/"wait" are punctuation-anchored (comma-adjacent only)
+// rather than bare word-boundary matches -- a bare /\bactually\b/i or
+// /\bwait\b/i would false-positive on legitimate content like "the wait
+// staff" or "actually this was intentional" used as plain emphasis. This
+// list is inherently incomplete (same limitation this file's own comment
+// already notes about the earlier, now-replaced SELF_CORRECTION_PATTERN
+// regex) -- novel phrasing this list doesn't anticipate is verifyQuestion's
+// job, not this gate's.
+const SELF_CORRECTION_MARKERS = [
+  /,\s*actually\b/i,
+  /\bactually,/i,
+  /\bwait,/i,
+  /\bno\s*[—-]\s*let'?s go with\b/i,
+  /\bclean restart\b/i,
+  /\binstead:/i,
+  /\blet'?s go with\b/i,
+  /\bon second thought\b/i,
+  /\bscratch that\b/i,
+];
+
+function findSelfCorrectionMarker(text: string): string | null {
+  for (const marker of SELF_CORRECTION_MARKERS) {
+    const match = text.match(marker);
+    if (match) return match[0];
+  }
+  return null;
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+  sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+
+// Numbers in text, as digit runs AND spelled-out words (single words like
+// "forty", plus two-token compounds like "twenty"+"one" -- the [a-z]+
+// tokenizer strips both hyphens and spaces the same way, so "Twenty-One"
+// and "Twenty One" are handled identically). Deliberately bounded to 0-99:
+// movie titles overwhelmingly spell out small numbers ("Ocean's Eleven",
+// "The Hateful Eight", "21 Jump Street"), not four-digit years or
+// "one hundred"-style compounds. Fixed vocabulary, same caveat as
+// SELF_CORRECTION_MARKERS -- forms outside this list won't be caught.
+function extractNumbers(text: string): Set<number> {
+  const found = new Set<number>();
+  for (const m of text.match(/\d+/g) || []) found.add(parseInt(m, 10));
+
+  const tokens = text.toLowerCase().match(/[a-z]+/g) || [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (NUMBER_WORDS[tokens[i]] !== undefined) found.add(NUMBER_WORDS[tokens[i]]);
+    if (i + 1 < tokens.length) {
+      const tens = NUMBER_WORDS[tokens[i]];
+      const ones = NUMBER_WORDS[tokens[i + 1]];
+      if (tens !== undefined && tens >= 20 && tens % 10 === 0 && ones !== undefined && ones < 10) {
+        found.add(tens + ones); // "twenty" + "one" -> 21
+      }
+    }
+  }
+  return found;
+}
+
+// Boundary-aware: correct_answer=8 must not match inside "1988". Digit
+// tokens only, deliberately not extended to word-numbers the way
+// extractNumbers() is for movie_title -- question_text is prose, and
+// prose legitimately uses small number-words ("the two friends") without
+// leaking anything; word-number detection here would risk far more false
+// positives than value.
+function containsExactNumber(text: string, num: number): boolean {
+  return new RegExp(`(?<!\\d)${num}(?!\\d)`).test(text);
+}
+
 // Second, genuinely independent API call, given ONLY the finished
 // question_text/extraction_note/hint_text -- no location, tier, genre, or
 // digit-requirement context from the original generation. Replaces
@@ -699,7 +774,7 @@ async function verifyQuestion(
   extractionNote: string,
   hintText: string
 ): Promise<{ topicMismatch: boolean; hedgingFound: boolean; evidence: string } | null> {
-  const verificationPrompt = `A trivia question and its answer derivation are shown below. Check for two things: (1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given? (2) Does any of this text contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)? Quote the exact problematic phrase if either is found. Respond with structured JSON: { topic_mismatch: boolean, hedging_found: boolean, evidence: string }.
+  const verificationPrompt = `A trivia question and its answer derivation are shown below. Check for three things: (1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given? (2) Does the derivation itself contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)? (3) Separately from (2): does the QUESTION TEXT itself show any visible deliberation, false start, or self-correction -- e.g. proposing one fact then abandoning it for "a cleaner one," narrating indecision over which detail to use, or any sign the writer reconsidered mid-question? A question can leak this even when its derivation is completely clean, so judge it independently, not as an afterthought to (2). Quote the exact problematic phrase if any of these is found. Respond with structured JSON: { topic_mismatch: boolean, hedging_found: boolean, evidence: string } -- set hedging_found to true if EITHER (2) or (3) applies.
 
 Question: ${questionText}
 Derivation: ${extractionNote}
@@ -880,7 +955,7 @@ If the question describes a calculation (e.g. subtracting, adding, or combining 
 
 ${hasGenreConstraint ? 'Tie the question thematically to the location name only if doing so does not conflict with the constraint above — the film/genre constraint always takes priority.' : 'Tie the question thematically to the location name if a sensible connection exists; otherwise write a strong film trivia question of the right difficulty.'}
 
-Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself. extraction_note and question_text must also be completely free of reasoning, self-correction, or alternate attempts. Do not write "wait", "but", "actually", "let me reconsider", "correcting", or show any alternate digit-checking process. If your first idea doesn't satisfy the digit constraint, work it out silently and only output the final, clean, correct version. Never let the reader see you checking or changing your answer.
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. The correct_answer field must contain ONLY the final integer — no reasoning, no working, no intermediate attempts, no explanation. Just the number itself. extraction_note and question_text must also be completely free of reasoning, self-correction, or alternate attempts. Do not write "wait", "but", "actually", "let me reconsider", "correcting", or show any alternate digit-checking process. If your first idea doesn't satisfy the digit constraint, work it out silently and only output the final, clean, correct version. Never let the reader see you checking or changing your answer. This applies to every field, not just the digit check: if you reconsider which fact or film to use partway through, that reconsidering must never appear anywhere in question_text, extraction_note, or hint_text. Write only your single, final, clean question — never a first attempt, a correction, or a "let's go with" pivot.
 
 The question must be about exactly one film: movie_title. Before finalising your answer, check question_text, extraction_note, and hint_text yourself for any OTHER film title -- one you considered and moved away from while drafting, a comparison, anything. List every such title in other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films as part of the trivia itself (rare) -- it must never contain a film you were merely deciding between while writing.
 
@@ -996,8 +1071,40 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       continue;
     }
 
+    // ANSWER-IN-TITLE: a question whose own movie_title states
+    // correct_answer is answerable without having seen the film -- e.g.
+    // "21 Jump Street" asked for the street number 21, "The 40-Year-Old
+    // Virgin" asked the character's age, 40. This WILL also reject some
+    // legitimate questions (e.g. "Ocean's Eleven" asking a crew count of
+    // 11) -- that's accepted, not a bug: a title containing its own
+    // answer is exactly the failure mode this gate exists to prevent,
+    // regardless of whether the coincidence is "fair" in a given case.
+    const titleNumbers = extractNumbers(String(parsed.movie_title ?? ''));
+    if (titleNumbers.has(correctAnswer)) {
+      lastFailureReason = `correct_answer (${correctAnswer}) appears directly in movie_title "${parsed.movie_title}" -- answerable without seeing the film`;
+      continue;
+    }
+
     const extractionNote = String(parsed.extraction_note ?? '');
     const questionText   = String(parsed.question_text ?? '');
+    const hintText       = String(parsed.hint_text ?? '');
+
+    // ANSWER-IN-QUESTION: broader than a multiple-choice pattern
+    // specifically ("What is the street number -- 14, 55, or 8?") --
+    // any literal occurrence of correct_answer in question_text hands
+    // the player the answer, whether phrased as options or stated
+    // outright. A real multiple-choice question is a strict subset of
+    // this (it must list the correct answer among its options to be a
+    // valid question at all), so this one check covers both without a
+    // separate phrasing-pattern gate. Accepted tradeoff: a legitimate
+    // calculation question ("Quota is 6, minus 10 fingers, plus 12
+    // floors = 8") states its INPUT numbers in question_text -- this
+    // only rejects if the final answer itself coincidentally restates
+    // one of those inputs, which should be rare but isn't impossible.
+    if (containsExactNumber(questionText, correctAnswer)) {
+      lastFailureReason = `question_text contains the literal correct_answer (${correctAnswer}) -- answerable without deriving it`;
+      continue;
+    }
 
     // Phrasing-independent structural check: the AI self-reports any OTHER
     // film title it mentioned anywhere in the text (e.g. one it drifted onto
@@ -1022,12 +1129,27 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       continue;
     }
 
+    // Cheap phrasing-list check before the expensive verifyQuestion call --
+    // catches the same real leak this file was built to prevent elsewhere
+    // (a question narrating "No -- let's go with a cleaner fact... Actually,
+    // clean question:...") without needing a second API round-trip when the
+    // phrasing is already a known pattern. See SELF_CORRECTION_MARKERS above
+    // for why "actually"/"wait" are punctuation-anchored, not bare words.
+    const questionCorrection = findSelfCorrectionMarker(questionText);
+    const hintCorrection = findSelfCorrectionMarker(hintText);
+    if (questionCorrection || hintCorrection) {
+      const field = questionCorrection ? 'question_text' : 'hint_text';
+      const marker = questionCorrection ?? hintCorrection;
+      lastFailureReason = `${field} contains a self-correction marker: "${marker}"`;
+      continue;
+    }
+
     // Independent verification pass -- the last gate, run only once every
     // other check has already passed. A second, separate API call given
     // just the finished text (see verifyQuestion above for why this is
     // stronger than a regex). Fails closed: a verification call that
     // itself errors is treated as a rejection, not a pass-through.
-    const verification = await verifyQuestion(questionText, extractionNote, String(parsed.hint_text ?? ''));
+    const verification = await verifyQuestion(questionText, extractionNote, hintText);
     if (!verification) {
       lastFailureReason = 'Verification pass failed (network error or unparseable response)';
       continue;
