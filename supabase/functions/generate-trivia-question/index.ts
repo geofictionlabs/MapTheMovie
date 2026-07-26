@@ -685,15 +685,15 @@ function hasDerivationSignal(extractionNote: string): boolean {
 // Cheap, phrasing-list first line of defence against visible self-correction
 // (e.g. "what is the number of the chamber... No -- let's go with a cleaner
 // fact... Actually, clean question:..."), checked before the more expensive
-// verifyQuestion API call so an obvious leak never needs a second round-trip
-// to catch. "actually"/"wait" are punctuation-anchored (comma-adjacent only)
-// rather than bare word-boundary matches -- a bare /\bactually\b/i or
-// /\bwait\b/i would false-positive on legitimate content like "the wait
-// staff" or "actually this was intentional" used as plain emphasis. This
-// list is inherently incomplete (same limitation this file's own comment
-// already notes about the earlier, now-replaced SELF_CORRECTION_PATTERN
-// regex) -- novel phrasing this list doesn't anticipate is verifyQuestion's
-// job, not this gate's.
+// verifyTextHygiene API call so an obvious leak never needs a second
+// round-trip to catch. "actually"/"wait" are punctuation-anchored
+// (comma-adjacent only) rather than bare word-boundary matches -- a bare
+// /\bactually\b/i or /\bwait\b/i would false-positive on legitimate
+// content like "the wait staff" or "actually this was intentional" used
+// as plain emphasis. This list is inherently incomplete (same limitation
+// this file's own comment already notes about the earlier, now-replaced
+// SELF_CORRECTION_PATTERN regex) -- novel phrasing this list doesn't
+// anticipate is verifyTextHygiene's job, not this gate's.
 const SELF_CORRECTION_MARKERS = [
   /,\s*actually\b/i,
   /\bactually,/i,
@@ -757,36 +757,22 @@ function containsExactNumber(text: string, num: number): boolean {
   return new RegExp(`(?<!\\d)${num}(?!\\d)`).test(text);
 }
 
-// Second, genuinely independent API call, given ONLY the finished
-// question_text/extraction_note/hint_text -- no location, tier, genre, or
-// digit-requirement context from the original generation. Replaces
-// SELF_CORRECTION_PATTERN: that regex could only ever catch phrasing
-// already seen (it missed "actually, let's go with..." and later
-// "reconsidering" -- two different real leaks, two different words never
-// in its list). Asking a fresh call to adversarially judge the finished
-// text, rather than pattern-matching prose for words, isn't phrasing-
-// dependent the same way. Returns null on any failure (network error,
-// non-JSON response) -- treated as a rejection by the caller, same as
-// every other failure mode in this file: fail closed, never pass an
-// unverified question through because verification itself broke.
-async function verifyQuestion(
-  questionText: string,
-  extractionNote: string,
-  hintText: string
-): Promise<{ topicMismatch: boolean; hedgingFound: boolean; evidence: string } | null> {
-  const verificationPrompt = `A trivia question and its answer derivation are shown below. Check for three things: (1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given? (2) Does the derivation itself contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)? (3) Separately from (2): does the QUESTION TEXT itself show any visible deliberation, false start, or self-correction -- e.g. proposing one fact then abandoning it for "a cleaner one," narrating indecision over which detail to use, or any sign the writer reconsidered mid-question? A question can leak this even when its derivation is completely clean, so judge it independently, not as an afterthought to (2). Quote the exact problematic phrase if any of these is found. Respond with structured JSON: { topic_mismatch: boolean, hedging_found: boolean, evidence: string } -- set hedging_found to true if EITHER (2) or (3) applies.
+// Shared JSON-extraction logic for both verification calls below -- the
+// model reasons before answering, so the clean JSON object is always the
+// LAST one in the response (same reasoning as the main generation loop's
+// lastOpen/lastClose extraction).
+function extractLastJsonObject(text: string): any | null {
+  const lastOpen = text.lastIndexOf('{');
+  const lastClose = text.lastIndexOf('}');
+  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) return null;
+  try {
+    return JSON.parse(text.slice(lastOpen, lastClose + 1));
+  } catch {
+    return null;
+  }
+}
 
-Question: ${questionText}
-Derivation: ${extractionNote}
-Hint: ${hintText}
-
-Return ONLY valid JSON, no markdown fences, no preamble:
-{
-  "topic_mismatch": false,
-  "hedging_found": false,
-  "evidence": ""
-}`;
-
+async function callVerifier(prompt: string): Promise<any | null> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -797,29 +783,99 @@ Return ONLY valid JSON, no markdown fences, no preamble:
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
-      messages: [{ role: 'user', content: verificationPrompt }],
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   if (!response.ok) return null;
-
   const data = await response.json();
   const text = (data.content as any[]).map((b: any) => b.text || '').join('\n');
+  return extractLastJsonObject(text);
+}
 
-  const lastOpen = text.lastIndexOf('{');
-  const lastClose = text.lastIndexOf('}');
-  if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) return null;
+// Call A: factual/provenance judgment -- does correct_answer genuinely mean
+// what the question claims. Given movieTitle and correctAnswer explicitly
+// (not inferred from prose) because checks (4)/(5) below are meaningless
+// without knowing exactly which film and which number are in play. Split
+// out from the former single verifyQuestion call (see Call B below) so
+// this factual judgment doesn't compete for attention with the separate
+// text-hygiene judgment in one response -- five simultaneous checks in one
+// call risked each getting less scrutiny than a focused two-call split.
+// Returns null on any failure (network error, non-JSON response) --
+// treated as a rejection by the caller: fail closed, never pass an
+// unverified question through because verification itself broke.
+async function verifyFactualAccuracy(
+  questionText: string,
+  extractionNote: string,
+  movieTitle: string,
+  correctAnswer: number
+): Promise<{ topicMismatch: boolean; contrivedAnswer: boolean; nonDiegeticFact: boolean; evidence: string } | null> {
+  const factualPrompt = `A trivia question and its answer derivation are shown below, for the film "${movieTitle}". Check for three things:
 
-  try {
-    const parsed = JSON.parse(text.slice(lastOpen, lastClose + 1));
-    return {
-      topicMismatch: parsed.topic_mismatch === true,
-      hedgingFound: parsed.hedging_found === true,
-      evidence: String(parsed.evidence ?? ''),
-    };
-  } catch {
-    return null;
-  }
+(1) Does the derivation genuinely and directly answer what the question asks -- or is there any mismatch between the question's topic and the answer given?
+
+(4) Is correct_answer (${correctAnswer}) the film's ACTUAL, genuine fact -- the real number exactly as it would naturally be known, stated, or recalled by a fan (e.g. platform nine and three-quarters, a character in their fourth year, amps that go to eleven) -- or has it been arithmetically transformed, multiplied, reformatted, or pre-extracted specifically to manufacture a digit that wouldn't otherwise be there? Reject as contrived if: the real fact was multiplied or combined with an unrelated number to produce a different value (e.g. a school year of 4, multiplied by 10 to give "40"); a non-numeric or fractional real value was re-encoded into a fabricated numeral (e.g. platform 9¾ written as "934"); or the question itself asks the player to perform the digit-extraction step that should only ever happen in extraction_note (e.g. "enter the tens digit of 11" -- the player should be asked for 11 itself, never told to compute a digit from it). A transformed or fabricated correct_answer is a rejection even when the arithmetic shown is internally consistent -- the problem is the fact itself, not whether the shown math adds up.
+
+(5) Is the fact behind correct_answer something that appears WITHIN the film itself -- diegetic content the audience can see or hear on screen (a number shown, a line of dialogue, a count of objects or characters, an in-story date or address, an age stated in the story) -- or is it PRODUCTION or MARKETING metadata: a fact about how the film was made, shot, or marketed, that a viewer could only know from reading about the film, never from watching it (runtime, budget, box office, number of takes or cuts, technical specs like screen reflectivity or film stock, shooting schedule, release date, awards, off-screen crew counts)? Reject as non-diegetic if it's the latter.
+
+Quote the exact problematic phrase or value for any check that fires. Respond with structured JSON: { topic_mismatch: boolean, contrived_answer: boolean, non_diegetic_fact: boolean, evidence: string }.
+
+Question: ${questionText}
+Derivation: ${extractionNote}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "topic_mismatch": false,
+  "contrived_answer": false,
+  "non_diegetic_fact": false,
+  "evidence": ""
+}`;
+
+  const parsed = await callVerifier(factualPrompt);
+  if (!parsed) return null;
+  return {
+    topicMismatch: parsed.topic_mismatch === true,
+    contrivedAnswer: parsed.contrived_answer === true,
+    nonDiegeticFact: parsed.non_diegetic_fact === true,
+    evidence: String(parsed.evidence ?? ''),
+  };
+}
+
+// Call B: text-hygiene judgment -- self-correction/hedging language, kept
+// as its own call so it doesn't compete with Call A's factual judgment.
+// Replaces the old SELF_CORRECTION_PATTERN regex (could only ever catch
+// phrasing already seen -- it missed "actually, let's go with..." and
+// later "reconsidering", two different real leaks never in its list).
+// Fails closed the same way as Call A.
+async function verifyTextHygiene(
+  questionText: string,
+  extractionNote: string,
+  hintText: string
+): Promise<{ hedgingFound: boolean; evidence: string } | null> {
+  const hygienePrompt = `A trivia question and its answer derivation are shown below. Check for two things:
+
+(2) Does the derivation itself contain hedging, uncertainty, self-correction, or revised reasoning (e.g. phrases like "wait," "actually," "reconsidering," or any indication the answer was changed mid-thought)?
+
+(3) Separately from (2): does the QUESTION TEXT itself show any visible deliberation, false start, or self-correction -- e.g. proposing one fact then abandoning it for "a cleaner one," narrating indecision over which detail to use, or any sign the writer reconsidered mid-question? A question can leak this even when its derivation is completely clean, so judge it independently, not as an afterthought to (2).
+
+Quote the exact problematic phrase if either is found. Respond with structured JSON: { hedging_found: boolean, evidence: string } -- set hedging_found to true if EITHER (2) or (3) applies.
+
+Question: ${questionText}
+Derivation: ${extractionNote}
+Hint: ${hintText}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "hedging_found": false,
+  "evidence": ""
+}`;
+
+  const parsed = await callVerifier(hygienePrompt);
+  if (!parsed) return null;
+  return {
+    hedgingFound: parsed.hedging_found === true,
+    evidence: String(parsed.evidence ?? ''),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -947,7 +1003,7 @@ Location name: "${locationName}"
 Difficulty tier: ${tier}
 Guidance: ${tierGuidance(tier)}
 
-CRITICAL CONSTRAINT -- SOLVE THIS FIRST, BEFORE PICKING A FILM: you need a real-world number from film trivia that naturally contains the digit ${required_digit} somewhere in it (this digit fills one GPS coordinate slot). Films are full of numbers to draw on -- flight numbers, room numbers, years spoken in dialogue, counts of objects, a character's age, a street address, a vault or locker number, a platform number, a quantity, a date. Search for a number containing ${required_digit} FIRST, across the approved films listed below, THEN build the question around whichever film has the best-fitting number. Do not pick a film first and hope a fitting number turns up afterward -- that ordering is exactly what has been causing failures.
+CRITICAL CONSTRAINT -- SOLVE THIS FIRST, BEFORE PICKING A FILM: you need a real-world number that is a genuine, independently-verifiable fact from film trivia -- something true regardless of this task, that a fan would already know or could look up (a flight number, room number, a year spoken in dialogue, a count of objects, a character's age, a street address, a vault or locker number, a platform number, a quantity, a date). The digit ${required_digit} requirement is a FILTER applied to facts you already know -- search your existing knowledge of the approved films for a genuine fact that happens to naturally contain ${required_digit}. Do NOT invent, transform, multiply, recompute, or reformat a real fact to manufacture a number containing ${required_digit}: if platform nine and three-quarters doesn't naturally contain your digit, writing it as "934" is fabrication, not a fact; if a character is in year 4, multiplying by 10 to produce "40" is fabrication, not a fact. correct_answer must be the fact itself, stated exactly as it exists in the real world -- never a value produced by doing arithmetic on a real fact, and never the already-extracted single digit itself (that extraction belongs only in extraction_note, describing how the coordinate digit was derived from correct_answer -- never something the question asks the player to compute). If no genuine, unmodified fact among the approved films naturally contains ${required_digit}, choose a different film from the list instead of fabricating one to force a match.
 ${genreInstruction}${excludeConstraint}
 Your extraction_note MUST explain precisely how to get the digit ${required_digit} from correct_answer (e.g. "The tens digit of 88 is 8", "The last digit of 13 is 3", "The hundreds digit of 1994 is 9").
 
@@ -1129,7 +1185,7 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       continue;
     }
 
-    // Cheap phrasing-list check before the expensive verifyQuestion call --
+    // Cheap phrasing-list check before the expensive verification calls --
     // catches the same real leak this file was built to prevent elsewhere
     // (a question narrating "No -- let's go with a cleaner fact... Actually,
     // clean question:...") without needing a second API round-trip when the
@@ -1145,22 +1201,39 @@ Return ONLY valid JSON with no markdown fences and no preamble:
     }
 
     // Independent verification pass -- the last gate, run only once every
-    // other check has already passed. A second, separate API call given
-    // just the finished text (see verifyQuestion above for why this is
-    // stronger than a regex). Fails closed: a verification call that
-    // itself errors is treated as a rejection, not a pass-through.
-    const verification = await verifyQuestion(questionText, extractionNote, hintText);
-    if (!verification) {
-      lastFailureReason = 'Verification pass failed (network error or unparseable response)';
+    // other check has already passed. Two separate API calls given just
+    // the finished text (see verifyFactualAccuracy/verifyTextHygiene above
+    // for why this is stronger than a regex, and why it's two focused
+    // calls rather than one call juggling five judgments at once). Fails
+    // closed: either call erroring is treated as a rejection, not a
+    // pass-through.
+    const factualCheck = await verifyFactualAccuracy(
+      questionText,
+      extractionNote,
+      String(parsed.movie_title ?? ''),
+      correctAnswer
+    );
+    if (!factualCheck) {
+      lastFailureReason = 'Factual verification pass failed (network error or unparseable response)';
       continue;
     }
-    if (verification.topicMismatch || verification.hedgingFound) {
-      const reason = verification.topicMismatch && verification.hedgingFound
-        ? 'topic mismatch and hedging/self-correction'
-        : verification.topicMismatch
-          ? 'topic mismatch'
-          : 'hedging/self-correction';
-      lastFailureReason = `Verification rejected (${reason}): ${verification.evidence || 'no evidence quoted'}`;
+    if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
+      const reasons = [
+        factualCheck.topicMismatch ? 'topic mismatch' : null,
+        factualCheck.contrivedAnswer ? 'contrived/fabricated answer' : null,
+        factualCheck.nonDiegeticFact ? 'non-diegetic (production/marketing) fact' : null,
+      ].filter(Boolean).join(' and ');
+      lastFailureReason = `Factual verification rejected (${reasons}): ${factualCheck.evidence || 'no evidence quoted'}`;
+      continue;
+    }
+
+    const hygieneCheck = await verifyTextHygiene(questionText, extractionNote, hintText);
+    if (!hygieneCheck) {
+      lastFailureReason = 'Text-hygiene verification pass failed (network error or unparseable response)';
+      continue;
+    }
+    if (hygieneCheck.hedgingFound) {
+      lastFailureReason = `Text-hygiene verification rejected (hedging/self-correction): ${hygieneCheck.evidence || 'no evidence quoted'}`;
       continue;
     }
 
