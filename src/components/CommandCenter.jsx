@@ -434,8 +434,26 @@ function QuestionPoolTab() {
               detail = body?.error || body?.lastFailureReason;
             }
           } catch {
-            // Response body wasn't valid JSON -- fall through to the generic message.
+            // No usable JSON body -- confirmed against @supabase/functions-js's
+            // own source (FunctionsClient.js) rather than assumed: this is a
+            // FunctionsHttpError (error.context exists, so a real HTTP
+            // response came back) whose body isn't valid JSON. The known
+            // cause is a large batch running long enough to hit Supabase's
+            // wall-clock limit and getting killed mid-response -- but this
+            // can't be distinguished with certainty from any other cause of
+            // a non-JSON error body, hence "may have".
+            detail = 'Generation may have timed out (large batches can exceed Supabase\'s function time limit) -- try a smaller batch.';
           }
+        } else {
+          // error.context is undefined here -- per functions-js's own
+          // invoke(): only FunctionsHttpError/FunctionsRelayError get a
+          // .context at all; this is a FunctionsFetchError, meaning the
+          // request never got a response back (the connection dropped)
+          // rather than getting a real non-2xx response. This is what a
+          // platform-level kill looks like when it happens before the
+          // function can send anything back at all, distinct from the
+          // case above where a response did come back.
+          detail = 'Generation may have timed out or lost connection -- try a smaller batch.';
         }
         setGenerationError(detail || error.message || 'Batch generation failed');
         return;
