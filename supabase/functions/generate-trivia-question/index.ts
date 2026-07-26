@@ -1081,17 +1081,28 @@ async function handleBatchMode(
   // handler's own copy, which is out of scope here.
   const allowlistFilms = GENRE_FILM_ALLOWLIST[genre];
 
-  // Dedup source of truth: existing trivia_pool rows for this genre,
-  // fetched via the service-role client already in scope (bypasses RLS,
-  // same client used for the auth/admin checks above it). Authoritative,
-  // live state -- not a client-supplied list that could be stale.
+  // trivia_pool.difficulty is capped at 3 (see CommandCenter.jsx's
+  // TIER_TO_INT comment -- there's no question-level "4", only a
+  // puzzle-level one). Mirrored here rather than imported since this is a
+  // separate Deno runtime from the client app; same fallback (|| 2) and
+  // cap as fetchQuestionFor/the Question Pool tab use.
+  const difficulty = Math.min({ casual: 1, classic: 2, expert: 3, cipher: 4 }[tier] || 2, 3);
+
+  // Dedup source of truth: existing trivia_pool rows for this genre AND
+  // difficulty -- scoped to both, not genre alone, so the same fact can
+  // exist once per genre+difficulty rather than being permanently blocked
+  // at every other tier the moment it's banked at one. Fetched via the
+  // service-role client already in scope (bypasses RLS, same client used
+  // for the auth/admin checks above it). Authoritative, live state -- not
+  // a client-supplied list that could be stale.
   const { data: existingPoolRows } = await supabase
     .from('trivia_pool')
     .select('movie_title, correct_answer')
-    .eq('genre', genre);
+    .eq('genre', genre)
+    .eq('difficulty', difficulty);
 
   const seenPairs = new Set(
-    (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}`)
+    (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}::${difficulty}`)
   );
 
   const survivors: any[] = [];
@@ -1154,13 +1165,17 @@ async function handleBatchMode(
     }
 
     // Duplicate check (batch-specific): rejects a candidate matching an
-    // existing trivia_pool row for this genre on BOTH movie_title and
-    // correct_answer, and also matching an earlier survivor already
-    // accepted from this same batch (seenPairs gets a survivor's pair
-    // added below, so later candidates are checked against both).
-    const pairKey = `${String(q?.movie_title ?? '').trim().toLowerCase()}::${correctAnswer}`;
+    // existing trivia_pool row for this genre+difficulty on BOTH
+    // movie_title and correct_answer, and also matching an earlier
+    // survivor already accepted from this same batch (seenPairs gets a
+    // survivor's pair added below, so later candidates are checked
+    // against both). difficulty is included in the key explicitly (not
+    // just relied on via the query scoping above) so this stays correct
+    // if this function is ever called for more than one difficulty at a
+    // time.
+    const pairKey = `${String(q?.movie_title ?? '').trim().toLowerCase()}::${correctAnswer}::${difficulty}`;
     if (seenPairs.has(pairKey)) {
-      reject(`duplicate: movie_title "${q?.movie_title}" with correct_answer ${correctAnswer} already exists in trivia_pool for genre "${genre}" (or earlier in this batch)`);
+      reject(`duplicate: movie_title "${q?.movie_title}" with correct_answer ${correctAnswer} already exists in trivia_pool for genre "${genre}" at this difficulty (or earlier in this batch)`);
       continue;
     }
 
