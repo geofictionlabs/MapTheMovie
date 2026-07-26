@@ -951,6 +951,27 @@ export default function CommandCenter() {
         .map((w) => w.from_pool_id)
         .filter(Boolean);
 
+      // Content of already-used facts (title+answer) across OTHER
+      // waypoints in this hunt -- p_exclude_ids only excludes by pool ROW
+      // id, but two different rows (e.g. a Casual waypoint and a Classic
+      // waypoint) can share the same underlying fact, since the batch
+      // dedup gate allows the same movie_title+correct_answer to exist
+      // once PER DIFFICULTY, not once per genre overall. A hunt mixing
+      // tiers could otherwise draw the same fact twice via two rows
+      // p_exclude_ids can't tell apart. Checked client-side below, after
+      // each get_pooled_question call, rather than in the RPC itself:
+      // get_pooled_question has exactly one caller today (this one) --
+      // extending its signature to accept content-based exclusion would
+      // mean dropping and recreating a live RPC every hunt build depends
+      // on, for a safeguard only this one call site currently needs. If a
+      // second caller of get_pooled_question ever appears, this check
+      // should move into the function itself instead of being duplicated
+      // per caller.
+      const usedFacts = waypoints
+        .filter((w) => w.id !== id)
+        .map((w) => (w.movie_title ? `${w.movie_title.trim().toLowerCase()}::${w.correct_answer}` : null))
+        .filter(Boolean);
+
       // Pool lookup is a fast-path optimisation, not a required step --
       // any failure here (network, RPC error) falls through to AI
       // generation exactly as if the pool had no match, rather than
@@ -965,13 +986,35 @@ export default function CommandCenter() {
         // trivia_pool + RETURN NULL produced over PostgREST, which used
         // to make `if (pooled)` below wrongly read a genuine no-match as
         // a hit (blank waypoint card, no error, no AI fallback call).
-        const { data } = await supabase.rpc('get_pooled_question', {
-          p_digit: required_digit,
-          p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
-          p_genre: selectedGenre,
-          p_exclude_ids: usedPoolIds,
-        }).maybeSingle();
-        pooled = data;
+        //
+        // Bounded retry loop: a returned row whose fact is already used
+        // elsewhere in this hunt gets its id added to the exclude set and
+        // is retried, rather than accepted as a same-fact repeat. Capped
+        // at MAX_POOL_RETRIES so a genre/difficulty pool that's entirely
+        // (or mostly) colliding facts can't spin -- past the cap, this
+        // falls through to AI generation exactly like a genuine no-match
+        // would.
+        const excludeIds = [...usedPoolIds];
+        const MAX_POOL_RETRIES = 5;
+        for (let attempt = 0; attempt < MAX_POOL_RETRIES; attempt++) {
+          const { data } = await supabase.rpc('get_pooled_question', {
+            p_digit: required_digit,
+            p_difficulty: Math.min(TIER_TO_INT[tier] || 2, 3),
+            p_genre: selectedGenre,
+            p_exclude_ids: excludeIds,
+          }).maybeSingle();
+
+          if (!data) break; // pool exhausted -- fall through to AI generation
+
+          const factKey = data.movie_title ? `${data.movie_title.trim().toLowerCase()}::${data.correct_answer}` : null;
+          if (factKey && usedFacts.includes(factKey)) {
+            excludeIds.push(data.id);
+            continue;
+          }
+
+          pooled = data;
+          break;
+        }
       } catch (e) { /* fall through to AI generation below */ }
 
       if (pooled) {
