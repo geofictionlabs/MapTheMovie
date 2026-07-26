@@ -411,8 +411,18 @@ function QuestionPoolTab() {
     setSurvivors([]);
     setRejected([]);
     try {
+      // Derived from the coverage panel's own data -- already fetched,
+      // already visible on screen -- so this needs no separate control or
+      // manual selection. Soft preference only on the Edge Function side
+      // (see buildBatchPrompt's own comment there): passing every missing
+      // digit automatically is safe precisely because nothing ever
+      // enforces it.
+      const preferredDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(
+        (d) => !coverage.covered_digits.includes(d)
+      );
+
       const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
-        body: { mode: 'batch', genre: selectedGenre, tier: selectedTier, count },
+        body: { mode: 'batch', genre: selectedGenre, tier: selectedTier, count, preferred_digits: preferredDigits },
       });
 
       if (error) {
