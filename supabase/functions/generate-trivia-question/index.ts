@@ -962,6 +962,13 @@ async function handleBatchMode(
 
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
+  // TEMPORARY diagnostics -- last attempt's raw-response evidence, surfaced
+  // in the 502 body below so a real failure can be read directly instead of
+  // guessed at. Remove once the actual root cause of "Could not locate a
+  // valid questions array" (confirmed NOT max_tokens truncation -- that
+  // path already reports separately, see stop_reason check below) is
+  // identified and fixed.
+  let lastDiagnostics: unknown = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
     const prompt = buildBatchPrompt(count, tier, buildFilmSectionFn);
@@ -1008,6 +1015,15 @@ async function handleBatchMode(
       batchFailureReason = aiData.stop_reason === 'max_tokens'
         ? `Response truncated at max_tokens (${maxTokens} tokens for ${count} questions) before a complete JSON object could be parsed -- raise max_tokens or reduce count`
         : 'Could not locate a valid questions array in the AI response';
+
+      // TEMPORARY -- see declaration above.
+      lastDiagnostics = {
+        stop_reason: aiData.stop_reason ?? null,
+        text_length: text.length,
+        text_head: text.slice(0, 300),
+        text_tail: text.slice(-300),
+        parsed_keys: obj ? Object.keys(obj) : null,
+      };
       continue;
     }
 
@@ -1017,7 +1033,8 @@ async function handleBatchMode(
 
   if (!candidates) {
     return new Response(
-      JSON.stringify({ error: `Batch generation failed after ${BATCH_MAX_ATTEMPTS} attempts`, lastFailureReason: batchFailureReason }),
+      // debug is TEMPORARY -- see lastDiagnostics declaration above.
+      JSON.stringify({ error: `Batch generation failed after ${BATCH_MAX_ATTEMPTS} attempts`, lastFailureReason: batchFailureReason, debug: lastDiagnostics }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
