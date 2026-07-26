@@ -322,6 +322,455 @@ function ManageHuntsTab() {
   );
 }
 
+// Deliberately brighter/more saturated palette than the file's own COLORS --
+// per instruction, the existing tokens are too dim for this tab. Hardcoded
+// hex only, same house rule as COLORS above -- never a CSS var.
+const POOL_COLORS = {
+  bg: '#0B0B14',
+  panel: '#121218',
+  card: '#15151F',
+  border: '#2A2A3E',
+  divider: '#1F1F2E',
+  text: '#F1F0FF',
+  muted: '#A8A5C0',
+  dimmer: '#8B8B9A',
+  purple: '#7C3AED',
+  gold: '#F59E0B',
+  green: '#5DCAA5',
+  red: '#F09595',
+  tier: { casual: '#10B981', classic: '#7C3AED', expert: '#F59E0B', cipher: '#EF4444' },
+};
+
+// Question Pool — bulk trivia generation review UI. Calls
+// generate-trivia-question in mode=batch (candidates only, nothing saved
+// yet), lets an admin manually approve/reject each survivor, then promotes
+// approved ones via promote_bulk_question_to_pool (migration 061). Coverage
+// (get_pool_coverage, migration 062) is read-only display -- trivia_pool
+// itself has RLS with zero policies, so this is the only way the client can
+// see pool state at all.
+function QuestionPoolTab() {
+  const [selectedGenre, setSelectedGenre] = useState(GENRES[0].key);
+  const [selectedTier, setSelectedTier] = useState('casual');
+  const [count, setCount] = useState(10);
+
+  const [generating, setGenerating] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [generationError, setGenerationError] = useState(null);
+
+  // Each survivor gets a client-only _id (nothing is saved until Approve)
+  // and a local status: 'pending' | 'approved' | 'rejected'. 'rejected'
+  // here is a MANUAL admin decision, distinct from the `rejected` array
+  // below, which is the Edge Function's own automated gate rejections --
+  // those never became candidates at all.
+  const [survivors, setSurvivors] = useState([]);
+  const [rejected, setRejected] = useState([]);
+  const [rejectedExpanded, setRejectedExpanded] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const [coverage, setCoverage] = useState({ covered_digits: [], row_count: 0 });
+
+  // trivia_pool.difficulty is capped at 3 (see TIER_TO_INT comment above) --
+  // same LEAST(tier_int, 3) discipline already used for get_pooled_question
+  // and create_command_center_hunt, applied here too. promote_bulk_question_
+  // to_pool (migration 061) does NOT cap this itself -- it inserts whatever
+  // p_difficulty it's given -- so a Cipher question promoted uncapped here
+  // would be banked at difficulty 4 and then never surface, since
+  // get_pooled_question is always called with min(tier, 3). The cap has to
+  // be applied client-side, at both call sites that send a difficulty
+  // (here and get_pool_coverage below), same fallback (|| 2) as
+  // fetchQuestionFor uses for an unrecognised tier.
+  const difficulty = Math.min(TIER_TO_INT[selectedTier] || 2, 3);
+
+  async function refreshCoverage(genre, tier) {
+    const diff = Math.min(TIER_TO_INT[tier] || 2, 3);
+    const { data, error } = await supabase
+      .rpc('get_pool_coverage', { p_genre: genre, p_difficulty: diff })
+      .single();
+    if (!error && data) {
+      setCoverage({ covered_digits: data.covered_digits || [], row_count: data.row_count || 0 });
+    }
+  }
+
+  useEffect(() => {
+    refreshCoverage(selectedGenre, selectedTier);
+  }, [selectedGenre, selectedTier]);
+
+  // Honest progress, not a bare spinner -- batch generation runs each
+  // candidate through two separate verification API calls on top of
+  // generation itself, so 30-60s for a batch of 10 is normal, not stuck.
+  useEffect(() => {
+    if (!generating) return;
+    setElapsed(0);
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [generating]);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setGenerationError(null);
+    setSurvivors([]);
+    setRejected([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
+        body: { mode: 'batch', genre: selectedGenre, tier: selectedTier, count },
+      });
+
+      if (error) {
+        // Same extraction discipline as triviaApi.js's generateTriviaQuestion
+        // -- FunctionsHttpError's own .message is a fixed generic string,
+        // the real reason lives in the response body via error.context.
+        let detail = null;
+        if (error.context) {
+          try {
+            const body = await error.context.json();
+            detail = body?.error || body?.lastFailureReason;
+          } catch {
+            // Response body wasn't valid JSON -- fall through to the generic message.
+          }
+        }
+        setGenerationError(detail || error.message || 'Batch generation failed');
+        return;
+      }
+      if (data?.error) {
+        setGenerationError(data.error);
+        return;
+      }
+
+      setSurvivors((data.survivors || []).map((s) => ({ ...s, _id: crypto.randomUUID(), status: 'pending', approving: false, approveError: null })));
+      setRejected(data.rejected || []);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function approveOne(card) {
+    setSurvivors((prev) => prev.map((s) => (s._id === card._id ? { ...s, approving: true, approveError: null } : s)));
+
+    const { error } = await supabase.rpc('promote_bulk_question_to_pool', {
+      p_movie_title: card.movie_title,
+      p_movie_year: card.movie_year,
+      p_movie_emoji: card.movie_emoji,
+      p_question_text: card.question_text,
+      p_hint_text: card.hint_text,
+      p_correct_answer: card.correct_answer,
+      p_extraction_note: card.extraction_note,
+      p_genre: selectedGenre,
+      p_difficulty: difficulty,
+    });
+
+    setSurvivors((prev) => prev.map((s) => (
+      s._id === card._id
+        ? { ...s, approving: false, status: error ? 'pending' : 'approved', approveError: error ? error.message : null }
+        : s
+    )));
+
+    if (!error) refreshCoverage(selectedGenre, selectedTier);
+  }
+
+  function rejectOne(card) {
+    setSurvivors((prev) => prev.map((s) => (s._id === card._id ? { ...s, status: 'rejected' } : s)));
+  }
+
+  async function approveAll() {
+    setBulkBusy(true);
+    // Best-effort, sequential -- a failed card keeps its 'pending' status
+    // (see approveOne) and its own approveError, rather than one failure
+    // aborting the rest of the batch.
+    for (const card of survivors.filter((s) => s.status === 'pending')) {
+      await approveOne(card);
+    }
+    setBulkBusy(false);
+  }
+
+  function rejectAll() {
+    setSurvivors((prev) => prev.map((s) => (s.status === 'pending' ? { ...s, status: 'rejected' } : s)));
+  }
+
+  const pendingCount = survivors.filter((s) => s.status === 'pending').length;
+  const approvedCount = survivors.filter((s) => s.status === 'approved').length;
+  const rejectedCount = survivors.filter((s) => s.status === 'rejected').length;
+
+  return (
+    <div style={{ background: POOL_COLORS.bg, borderRadius: 8, padding: 20 }}>
+      {/* Coverage panel */}
+      <div style={{ background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => {
+            const covered = coverage.covered_digits.includes(d);
+            return (
+              <div
+                key={d}
+                style={{
+                  width: 32, height: 32, borderRadius: 6,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, fontFamily: 'monospace',
+                  background: covered ? '#1D9E75' : '#2A1518',
+                  color: covered ? '#04342C' : '#F09595',
+                  border: covered ? 'none' : '1px solid #E24B4A',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {d}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 12, color: POOL_COLORS.muted }}>
+          {coverage.covered_digits.length} of 10 digits covered · {coverage.row_count} question{coverage.row_count === 1 ? '' : 's'} in pool
+        </div>
+      </div>
+
+      {/* Controls row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <select
+          value={selectedGenre}
+          onChange={(e) => setSelectedGenre(e.target.value)}
+          style={{
+            padding: '8px 12px', borderRadius: 6, fontSize: 13,
+            background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`,
+            color: POOL_COLORS.text, outline: 'none',
+          }}
+        >
+          {GENRES.map((g) => (
+            <option key={g.key} value={g.key}>{g.label}</option>
+          ))}
+        </select>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['casual', 'classic', 'expert', 'cipher'].map((t) => (
+            <button
+              key={t}
+              onClick={() => setSelectedTier(t)}
+              style={{
+                padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                textTransform: 'capitalize', cursor: 'pointer',
+                background: selectedTier === t ? POOL_COLORS.tier[t] : 'transparent',
+                color: selectedTier === t ? '#0B0B14' : POOL_COLORS.tier[t],
+                border: `1px solid ${POOL_COLORS.tier[t]}`,
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={count}
+          onChange={(e) => setCount(Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 10)))}
+          style={{
+            width: 64, padding: '8px 10px', borderRadius: 6, fontSize: 13,
+            background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`,
+            color: POOL_COLORS.text, outline: 'none',
+          }}
+        />
+
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+            background: POOL_COLORS.purple, color: '#F1F0FF', border: 'none',
+            cursor: generating ? 'default' : 'pointer', opacity: generating ? 0.7 : 1,
+          }}
+        >
+          {generating && <Spinner size={14} />}
+          {generating ? 'Generating…' : 'Generate batch'}
+        </button>
+      </div>
+
+      {generating && (
+        <div style={{ fontSize: 12, color: POOL_COLORS.muted, marginBottom: 20 }}>
+          {elapsed}s elapsed — each candidate needs two independent verification passes on top of generation itself, this can take 30-60s.
+        </div>
+      )}
+
+      {generationError && (
+        <div style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: '#2A1518', border: '1px solid #E24B4A', color: POOL_COLORS.red, fontSize: 13,
+        }}>
+          {generationError}
+        </div>
+      )}
+
+      {survivors.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <button
+            onClick={approveAll}
+            disabled={bulkBusy || pendingCount === 0}
+            style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: pendingCount === 0 ? 'default' : 'pointer',
+              background: POOL_COLORS.green, color: '#04342C', border: 'none', opacity: pendingCount === 0 ? 0.5 : 1,
+            }}
+          >
+            Approve all
+          </button>
+          <button
+            onClick={rejectAll}
+            disabled={bulkBusy || pendingCount === 0}
+            style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: pendingCount === 0 ? 'default' : 'pointer',
+              background: 'transparent', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`, opacity: pendingCount === 0 ? 0.5 : 1,
+            }}
+          >
+            Reject all
+          </button>
+          <span style={{ fontSize: 12, color: POOL_COLORS.muted }}>
+            {pendingCount} pending · {approvedCount} approved · {rejectedCount} rejected
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {survivors.map((card) => {
+          const dimmed = card.status === 'approved' || card.status === 'rejected';
+          const gapDigits = (card.available_digits || []).filter((d) => !coverage.covered_digits.includes(d));
+
+          return (
+            <div
+              key={card._id}
+              style={{
+                display: 'flex', gap: 16, padding: 16, borderRadius: 8,
+                background: POOL_COLORS.card, border: `1px solid ${POOL_COLORS.border}`,
+                opacity: dimmed ? 0.55 : 1,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: POOL_COLORS.gold, fontWeight: 700, fontSize: 14 }}>{card.movie_title}</span>
+                  {card.movie_year != null && (
+                    <span style={{ color: '#8B8B9A', fontSize: 12 }}>{card.movie_year}</span>
+                  )}
+                  {card.fact_category && (
+                    <span style={{
+                      background: '#26215C', color: '#CECBF6', fontSize: 11, fontWeight: 600,
+                      padding: '2px 8px', borderRadius: 999,
+                    }}>
+                      {card.fact_category}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 15, color: '#F1F0FF', lineHeight: 1.5, marginBottom: 10 }}>
+                  {card.question_text}
+                </div>
+
+                <div style={{ fontSize: 13, marginBottom: 10 }}>
+                  <span style={{ color: POOL_COLORS.muted }}>Answer </span>
+                  <span style={{ color: POOL_COLORS.gold, fontFamily: 'monospace', fontWeight: 700 }}>{card.correct_answer}</span>
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                  {(card.available_digits || []).map((d) => (
+                    <span
+                      key={d}
+                      style={{
+                        width: 24, height: 24, borderRadius: 999, background: '#26215C', color: '#CECBF6',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 700, fontFamily: 'monospace',
+                      }}
+                    >
+                      {d}
+                    </span>
+                  ))}
+                  {gapDigits.map((d) => (
+                    <span
+                      key={`gap-${d}`}
+                      style={{
+                        background: '#0F2A1F', color: '#5DCAA5', fontSize: 11, fontWeight: 600,
+                        padding: '3px 8px', borderRadius: 999,
+                      }}
+                    >
+                      fills digit {d} gap
+                    </span>
+                  ))}
+                </div>
+
+                {card.extraction_note && (
+                  <div style={{ fontSize: 12, color: '#8B8B9A' }}>{card.extraction_note}</div>
+                )}
+                {card.approveError && (
+                  <div style={{ fontSize: 12, color: POOL_COLORS.red, marginTop: 6 }}>Approve failed: {card.approveError}</div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center', flexShrink: 0 }}>
+                {card.status === 'approved' ? (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: POOL_COLORS.green, padding: '8px 14px', textAlign: 'center' }}>
+                    Approved
+                  </span>
+                ) : card.status === 'rejected' ? (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: POOL_COLORS.red, padding: '8px 14px', textAlign: 'center' }}>
+                    Rejected
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => approveOne(card)}
+                      disabled={card.approving}
+                      style={{
+                        padding: '8px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: card.approving ? 'default' : 'pointer',
+                        background: POOL_COLORS.green, color: '#04342C', border: 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      {card.approving ? <Spinner size={12} /> : 'Approve'}
+                    </button>
+                    <button
+                      onClick={() => rejectOne(card)}
+                      disabled={card.approving}
+                      style={{
+                        padding: '8px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        background: 'transparent', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {rejected.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <button
+            onClick={() => setRejectedExpanded((e) => !e)}
+            style={{
+              background: 'transparent', border: 'none', color: POOL_COLORS.muted, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {rejectedExpanded ? '▾' : '▸'} Rejected during generation ({rejected.length})
+          </button>
+          {rejectedExpanded && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {rejected.map((r, i) => (
+                <div
+                  key={i}
+                  style={{ padding: 12, borderRadius: 6, background: POOL_COLORS.card, border: `1px solid ${POOL_COLORS.divider}` }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: POOL_COLORS.text, marginBottom: 4 }}>
+                    {r.movie_title || 'Unknown'} — <span style={{ fontFamily: 'monospace' }}>{r.correct_answer ?? '?'}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: POOL_COLORS.red }}>{r.rejection_reason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CommandCenter() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -679,7 +1128,7 @@ export default function CommandCenter() {
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
-          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }].map((t) => (
+          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }].map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
@@ -697,6 +1146,8 @@ export default function CommandCenter() {
 
         {activeTab === 'manage' ? (
           <ManageHuntsTab />
+        ) : activeTab === 'pool' ? (
+          <QuestionPoolTab />
         ) : (
         <>
         {/* Pack name */}
