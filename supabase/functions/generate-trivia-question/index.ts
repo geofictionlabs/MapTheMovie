@@ -757,6 +757,17 @@ function containsExactNumber(text: string, num: number): boolean {
   return new RegExp(`(?<!\\d)${num}(?!\\d)`).test(text);
 }
 
+// Mirrors the SQL formula used by promote_question_to_pool and
+// promote_bulk_question_to_pool: ARRAY(SELECT DISTINCT unnest(string_to_
+// array(abs(x)::text, NULL))::int ORDER BY 1). Display-only here -- the
+// RPC recomputes this itself, server-side, at actual insert time; this
+// copy is never trusted for anything but showing the review UI which
+// digits a candidate would cover.
+function computeAvailableDigits(value: number): number[] {
+  const digits = new Set(Math.abs(value).toString().split('').map((d) => parseInt(d, 10)));
+  return Array.from(digits).sort((a, b) => a - b);
+}
+
 // Shared JSON-extraction logic for both verification calls below -- the
 // model reasons before answering, so the clean JSON object is always the
 // LAST one in the response (same reasoning as the main generation loop's
@@ -878,6 +889,260 @@ Return ONLY valid JSON, no markdown fences, no preamble:
   };
 }
 
+// Builds the batch-mode generation prompt: no digit framing at all (that's
+// the whole point -- see handleBatchMode below), asking instead for N
+// genuinely distinct real facts across N different approved films, with
+// an explicit push toward varied fact KINDS (not just varied films) and a
+// preference for multi-digit answers. filmSection is buildFilmSection([])
+// from the enclosing request handler -- called with no attempted-titles
+// exclusion since batch mode has no per-attempt retry loop to accumulate
+// one.
+function buildBatchPrompt(
+  count: number,
+  tier: string,
+  filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
+): string {
+  const { instruction: genreInstruction } = filmSection([]);
+
+  return `Generate ${count} DISTINCT movie trivia questions for a treasure-hunt trivia pool. Each question must be about a different approved film -- do not repeat a film across this batch.
+Difficulty tier: ${tier}
+Guidance: ${tierGuidance(tier)}
+
+Beyond varying the films, vary the KIND of numeric fact across the batch -- do not let every question be a street number, room number, address, or age (that pattern is over-represented already). Films are full of other rich material: a count of objects or characters, how many times an event repeats in the story, a quantity of something acquired or needed, a score or ranking, a countdown or time limit, a year spoken aloud in dialogue, a distance, a speed, an amount of money. Aim for a genuine mix of these categories across the batch, not a single repeated pattern. Prefer facts with multi-digit answers (3-4 digits) where a genuine, real fact naturally has that many digits -- a single well-chosen multi-digit fact covers as many future coordinate slots as 3-4 separate single-digit questions would, so it's worth deliberately favoring over an equally-valid 1-2 digit fact when both are genuinely true.
+
+Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
+${genreInstruction}
+Your extraction_note for each question must clearly document the real fact behind correct_answer (e.g. "The tens digit of 88 is 8" style phrasing is fine, but is no longer required to target any specific digit -- just document the real fact clearly and correctly).
+
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Each correct_answer field must contain ONLY the final integer -- no reasoning, no working, no explanation. question_text, extraction_note, and hint_text must be completely free of reasoning, self-correction, or alternate attempts -- never "wait", "actually", "let's go with", or any visible sign you reconsidered mid-question.
+
+Each question must be about exactly one film: movie_title. Before finalising each question, check its question_text, extraction_note, and hint_text for any OTHER film title mentioned -- list every such title in that question's other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films (rare).
+
+For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
+
+Return ONLY valid JSON with no markdown fences and no preamble:
+{
+  "questions": [
+    {
+      "question_text": "...",
+      "movie_title": "...",
+      "movie_year": 1985,
+      "movie_emoji": "...",
+      "correct_answer": 88,
+      "extraction_note": "...",
+      "hint_text": "...",
+      "other_films_mentioned": [],
+      "fact_category": "count"
+    }
+  ]
+}`;
+}
+
+// Batch mode: one Anthropic call generates up to `count` candidate
+// questions with no required_digit at all -- which digits each survivor
+// covers is computed afterward (computeAvailableDigits), never demanded
+// upfront. Every existing per-question gate still runs, EXCEPT the
+// digit-inclusion check (nothing to check it against). No per-question
+// retry-with-feedback (that's what single mode does) -- a candidate
+// either passes every gate or it's reported in `rejected` with a reason;
+// the caller decides what to do about a partial batch. The only retry
+// here is a small outer one (BATCH_MAX_ATTEMPTS) for the case where the
+// ENTIRE call fails outright -- network error, or the top-level JSON
+// never parses at all -- since a single transient failure shouldn't
+// waste the whole admin request.
+async function handleBatchMode(
+  supabase: any,
+  genre: string,
+  tier: string,
+  rawCount: unknown,
+  buildFilmSectionFn: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
+): Promise<Response> {
+  const count = Number.isInteger(rawCount) && (rawCount as number) > 0 ? (rawCount as number) : 10;
+  const BATCH_MAX_ATTEMPTS = 2;
+
+  let batchFailureReason = 'unknown';
+  let candidates: any[] | null = null;
+
+  for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
+    const prompt = buildBatchPrompt(count, tier, buildFilmSectionFn);
+
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600 * count,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      batchFailureReason = `AI request failed: ${await aiResponse.text()}`;
+      continue;
+    }
+
+    const aiData = await aiResponse.json();
+    const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
+    const obj = extractLastJsonObject(text);
+
+    if (!obj || !Array.isArray(obj.questions)) {
+      batchFailureReason = 'Could not locate a valid questions array in the AI response';
+      continue;
+    }
+
+    candidates = obj.questions;
+    break;
+  }
+
+  if (!candidates) {
+    return new Response(
+      JSON.stringify({ error: `Batch generation failed after ${BATCH_MAX_ATTEMPTS} attempts`, lastFailureReason: batchFailureReason }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // handleBatchMode is a top-level function, not a closure inside
+  // Deno.serve -- recomputed locally rather than reused from the request
+  // handler's own copy, which is out of scope here.
+  const allowlistFilms = GENRE_FILM_ALLOWLIST[genre];
+
+  // Dedup source of truth: existing trivia_pool rows for this genre,
+  // fetched via the service-role client already in scope (bypasses RLS,
+  // same client used for the auth/admin checks above it). Authoritative,
+  // live state -- not a client-supplied list that could be stale.
+  const { data: existingPoolRows } = await supabase
+    .from('trivia_pool')
+    .select('movie_title, correct_answer')
+    .eq('genre', genre);
+
+  const seenPairs = new Set(
+    (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}`)
+  );
+
+  const survivors: any[] = [];
+  const rejected: any[] = [];
+
+  for (const q of candidates) {
+    const reject = (reason: string) => rejected.push({ ...q, rejection_reason: reason });
+
+    if (allowlistFilms && allowlistFilms.length > 0) {
+      const normalizedTitle = String(q?.movie_title ?? '').trim().toLowerCase();
+      const isAllowed = allowlistFilms.some((f) => f.trim().toLowerCase() === normalizedTitle);
+      if (!isAllowed) {
+        reject(`movie_title "${q?.movie_title}" is not in the approved ${genre} allowlist`);
+        continue;
+      }
+    }
+
+    const rawAnswer = String(q?.correct_answer ?? '').trim();
+    if (!/^\d+$/.test(rawAnswer)) {
+      reject(`correct_answer was not a clean integer: "${rawAnswer}"`);
+      continue;
+    }
+    const correctAnswer = parseInt(rawAnswer, 10);
+
+    const titleNumbers = extractNumbers(String(q?.movie_title ?? ''));
+    if (titleNumbers.has(correctAnswer)) {
+      reject(`correct_answer (${correctAnswer}) appears directly in movie_title "${q?.movie_title}" -- answerable without seeing the film`);
+      continue;
+    }
+
+    const extractionNote = String(q?.extraction_note ?? '');
+    const questionText = String(q?.question_text ?? '');
+    const hintText = String(q?.hint_text ?? '');
+
+    if (containsExactNumber(questionText, correctAnswer)) {
+      reject(`question_text contains the literal correct_answer (${correctAnswer}) -- answerable without deriving it`);
+      continue;
+    }
+
+    const otherFilms = Array.isArray(q?.other_films_mentioned)
+      ? q.other_films_mentioned.filter((f: unknown) => typeof f === 'string' && f.trim())
+      : [];
+    if (otherFilms.length > 0) {
+      reject(`question referenced other film title(s) besides movie_title: ${otherFilms.join(', ')}`);
+      continue;
+    }
+
+    if (impliesCalculation(questionText) && !hasDerivationSignal(extractionNote)) {
+      reject('question_text implies a calculation but extraction_note does not show a derivation');
+      continue;
+    }
+
+    const questionCorrection = findSelfCorrectionMarker(questionText);
+    const hintCorrection = findSelfCorrectionMarker(hintText);
+    if (questionCorrection || hintCorrection) {
+      const field = questionCorrection ? 'question_text' : 'hint_text';
+      const marker = questionCorrection ?? hintCorrection;
+      reject(`${field} contains a self-correction marker: "${marker}"`);
+      continue;
+    }
+
+    // Duplicate check (batch-specific): rejects a candidate matching an
+    // existing trivia_pool row for this genre on BOTH movie_title and
+    // correct_answer, and also matching an earlier survivor already
+    // accepted from this same batch (seenPairs gets a survivor's pair
+    // added below, so later candidates are checked against both).
+    const pairKey = `${String(q?.movie_title ?? '').trim().toLowerCase()}::${correctAnswer}`;
+    if (seenPairs.has(pairKey)) {
+      reject(`duplicate: movie_title "${q?.movie_title}" with correct_answer ${correctAnswer} already exists in trivia_pool for genre "${genre}" (or earlier in this batch)`);
+      continue;
+    }
+
+    const factualCheck = await verifyFactualAccuracy(
+      questionText,
+      extractionNote,
+      String(q?.movie_title ?? ''),
+      correctAnswer
+    );
+    if (!factualCheck) {
+      reject('Factual verification pass failed (network error or unparseable response)');
+      continue;
+    }
+    if (factualCheck.topicMismatch || factualCheck.contrivedAnswer || factualCheck.nonDiegeticFact) {
+      const reasons = [
+        factualCheck.topicMismatch ? 'topic mismatch' : null,
+        factualCheck.contrivedAnswer ? 'contrived/fabricated answer' : null,
+        factualCheck.nonDiegeticFact ? 'non-diegetic (production/marketing) fact' : null,
+      ].filter(Boolean).join(' and ');
+      reject(`Factual verification rejected (${reasons}): ${factualCheck.evidence || 'no evidence quoted'}`);
+      continue;
+    }
+
+    const hygieneCheck = await verifyTextHygiene(questionText, extractionNote, hintText);
+    if (!hygieneCheck) {
+      reject('Text-hygiene verification pass failed (network error or unparseable response)');
+      continue;
+    }
+    if (hygieneCheck.hedgingFound) {
+      reject(`Text-hygiene verification rejected (hedging/self-correction): ${hygieneCheck.evidence || 'no evidence quoted'}`);
+      continue;
+    }
+
+    seenPairs.add(pairKey);
+    survivors.push({
+      question_text: q.question_text,
+      movie_title: q.movie_title,
+      movie_year: q.movie_year ?? null,
+      movie_emoji: q.movie_emoji || '🎬',
+      correct_answer: correctAnswer,
+      extraction_note: q.extraction_note,
+      hint_text: q.hint_text,
+      fact_category: typeof q?.fact_category === 'string' ? q.fact_category : null,
+      available_digits: computeAvailableDigits(correctAnswer),
+    });
+  }
+
+  return new Response(
+    JSON.stringify({ survivors, rejected }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -919,22 +1184,37 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json();
-  const { locationName, tier, required_digit, genre, exclude_movies } = body;
+  const { locationName, tier, required_digit, genre, exclude_movies, mode, count } = body;
+  const isBatch = mode === 'batch';
 
-  if (!locationName || !tier) {
-    return new Response(JSON.stringify({ error: 'locationName and tier are required' }), {
+  if (!tier) {
+    return new Response(JSON.stringify({ error: 'tier is required' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  if (
+  // locationName ties a question to one specific waypoint -- batch mode
+  // isn't building one waypoint's question, it's stocking the pool, so
+  // there's no single location to tie it to.
+  if (!isBatch && !locationName) {
+    return new Response(JSON.stringify({ error: 'locationName is required' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // required_digit doesn't apply to batch mode at all -- that's the whole
+  // point (see buildBatchPrompt below): which digits a batch's questions
+  // cover is computed afterward from whatever real facts the model finds,
+  // never demanded upfront.
+  if (!isBatch && (
     required_digit === undefined ||
     required_digit === null ||
     !Number.isInteger(required_digit) ||
     required_digit < 0 ||
     required_digit > 9
-  ) {
+  )) {
     return new Response(
       JSON.stringify({ error: 'required_digit must be an integer 0-9' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -979,6 +1259,10 @@ Deno.serve(async (req) => {
       };
     }
     return { instruction: '', hasConstraint: false };
+  }
+
+  if (isBatch) {
+    return await handleBatchMode(supabase, genre, tier, count, buildFilmSection);
   }
 
   // Digit constraint now comes FIRST, before film selection -- the search
