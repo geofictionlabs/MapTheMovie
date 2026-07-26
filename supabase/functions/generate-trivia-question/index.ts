@@ -1010,9 +1010,27 @@ function buildBatchPrompt(
   count: number,
   tier: string,
   existingTitles: string[],
+  preferredDigits: number[],
   filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
 ): string {
   const { instruction: genreInstruction } = filmSection(existingTitles);
+
+  // Soft preference only -- deliberately never a validation gate. Single-
+  // question mode's HARD digit requirement is what caused the contrived-
+  // arithmetic fabrication problem (platform 9¾ written as "934", a
+  // school year of 4 multiplied by 10 to give "40" -- see the digit-as-
+  // filter prompt reframing and verifyFactualAccuracy's contrived-answer
+  // check elsewhere in this file). Batch mode must not reintroduce that
+  // pressure, so this is worded as a preference among genuine facts, with
+  // an explicit repeat of the anti-fabrication rule right where the
+  // preference is stated, and no code anywhere checks whether a survivor
+  // actually contains one of these digits. Omitted entirely when there's
+  // nothing meaningful to say: an empty list (nothing missing) or all 10
+  // digits (an empty pool, where "prefer any of these 10" is a no-op
+  // dressed as guidance) both carry zero real signal.
+  const digitPreference = preferredDigits.length > 0 && preferredDigits.length < 10
+    ? `\nThe pool currently lacks facts whose answers contain the digit(s) ${preferredDigits.join(', ')}. Where a genuine, unmodified fact naturally contains one of these, favour it -- but ONLY where such a fact genuinely exists. Never transform, pad, or reformat a fact to produce a preferred digit, and never skip a good question because its answer lacks one. Questions without a preferred digit are still wanted.\n`
+    : '';
 
   return `Generate ${count} DISTINCT movie trivia questions for a treasure-hunt trivia pool. Each question must be about a different approved film -- do not repeat a film across this batch. This batch is one contribution to a larger, ongoing pool for this genre and difficulty, not a self-contained set -- the actual goal is breadth across the full approved list over many batches, not just variety within these ${count} questions. Films already well-represented in the pool have already been excluded from the list below; among what remains, favour titles you would not otherwise reach for first, rather than defaulting to the same few most iconic ones whenever several approved films would work equally well.
 
@@ -1023,7 +1041,7 @@ Guidance: ${tierGuidance(tier)}
 Beyond varying the films, vary the KIND of numeric fact across the batch -- do not let every question be a street number, room number, address, or age (that pattern is over-represented already). Films are full of other rich material: a count of objects or characters, how many times an event repeats in the story, a quantity of something acquired or needed, a score or ranking, a countdown or time limit, a year spoken aloud in dialogue, a distance, a speed, an amount of money. Aim for a genuine mix of these categories across the batch, not a single repeated pattern. Prefer facts with multi-digit answers (3-4 digits) where a genuine, real fact naturally has that many digits -- a single well-chosen multi-digit fact covers as many future coordinate slots as 3-4 separate single-digit questions would, so it's worth deliberately favoring over an equally-valid 1-2 digit fact when both are genuinely true.
 
 Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
-${genreInstruction}
+${digitPreference}${genreInstruction}
 Your extraction_note for each question must clearly document the real fact behind correct_answer (e.g. "The tens digit of 88 is 8" style phrasing is fine, but is no longer required to target any specific digit -- just document the real fact clearly and correctly).
 
 Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Each correct_answer field must contain ONLY the final integer -- no reasoning, no working, no explanation. question_text, extraction_note, and hint_text must be completely free of reasoning, self-correction, or alternate attempts -- never "wait", "actually", "let's go with", or any visible sign you reconsidered mid-question.
@@ -1111,10 +1129,19 @@ async function handleBatchMode(
   genre: string,
   tier: string,
   rawCount: unknown,
+  rawPreferredDigits: unknown,
   buildFilmSectionFn: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
 ): Promise<Response> {
   const count = Number.isInteger(rawCount) && (rawCount as number) > 0 ? (rawCount as number) : 10;
   const BATCH_MAX_ATTEMPTS = 2;
+
+  // Sanitised, never trusted as-is -- client-supplied, soft preference
+  // only (see buildBatchPrompt's own comment on why this must never
+  // become a validation gate). Anything not a clean 0-9 integer is
+  // dropped rather than passed through.
+  const preferredDigits: number[] = Array.isArray(rawPreferredDigits)
+    ? rawPreferredDigits.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 9)
+    : [];
 
   // trivia_pool.difficulty is capped at 3 (see CommandCenter.jsx's
   // TIER_TO_INT comment -- there's no question-level "4", only a
@@ -1152,7 +1179,7 @@ async function handleBatchMode(
   let candidates: any[] | null = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
-    const prompt = buildBatchPrompt(count, tier, existingTitles, buildFilmSectionFn);
+    const prompt = buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn);
 
     // 900/question (raised from 600 -- see comment below on why 600 was
     // suspect, not confirmed insufficient). Not empirically verified
@@ -1417,7 +1444,7 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json();
-  const { locationName, tier, required_digit, genre, exclude_movies, mode, count } = body;
+  const { locationName, tier, required_digit, genre, exclude_movies, mode, count, preferred_digits } = body;
   const isBatch = mode === 'batch';
 
   if (!tier) {
@@ -1495,7 +1522,7 @@ Deno.serve(async (req) => {
   }
 
   if (isBatch) {
-    return await handleBatchMode(supabase, genre, tier, count, buildFilmSection);
+    return await handleBatchMode(supabase, genre, tier, count, preferred_digits, buildFilmSection);
   }
 
   // Digit constraint now comes FIRST, before film selection -- the search
