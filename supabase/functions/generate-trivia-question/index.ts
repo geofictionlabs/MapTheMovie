@@ -686,18 +686,27 @@ function hasDerivationSignal(extractionNote: string): boolean {
 // (e.g. "what is the number of the chamber... No -- let's go with a cleaner
 // fact... Actually, clean question:..."), checked before the more expensive
 // verifyTextHygiene API call so an obvious leak never needs a second
-// round-trip to catch. "actually"/"wait" are punctuation-anchored
-// (comma-adjacent only) rather than bare word-boundary matches -- a bare
-// /\bactually\b/i or /\bwait\b/i would false-positive on legitimate
-// content like "the wait staff" or "actually this was intentional" used
-// as plain emphasis. This list is inherently incomplete (same limitation
-// this file's own comment already notes about the earlier, now-replaced
-// SELF_CORRECTION_PATTERN regex) -- novel phrasing this list doesn't
-// anticipate is verifyTextHygiene's job, not this gate's.
+// round-trip to catch. "actually,"/"wait," are punctuation-anchored
+// (comma-adjacent only) AND require a self-correction continuation right
+// after (addressing the model's own drafting process -- "actually, let
+// me", "wait, no") rather than matching bare "wait,"/"actually," anywhere
+// in prose. A real false positive: a Ghostbusters question (answer 5000)
+// rejected because ordinary prose happened to contain "wait," as a plain
+// clause break, not self-correction -- ordinary content routinely puts a
+// comma after either word ("the wait staff", "Actually, this detail is
+// often overlooked") without it meaning anything. The continuation
+// requirement narrows this to the actual leak pattern without losing
+// recall on every real leak seen so far -- each of those also matches one
+// of the other, more specific markers below (clean restart / let's go
+// with / etc.), confirmed before narrowing these two. This list is
+// inherently incomplete (same limitation this file's own comment already
+// notes about the earlier, now-replaced SELF_CORRECTION_PATTERN regex) --
+// novel phrasing this list doesn't anticipate is verifyTextHygiene's job,
+// not this gate's.
 const SELF_CORRECTION_MARKERS = [
   /,\s*actually\b/i,
-  /\bactually,/i,
-  /\bwait,/i,
+  /\bactually,\s*(?:wait|let me|no|that's|i should|hold on)\b/i,
+  /\bwait,\s*(?:actually|let me|no|that's|i should|hold on)\b/i,
   /\bno\s*[—-]\s*let'?s go with\b/i,
   /\bclean restart\b/i,
   /\binstead:/i,
