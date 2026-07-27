@@ -47,8 +47,88 @@ function bearingDegrees(lat1, lon1, lat2, lon2) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
+// Normalise any degree value (including large accumulated ones) into [0, 360).
+function mod360(deg) {
+  return ((deg % 360) + 360) % 360
+}
+
+// Shortest signed delta from `from` to `to`, in (-180, 180] -- used to
+// accumulate continuous (unwrapped) rotation without ever animating the
+// long way round a 0/360 boundary.
+function shortestAngleDelta(from, to) {
+  return (((to - from) % 360) + 540) % 360 - 180
+}
+
 function diffGeofence(difficulty) {
   return { casual: 25, classic: 15, expert: 10, cipher: 15 }[difficulty] || 15
+}
+
+// A compass target is only navigable if lat/lon are actual finite numbers.
+// Deliberately NOT a `t?.lat` truthy check -- that treats null, undefined,
+// NaN AND 0 identically, and 0 is a real longitude here (the Greenwich
+// meridian runs through west Kent).
+function isValidTarget(t) {
+  return Number.isFinite(t?.lat) && Number.isFinite(t?.lon)
+}
+
+// Re-derives the compass target straight from the server -- used to advance
+// from one waypoint to the next, to recover after a target fails validation
+// (CompassScreen's retry action), and to self-heal a malformed target found
+// on restore. Never trusts a locally-held value for navigation math; always
+// re-fetches and validates before handing back a target the UI can use.
+async function fetchCompassTarget({ sessionId, waypointPhase, totalWaypoints, waypointsFallback, questionsLength, difficulty }) {
+  const isRealWaypoints = totalWaypoints > 0
+  const wpCount = isRealWaypoints ? totalWaypoints : waypointsFallback.length
+
+  if (waypointPhase < wpCount && waypointPhase < questionsLength - 1) {
+    let unlocked = waypointsFallback
+    let wp
+    if (isRealWaypoints) {
+      // Fetch fresh — the slot just solved is what unlocks this waypoint
+      // server-side (get_puzzle_waypoints gates on solved-slot count), so
+      // the real coordinates for THIS waypoint don't exist client-side
+      // until this exact moment. Waypoints beyond this one are still
+      // withheld by the RPC.
+      const { data: realWpData } = await supabase.rpc('get_puzzle_waypoints', { p_session_id: sessionId })
+      unlocked = (realWpData?.waypoints || []).map(w => ({
+        lat: w.real_lat, lon: w.real_lon, geofence_m: w.geofence_radius_m,
+      }))
+      wp = unlocked[waypointPhase]
+    } else {
+      wp = waypointsFallback[waypointPhase]
+    }
+    if (isValidTarget(wp)) {
+      return {
+        target: {
+          lat: wp.lat, lon: wp.lon, geofence_m: wp.geofence_m,
+          isWaypoint: true,
+          label: `WAYPOINT ${waypointPhase + 1} OF ${wpCount}`,
+        },
+        waypoints: unlocked,
+      }
+    }
+    return { target: null, waypoints: unlocked }
+  }
+
+  // Beyond the last waypoint (or no real waypoints at all) — final destination.
+  const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: sessionId })
+  if (coords?.success) {
+    const finalTarget = {
+      lat: parseFloat(coords.real_lat),
+      lon: parseFloat(coords.real_lon),
+      geofence_m: coords.geofence_radius_m || diffGeofence(difficulty),
+      isWaypoint: false,
+      label: 'DESTINATION',
+    }
+    if (isValidTarget(finalTarget)) {
+      return {
+        target: finalTarget,
+        waypoints: waypointsFallback,
+        realCoords: { lat: finalTarget.lat, lon: finalTarget.lon, geofence_radius_m: finalTarget.geofence_m },
+      }
+    }
+  }
+  return { target: null, waypoints: waypointsFallback }
 }
 
 function formatCountdown(endsAt) {
@@ -2961,10 +3041,22 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent, difficulty 
 
 //  Compass Screen
 // target = { lat, lon, geofence_m, isWaypoint, label }
-function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg }) {
+function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarget, compassMsg }) {
   const [playerPos, setPlayerPos] = useState(null)
   const [distance, setDistance] = useState(null)
   const [startDist, setStartDist] = useState(null)
+  // True when the current target has failed validation, or distance has
+  // been frozen for 90s+ despite GPS actively updating -- see the GPS poll
+  // callback below. Drives the "lost the waypoint signal" recovery banner.
+  const [targetError, setTargetError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  // { value, changedAt } -- tracks the last distinct distance reading and
+  // when it changed, so the staleness backstop can tell "frozen" apart from
+  // "just hasn't moved much yet". changedAt stays null until the first
+  // distance is actually computed (see the GPS poll callback below) --
+  // deliberately not Date.now() here, which would be an impure call at
+  // render time.
+  const distanceStaleRef = useRef({ value: null, changedAt: null })
   // null | 'denied' | 'unavailable' — set from getCurrentPosition's error
   // callback. Only surfaced in the UI before a first fix (see gpsStatus
   // below) so a later transient failure doesn't wipe an already-showing
@@ -2974,10 +3066,37 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   const [toBearing, setToBearing] = useState(0)
   // orientState: 'init' | 'needs-permission' | 'active' | 'calibrating' | 'denied' | 'unsupported'
   const [orientState, setOrientState] = useState('init')
+  // Gated/deadbanded compass heading (0-360) -- debug display and "do we
+  // have a fix yet" checks only. The actual dial rotation is driven off
+  // the spring refs below, not this value, so it doesn't need to be smooth.
   const [deviceHeading, setDeviceHeading] = useState(null)
+  // Facing/away state, recomputed every rAF tick from the *animated*
+  // needle angle (not the raw target) so ring/needle colour never flips
+  // ahead of what's actually on screen. Only committed to React state on
+  // an actual boolean change, so the 60fps loop doesn't force a re-render.
+  const [headingFlags, setHeadingFlags] = useState({ isFacingDestination: false, isHeadingAway: false })
   const orientCleanupRef = useRef(null)
   const arrivedRef = useRef(false)
-  const headingHistoryRef = useRef([])
+  // Vector-space EMA of the raw sensor heading -- smoothing sin/cos
+  // separately and recombining with atan2 avoids the wraparound bug of
+  // naive angle averaging (359 and 1 averaging to 180).
+  const emaVectorRef = useRef({ sin: null, cos: null })
+  // Deadband with hysteresis: a bigger threshold to start moving than to
+  // stop, so small tremor doesn't make the needle stutter at the boundary.
+  const deadbandRef = useRef({ value: null, moving: false })
+  // Continuous (unbounded) accumulation of the deadbanded heading and the
+  // GPS bearing, via shortest angular delta, so a 350->10 deg reading never
+  // animates the long way round.
+  const headingAccumRef = useRef(null)
+  const bearingAccumRef = useRef(null)
+  // Critically-damped springs driving the on-screen rotation, decoupled
+  // from both the irregular sensor events and the 5s GPS poll -- advanced
+  // once per animation frame below and applied directly to the DOM refs,
+  // so the 60fps loop doesn't force a full React re-render.
+  const ringSpringRef = useRef({ pos: 0, vel: 0, ready: false })
+  const needleSpringRef = useRef({ pos: 0, vel: 0, ready: false })
+  const cardinalRingRef = useRef(null)
+  const needleWrapRef = useRef(null)
   const smoothedDistRef = useRef(null)
   const toastTimeoutRef = useRef(null)
   const [tempToast, setTempToast] = useState(null) // { type: 'warmer' | 'colder' }
@@ -3063,7 +3182,13 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           const lat = pos.coords.latitude
           const lon = pos.coords.longitude
           setPlayerPos({ lat, lon })
-          if (effectiveTarget?.lat) {
+          // This whole callback only runs on a SUCCESSFUL GPS fix (the error
+          // callback below handles failures separately via geoError/
+          // gpsStatus) -- so "playerPos is updating" is already guaranteed
+          // true at this point, and the staleness check below only needs to
+          // compare against when distance itself last changed.
+
+          if (isValidTarget(effectiveTarget)) {
             const R = 6371000
             const dLat = (effectiveTarget.lat - lat) * Math.PI / 180
             const dLon = (effectiveTarget.lon - lon) * Math.PI / 180
@@ -3089,7 +3214,22 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
               if (delta <= -5) showTempToast('warmer')
               else if (delta >= 5) showTempToast('colder')
             }
+
+            // Staleness clock: reset the moment distance genuinely moves.
+            if (dist !== distanceStaleRef.current.value) {
+              distanceStaleRef.current = { value: dist, changedAt: Date.now() }
+            }
           }
+
+          // Recovery banner: fires immediately if the target itself is
+          // structurally invalid, and as a 90s backstop if distance hasn't
+          // moved at all despite GPS actively reporting fresh fixes -- this
+          // second check catches any future variant of the same failure
+          // class (e.g. a target with finite-but-wrong coordinates) without
+          // needing to know its cause up front.
+          const stale = distanceStaleRef.current.changedAt != null &&
+            Date.now() - distanceStaleRef.current.changedAt >= 90000
+          setTargetError(!isValidTarget(effectiveTarget) || stale)
         },
         (err) => {
           // code 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
@@ -3132,8 +3272,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
   // Bearing + arrival detection whenever position or distance updates
   useEffect(() => {
     const t = targetRef.current
-    if (!playerPos || !t?.lat || !t?.lon) return
-    setToBearing(bearingDegrees(playerPos.lat, playerPos.lon, t.lat, t.lon))
+    if (!playerPos || !isValidTarget(t)) return
+    const bearing = bearingDegrees(playerPos.lat, playerPos.lon, t.lat, t.lon)
+    setToBearing(bearing)
+    bearingAccumRef.current = bearingAccumRef.current == null
+      ? bearing
+      : bearingAccumRef.current + shortestAngleDelta(mod360(bearingAccumRef.current), bearing)
     if (distance != null && distance <= (t.geofence_m || 15) && !arrivedRef.current) {
       arrivedRef.current = true
       // startDist is this leg's straight-line distance when GPS first
@@ -3180,19 +3324,20 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     toastTimeoutRef.current = setTimeout(() => setTempToast(null), 2000)
   }
 
-  function smoothHeading(newHeading) {
-    const h = headingHistoryRef.current
-    h.push(newHeading)
-    if (h.length > 8) h.shift()
-    if (h.length === 1) return h[0]
-    // Circular mean: adjust values near 0/360 boundary before averaging
-    const ref = h[0]
-    const adjusted = h.map(v => {
-      if (ref > 270 && v < 90) return v + 360
-      if (ref < 90 && v > 270) return v - 360
-      return v
-    })
-    return ((adjusted.reduce((a, b) => a + b, 0) / adjusted.length) % 360 + 360) % 360
+  // Recovery action for the "lost the waypoint signal" banner -- asks the
+  // parent to re-derive compassTarget straight from the server (never
+  // trusts whatever's currently held locally, since that's exactly what
+  // failed validation). Resets the staleness clock on success so the 90s
+  // backstop doesn't immediately re-fire against a now-stale timestamp.
+  async function handleRetryTarget() {
+    if (retrying || !onRetryTarget) return
+    setRetrying(true)
+    const ok = await onRetryTarget()
+    if (ok) {
+      distanceStaleRef.current = { value: null, changedAt: Date.now() }
+      setTargetError(false)
+    }
+    setRetrying(false)
   }
 
   function startOrientListener() {
@@ -3242,8 +3387,48 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         })
       }
 
-      const smoothed = smoothHeading(heading)
-      setDeviceHeading(smoothed)
+      // 1) Exponential low-pass filter in vector space -- smooth sin/cos
+      // separately and recombine with atan2, so the filter never sees a
+      // fake 359-vs-1 discontinuity the way averaging raw degrees would.
+      const rad = heading * Math.PI / 180
+      const rawSin = Math.sin(rad), rawCos = Math.cos(rad)
+      const ema = emaVectorRef.current
+      if (ema.sin == null) {
+        ema.sin = rawSin
+        ema.cos = rawCos
+      } else {
+        const alpha = 0.12
+        ema.sin += alpha * (rawSin - ema.sin)
+        ema.cos += alpha * (rawCos - ema.cos)
+      }
+      const filtered = mod360(Math.atan2(ema.sin, ema.cos) * 180 / Math.PI)
+
+      // 2) Deadband with hysteresis -- ignore small changes so the needle
+      // holds still when the player does; once it's moving, a smaller
+      // threshold keeps it moving smoothly instead of stuttering at 2deg.
+      const db = deadbandRef.current
+      if (db.value == null) {
+        db.value = filtered
+      } else {
+        const moved = Math.abs(shortestAngleDelta(db.value, filtered))
+        const threshold = db.moving ? 0.7 : 2.0
+        if (moved >= threshold) {
+          db.value = filtered
+          db.moving = true
+        } else {
+          db.moving = false
+        }
+      }
+      const stable = db.value
+
+      // 3) Continuous rotation -- accumulate via shortest angular delta
+      // instead of storing a wrapped 0-360 value, so the render-side spring
+      // never has to animate the long way round a 0/360 crossing.
+      headingAccumRef.current = headingAccumRef.current == null
+        ? stable
+        : headingAccumRef.current + shortestAngleDelta(mod360(headingAccumRef.current), stable)
+
+      setDeviceHeading(stable)
     }
 
     window.addEventListener('deviceorientationabsolute', handleOrientation, true)
@@ -3273,6 +3458,71 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     }
   }
 
+  // 4) Decouple render from sensor -- buffer the (continuous) target
+  // heading/bearing above and interpolate toward it here on rAF with a
+  // critically-damped spring, instead of driving the transform straight
+  // from the deviceorientation handler. Applied directly to the DOM refs
+  // so this 60fps loop never forces a full React re-render; only the
+  // facing/away colour state (which does need to be React state, since a
+  // lot of JSX reads it) is committed back, and only on an actual change.
+  useEffect(() => {
+    const reduceMotion = typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    let rafId
+    let lastFacing = false
+    let lastAway = false
+
+    function tick() {
+      const headingTarget = headingAccumRef.current
+      if (headingTarget != null) {
+        const ring = ringSpringRef.current
+        const needle = needleSpringRef.current
+        const ringTarget = -headingTarget
+        const needleTarget = (bearingAccumRef.current ?? 0) - headingTarget
+
+        if (!ring.ready) { ring.pos = ringTarget; ring.ready = true }
+        if (!needle.ready) { needle.pos = needleTarget; needle.ready = true }
+
+        if (reduceMotion) {
+          ring.pos = ringTarget
+          ring.vel = 0
+          needle.pos = needleTarget
+          needle.vel = 0
+        } else {
+          ring.vel += (ringTarget - ring.pos) * 0.06
+          ring.vel *= 0.75
+          ring.pos += ring.vel
+
+          needle.vel += (needleTarget - needle.pos) * 0.06
+          needle.vel *= 0.75
+          needle.pos += needle.vel
+        }
+
+        if (cardinalRingRef.current) {
+          cardinalRingRef.current.style.transform = `rotate(${ring.pos}deg)`
+        }
+        if (needleWrapRef.current) {
+          needleWrapRef.current.style.transform = `rotate(${needle.pos}deg)`
+        }
+
+        const diff = Math.abs(needle.pos % 360)
+        const normalised = diff > 180 ? 360 - diff : diff
+        const facing = normalised < 20
+        const away = normalised > 160
+        if (facing !== lastFacing || away !== lastAway) {
+          lastFacing = facing
+          lastAway = away
+          setHeadingFlags({ isFacingDestination: facing, isHeadingAway: away })
+        }
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [])
+
   // Arrow rotation: bearing-to-destination minus device heading = screen-relative angle
   const arrowDeg = deviceHeading != null
     ? (toBearing - deviceHeading + 360) % 360
@@ -3296,17 +3546,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
     unavailable: 'GPS UNAVAILABLE',
   }[gpsStatus]
 
-  // Needle rotates as soon as heading is available, independent of distance
-  const needleRotation = deviceHeading != null ? toBearing - deviceHeading : 0
-  const searching = deviceHeading == null
-  // Green state: needle pointing within 20 degrees of destination
-  const normalisedAngle = (() => {
-    const diff = Math.abs(needleRotation % 360)
-    return diff > 180 ? 360 - diff : diff
-  })()
-  const isFacingDestination = deviceHeading != null && normalisedAngle < 20
-  // Red state: needle pointing away from destination (>160 degrees off)
-  const isHeadingAway = deviceHeading != null && normalisedAngle > 160
+  // Needle/ring rotation itself is applied imperatively by the rAF spring
+  // loop above (cardinalRingRef / needleWrapRef) -- not computed here.
+  // Green/red facing state mirrors that loop's own normalised-angle check
+  // (against the animated needle position, not the raw target) via
+  // headingFlags, so colour never gets ahead of what's on screen.
+  const { isFacingDestination, isHeadingAway } = headingFlags
   // Inside the geofence, distance rounds to "0.0 km" (looks like "arrived"),
   // so a directional instruction like TURN AROUND reads as a contradiction
   // rather than guidance -- swap to an arrival-adjacent message instead.
@@ -3366,8 +3611,44 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
         {effectiveTarget?.isWaypoint ? (effectiveTarget?.label || 'WAYPOINT') : 'DESTINATION'}
       </div>
 
+      {/* Lost-signal recovery banner — shown when the target fails
+          validation (null/NaN coordinates) or distance has been frozen for
+          90s+ despite GPS actively updating. Deliberately explicit rather
+          than letting the dial silently go stale, which is what stranded
+          the tester this is fixing: 0.0 KM and TURN AROUND shown at once,
+          with no indication anything was wrong. */}
+      {targetError && (
+        <div style={{
+          background: '#2A1520', border: '1px solid #E24B4A', borderRadius: 12,
+          padding: '14px 18px', margin: '0 16px', textAlign: 'center',
+        }}>
+          <div style={{
+            color: '#E24B4A', fontFamily: "'Share Tech Mono', monospace",
+            fontSize: 13, fontWeight: 800, letterSpacing: 1,
+          }}>
+            LOST THE WAYPOINT SIGNAL
+          </div>
+          <div style={{ color: '#B8B4D8', fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+            The compass isn't tracking a valid destination right now. This won't fix itself.
+          </div>
+          <button
+            onClick={handleRetryTarget}
+            disabled={retrying}
+            style={{
+              marginTop: 10, background: retrying ? '#32324A' : '#E24B4A',
+              color: '#fff', border: 'none', borderRadius: 20,
+              padding: '8px 22px', fontSize: 12, fontWeight: 800, letterSpacing: 1,
+              fontFamily: "'Share Tech Mono', monospace",
+              cursor: retrying ? 'default' : 'pointer',
+            }}
+          >
+            {retrying ? 'RETRYING...' : 'RETRY'}
+          </button>
+        </div>
+      )}
+
       {/* Film-reel compass ring — 280px */}
-      <div className="compass-arrow-wrap">
+      <div className="compass-arrow-wrap" style={{ opacity: targetError ? 0.4 : 1 }}>
         {/* Instrument bezel/housing — cosmetic only, sits behind the dial.
             Inserted first in DOM (no z-index) so the existing ring/sweep/
             needle, which also use z-index:auto, paint on top of it. */}
@@ -3384,14 +3665,21 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           <circle cx={158} cy={158} r={108} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.35} />
         </svg>
 
-        {/* Cardinal N/E/S/W tick marks — fixed/decorative, not a rotating
-            compass rose. The needle's rotation is relative (turn-this-much-
-            from-where-you're-facing), not an absolute magnetic bearing, so
-            a rotating ring here would create two contradictory reference
-            frames on the same instrument. Static, same as the bezel. */}
+        {/* Cardinal N/E/S/W ring — the compass card. Counter-rotates against
+            device heading (applied imperatively by the rAF spring loop via
+            cardinalRingRef, not React state) so N stays aligned with true
+            north as the player turns. This is a separate layer from the
+            static bezel behind it and the needle in front of it: the
+            needle's rotation (toBearing - deviceHeading) composes with this
+            ring's (-deviceHeading) to always point at the true bearing
+            relative to the ring, which is standard compass-card behaviour.
+            Only the needle carries residual heading jitter in practice --
+            both layers are driven by the same filtered/smoothed signal, but
+            the needle also picks up the (much less noisy) GPS bearing term. */}
         <svg
+          ref={cardinalRingRef}
           viewBox="0 0 316 316"
-          style={{ position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none' }}
+          style={{ position: 'absolute', inset: -18, width: 316, height: 316, pointerEvents: 'none', transformOrigin: '50% 50%' }}
         >
           {['N', 'E', 'S', 'W'].map((label, i) => {
             const angle = i * 90
@@ -3450,42 +3738,44 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, compassMsg 
           })}
         </svg>
 
-        {/* Needle — tapered, diamond-tipped shape; rotates based on bearing,
-            static (north-up) when no data. Same headingColor/gradient/
-            drop-shadow logic as before, just SVG polygons instead of two
-            plain rectangles. */}
+        {/* Needle — tapered, diamond-tipped shape; points at the target
+            bearing relative to device heading. Split into a static outer
+            wrapper (position + opacity, React-managed) and an inner
+            rotate-only div (needleWrapRef) that the rAF spring loop writes
+            `transform` on directly every frame -- React never sets
+            `transform` on the inner div, so the two never fight each other. */}
         <div style={{
           position: 'absolute', top: '50%', left: '50%',
           width: 20, height: 140,
-          transformOrigin: 'bottom center',
-          transform: `translate(-50%, -100%) rotate(${needleRotation}deg)`,
-          transition: searching ? 'none' : 'transform 0.5s ease',
+          transform: 'translate(-50%, -100%)',
           opacity: orientState === 'needs-permission' ? 0.35 : 1,
         }}>
-          <svg width={20} height={140} viewBox="-10 0 20 140" style={{ display: 'block' }}>
-            <defs>
-              <linearGradient id="needleTipGrad" x1="0" y1="0" x2="0" y2="70">
-                <stop offset="0%" stopColor="#FCD34D" />
-                <stop offset="100%" stopColor="#F59E0B" />
-              </linearGradient>
-            </defs>
-            {/* Diamond-faceted tip tapering into the shaft — gold by default,
-                green when facing destination, red when heading away */}
-            <polygon
-              points="0,0 7,20 4,70 -4,70 -7,20"
-              style={{
-                fill: headingColor || 'url(#needleTipGrad)',
-                filter: isFacingDestination
-                  ? 'drop-shadow(0 0 6px rgba(93,202,165,0.8))'
-                  : isHeadingAway
-                    ? 'drop-shadow(0 0 6px rgba(226,75,74,0.8))'
-                    : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
-                transition: isHeadingAway ? 'none' : 'fill 0.4s, filter 0.4s',
-              }}
-            />
-            {/* Base — grey, flares wider near the hub */}
-            <polygon points="4,70 -4,70 -7,140 7,140" fill="#32324A" />
-          </svg>
+          <div ref={needleWrapRef} style={{ width: '100%', height: '100%', transformOrigin: 'bottom center' }}>
+            <svg width={20} height={140} viewBox="-10 0 20 140" style={{ display: 'block' }}>
+              <defs>
+                <linearGradient id="needleTipGrad" x1="0" y1="0" x2="0" y2="70">
+                  <stop offset="0%" stopColor="#FCD34D" />
+                  <stop offset="100%" stopColor="#F59E0B" />
+                </linearGradient>
+              </defs>
+              {/* Diamond-faceted tip tapering into the shaft — gold by default,
+                  green when facing destination, red when heading away */}
+              <polygon
+                points="0,0 7,20 4,70 -4,70 -7,20"
+                style={{
+                  fill: headingColor || 'url(#needleTipGrad)',
+                  filter: isFacingDestination
+                    ? 'drop-shadow(0 0 6px rgba(93,202,165,0.8))'
+                    : isHeadingAway
+                      ? 'drop-shadow(0 0 6px rgba(226,75,74,0.8))'
+                      : 'drop-shadow(0 0 6px rgba(245,158,11,0.8))',
+                  transition: isHeadingAway ? 'none' : 'fill 0.4s, filter 0.4s',
+                }}
+              />
+              {/* Base — grey, flares wider near the hub */}
+              <polygon points="4,70 -4,70 -7,140 7,140" fill="#32324A" />
+            </svg>
+          </div>
         </div>
 
         {/* Centre pivot — layered hub, concentric rings like a real compass
@@ -4637,12 +4927,42 @@ export default function App() {
       setSignalPoints(session.signal_points ?? saved.signalPoints ?? 10)
       setMaxSignalPoints(STARTING_TAKES[saved.pack?.difficulty] ?? 10)
       setWaypointsMode(!!saved.waypointsMode)
-      setWaypoints(saved.waypoints || [])
+
+      // saved.compassTarget is unvalidated JSON pulled straight from
+      // localStorage -- validate before restoring it as navigable. If it
+      // fails and the player was mid-waypoint, rebuild straight from the
+      // server (same recovery path as CompassScreen's retry button) rather
+      // than dumping them on the puzzle list staring at an already-solved
+      // slot with nothing left to answer and no way back to the compass.
+      let restoredTarget = isValidTarget(saved.compassTarget) ? saved.compassTarget : null
+      let restoredScreen = restoredTarget && saved.screen === 'compass' ? 'compass' : 'puzzles'
+      let restoredWaypoints = saved.waypoints || []
+
+      if (!restoredTarget && saved.waypointsMode && saved.screen === 'compass') {
+        console.log('[restore] saved.compassTarget failed validation, rebuilding from server')
+        const { target, waypoints: freshWaypoints, realCoords: freshRealCoords } = await fetchCompassTarget({
+          sessionId:         saved.session_id,
+          waypointPhase:     saved.waypointPhase || 0,
+          totalWaypoints:    saved.totalWaypoints || 0,
+          waypointsFallback: saved.waypoints || [],
+          questionsLength:   puzzleData.questions.length,
+          difficulty:        saved.pack?.difficulty,
+        })
+        restoredWaypoints = freshWaypoints
+        if (target) {
+          restoredTarget = target
+          restoredScreen = 'compass'
+          if (!target.isWaypoint && freshRealCoords) setRealCoords(freshRealCoords)
+        }
+        console.log('[restore] server rebuild ->', target)
+      }
+
+      setWaypoints(restoredWaypoints)
       setTotalWaypoints(saved.totalWaypoints || 0)
       setWaypointPhase(saved.waypointPhase || 0)
-      setCompassTarget(saved.compassTarget || null)
-      setScreen(saved.screen === 'compass' ? 'compass' : 'puzzles')
-      console.log('[restore] success — resumed on screen', saved.screen === 'compass' ? 'compass' : 'puzzles')
+      setCompassTarget(restoredTarget)
+      setScreen(restoredScreen)
+      console.log('[restore] success — resumed on screen', restoredScreen)
     } catch (err) {
       console.log('[restore] bailing: discarding saved progress —', err)
       localStorage.removeItem('mtm_hunt_progress')
@@ -4791,68 +5111,44 @@ export default function App() {
           const phaseDone = phaseSlots.every(s => newSolved[s] !== undefined)
 
           if (phaseDone) {
-            const isRealWaypoints = totalWaypoints > 0
-            const wpCount = isRealWaypoints ? totalWaypoints : waypoints.length
-
-            if (waypointPhase < wpCount && waypointPhase < activeQuestions.length - 1) {
-              let wp
-              if (isRealWaypoints) {
-                // Fetch fresh — the slot just solved above is what unlocks
-                // this waypoint server-side (get_puzzle_waypoints gates on
-                // solved-slot count), so the real coordinates for THIS
-                // waypoint don't exist client-side until this exact moment.
-                // Waypoints beyond this one are still withheld by the RPC.
-                const { data: realWpData } = await supabase.rpc('get_puzzle_waypoints', {
-                  p_session_id: activeSession.id,
-                })
-                const unlocked = (realWpData?.waypoints || []).map(w => ({
-                  lat: w.real_lat, lon: w.real_lon, geofence_m: w.geofence_radius_m,
-                }))
-                setWaypoints(unlocked)
-                wp = unlocked[waypointPhase]
-              } else {
-                wp = waypoints[waypointPhase]
-              }
-              if (wp) {
-                setCompassTarget({
-                  lat: wp.lat, lon: wp.lon,
-                  geofence_m: wp.geofence_m,
-                  isWaypoint: true,
-                  label: `WAYPOINT ${waypointPhase + 1} OF ${wpCount}`,
-                })
-                setTimeout(() => setScreen('compass'), 600)
-              }
+            // fetchCompassTarget re-fetches from the server and validates
+            // the result (finite lat/lon) before handing anything back --
+            // never trusts wp/coords shape directly here. Handles both the
+            // "advance to next waypoint" and "all waypoints done, unlock
+            // final destination" cases internally.
+            const { target, waypoints: freshWaypoints, realCoords: freshRealCoords } = await fetchCompassTarget({
+              sessionId:         activeSession.id,
+              waypointPhase,
+              totalWaypoints,
+              waypointsFallback: waypoints,
+              questionsLength:   activeQuestions.length,
+              difficulty:        activePack?.difficulty,
+            })
+            setWaypoints(freshWaypoints)
+            if (target) {
+              if (!target.isWaypoint) setRealCoords(freshRealCoords)
+              setCompassTarget(target)
+              setTimeout(() => setScreen('compass'), 600)
             } else {
-              // All waypoints passed and this phase's slots solved  unlock final destination
-              const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
-              if (coords?.success) {
-                const finalTarget = {
-                  lat: parseFloat(coords.real_lat),
-                  lon: parseFloat(coords.real_lon),
-                  geofence_m: diffGeofence(activePack?.difficulty),
-                  isWaypoint: false,
-                  label: 'DESTINATION',
-                }
-                setRealCoords({ lat: finalTarget.lat, lon: finalTarget.lon, geofence_radius_m: finalTarget.geofence_m })
-                setCompassTarget(finalTarget)
-                setTimeout(() => setScreen('compass'), 600)
-              }
+              setCompassMsg('Could not load the next waypoint -- try again.')
             }
           }
         } else {
           if (data.all_solved) {
             const { data: coords } = await supabase.rpc('unlock_coordinates', { p_session_id: activeSession.id })
-            if (coords?.success) {
-              const finalTarget = {
-                lat: parseFloat(coords.real_lat),
-                lon: parseFloat(coords.real_lon),
-                geofence_m: coords.geofence_radius_m || 15,
-                isWaypoint: false,
-                label: 'DESTINATION',
-              }
+            const finalTarget = coords?.success ? {
+              lat: parseFloat(coords.real_lat),
+              lon: parseFloat(coords.real_lon),
+              geofence_m: coords.geofence_radius_m || 15,
+              isWaypoint: false,
+              label: 'DESTINATION',
+            } : null
+            if (isValidTarget(finalTarget)) {
               setRealCoords({ lat: finalTarget.lat, lon: finalTarget.lon, geofence_radius_m: finalTarget.geofence_m })
               setCompassTarget(finalTarget)
               setTimeout(() => setScreen('compass'), 600)
+            } else {
+              setCompassMsg('Could not load the destination -- try again.')
             }
           }
         }
@@ -4871,6 +5167,32 @@ export default function App() {
     setCompassTarget(null)
     setCompassMsg(null)
     setScreen('puzzles')
+  }
+
+  // Recovery action for CompassScreen's "lost the waypoint signal" banner --
+  // re-derives compassTarget straight from the server rather than trying to
+  // repair whatever's currently held (which is exactly what failed
+  // validation). Returns true/false so CompassScreen knows whether to clear
+  // its own error state.
+  async function retryCompassTarget() {
+    if (!activeSession) return false
+    const { target, waypoints: freshWaypoints, realCoords: freshRealCoords } = await fetchCompassTarget({
+      sessionId:         activeSession.id,
+      waypointPhase,
+      totalWaypoints,
+      waypointsFallback: waypoints,
+      questionsLength:   activeQuestions.length,
+      difficulty:        activePack?.difficulty,
+    })
+    setWaypoints(freshWaypoints)
+    if (!target) {
+      setCompassMsg('Still could not reach the waypoint -- check your connection and try again.')
+      return false
+    }
+    if (!target.isWaypoint) setRealCoords(freshRealCoords)
+    setCompassTarget(target)
+    setCompassMsg(null)
+    return true
   }
 
   // Client-side only — see huntStartedAt/huntDistanceRef comment above.
@@ -5130,6 +5452,7 @@ export default function App() {
               hunt={activePack}
               onArrived={handleArrived}
               onWaypointReached={handleWaypointReached}
+              onRetryTarget={retryCompassTarget}
               compassMsg={compassMsg}
             />
             {import.meta.env.DEV && (
