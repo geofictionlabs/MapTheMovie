@@ -850,10 +850,13 @@ function ReclassifyPoolTab() {
 
   // Each row: { id, movie_title, question_text, correct_answer,
   // extraction_note, current_difficulty, proposed_tier, proposed_difficulty,
-  // concerns, status: 'pending' | 'approved' | 'rejected', approving,
-  // approveError }. Populated once per Load & Classify run -- reloading
-  // replaces this wholesale rather than merging, so a stale card from a
-  // previous run never lingers.
+  // concerns, disputed_at, dispute_reason, status: 'pending' | 'approved' |
+  // 'rejected', approving, approveError }. disputed_at/dispute_reason come
+  // straight from get_pool_rows_for_review (migration 067) -- set either by
+  // generate-trivia-question's forward-looking Call C during a fresh batch,
+  // or by a prior "Audit for contradictions" run. Populated once per Load &
+  // Classify run -- reloading replaces this wholesale rather than merging,
+  // so a stale card from a previous run never lingers.
   const [rows, setRows] = useState([]);
   // Rows the classifier itself could not return a valid entry for --
   // { id, movie_title, question_text, reason } -- shown separately,
@@ -863,6 +866,10 @@ function ReclassifyPoolTab() {
   const [failedExpanded, setFailedExpanded] = useState(false);
   const [showUnchanged, setShowUnchanged] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  const [auditing, setAuditing] = useState(false);
+  const [auditError, setAuditError] = useState(null);
+  const [auditSummary, setAuditSummary] = useState(null); // { films_checked, conflicts_found, rows_flagged, errors }
 
   useEffect(() => {
     if (!loading) return;
@@ -962,6 +969,8 @@ function ReclassifyPoolTab() {
           proposed_tier: r._proposed_tier,
           proposed_difficulty: TIER_TO_INT[r._proposed_tier],
           concerns: r._concerns,
+          disputed_at: r.disputed_at,
+          dispute_reason: r.dispute_reason,
           status: 'pending',
           approving: false,
           approveError: null,
@@ -1011,10 +1020,55 @@ function ReclassifyPoolTab() {
     setRows((prev) => prev.map((r) => (visibleIds.has(r.id) ? { ...r, status: 'rejected' } : r)));
   }
 
-  // Change 2: biggest disagreements first. Absolute tier delta descending,
-  // then concern count descending, then alphabetical (matches
-  // get_pool_rows_for_review's own default order) as the final tiebreak.
+  // Retroactive contradiction scan (Phase 4b) -- a separate, admin-
+  // triggered pass over EXISTING pool rows, distinct from the forward-
+  // looking check that runs automatically during fresh generation. Not
+  // run automatically here on every Load & Classify: once a genre's pool
+  // has been audited and the forward-looking check is catching new
+  // contradictions as they'd be introduced, re-scanning unchanged rows
+  // every time would just be a repeated cost with nothing new to find.
+  // Deliberately does NOT merge results into `rows` -- simplest, most
+  // predictable option: show a summary, and the admin re-runs Load &
+  // Classify to see the resulting disputed badges, same explicit-action
+  // pattern as everything else in this tab.
+  async function handleAudit() {
+    setAuditing(true);
+    setAuditError(null);
+    setAuditSummary(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
+        body: { mode: 'audit', genre: selectedGenre },
+      });
+      if (error) {
+        let detail = error.message || 'Audit request failed';
+        if (error.context) {
+          try {
+            const body = await error.context.json();
+            detail = body?.error || detail;
+          } catch { /* no usable JSON body -- keep the generic message */ }
+        }
+        setAuditError(detail);
+        return;
+      }
+      if (data?.error) {
+        setAuditError(data.error);
+        return;
+      }
+      setAuditSummary(data);
+    } finally {
+      setAuditing(false);
+    }
+  }
+
+  // Change 2: biggest disagreements first, but a disputed row (possibly
+  // just WRONG, not merely mis-tiered) outranks even a large tier delta.
+  // Then absolute tier delta descending, then concern count descending,
+  // then alphabetical (matches get_pool_rows_for_review's own default
+  // order) as the final tiebreak.
   const sortedRows = [...rows].sort((a, b) => {
+    const disputedA = a.disputed_at ? 1 : 0;
+    const disputedB = b.disputed_at ? 1 : 0;
+    if (disputedB !== disputedA) return disputedB - disputedA;
     const deltaA = Math.abs(a.proposed_difficulty - a.current_difficulty);
     const deltaB = Math.abs(b.proposed_difficulty - b.current_difficulty);
     if (deltaB !== deltaA) return deltaB - deltaA;
@@ -1022,7 +1076,10 @@ function ReclassifyPoolTab() {
     return a.movie_title.localeCompare(b.movie_title);
   });
 
-  const isUnchanged = (r) => r.proposed_difficulty === r.current_difficulty && r.concerns.length === 0;
+  // A disputed row is never "unchanged, no concerns" even if the
+  // classifier agrees on tier and flags nothing else -- a possible
+  // factual error outranks tier agreement regardless.
+  const isUnchanged = (r) => !r.disputed_at && r.proposed_difficulty === r.current_difficulty && r.concerns.length === 0;
   const unchangedRows = sortedRows.filter(isUnchanged);
   const flaggedRows = sortedRows.filter((r) => !isUnchanged(r));
   // Change 1: unchanged rows are never hidden entirely -- shown behind a
@@ -1066,11 +1123,53 @@ function ReclassifyPoolTab() {
           {loading && <Spinner size={14} />}
           {loading ? 'Loading & classifying…' : 'Load & classify'}
         </button>
+
+        <button
+          onClick={handleAudit}
+          disabled={auditing}
+          title="Retroactive scan of this genre's EXISTING pool rows for same-fact/different-answer contradictions -- separate from the automatic check that runs during fresh generation"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+            background: 'transparent', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`,
+            cursor: auditing ? 'default' : 'pointer', opacity: auditing ? 0.7 : 1,
+          }}
+        >
+          {auditing && <Spinner size={14} />}
+          {auditing ? 'Auditing…' : 'Audit for contradictions'}
+        </button>
       </div>
 
       {loading && (
         <div style={{ fontSize: 12, color: POOL_COLORS.muted, marginBottom: 20 }}>
           {elapsed}s elapsed{progress ? ` — chunk ${Math.min(progress.done + 1, progress.total)} of ${progress.total} (each chunk runs a blind tier pass and a separate full-context concerns pass)` : ' — fetching pool rows…'}
+        </div>
+      )}
+
+      {auditError && (
+        <div style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: '#2A1518', border: '1px solid #E24B4A', color: POOL_COLORS.red, fontSize: 13,
+        }}>
+          {auditError}
+        </div>
+      )}
+
+      {auditSummary && (
+        <div style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`, color: POOL_COLORS.text, fontSize: 13,
+        }}>
+          Checked {auditSummary.films_checked} film{auditSummary.films_checked === 1 ? '' : 's'} with 2+ banked facts —{' '}
+          {auditSummary.rows_flagged > 0
+            ? <span style={{ color: POOL_COLORS.red, fontWeight: 700 }}>{auditSummary.rows_flagged} row{auditSummary.rows_flagged === 1 ? '' : 's'} flagged disputed</span>
+            : 'no contradictions found'}
+          {auditSummary.rows_flagged > 0 && ' — reload with Load & classify to see them.'}
+          {auditSummary.errors?.length > 0 && (
+            <div style={{ color: POOL_COLORS.muted, marginTop: 4 }}>
+              {auditSummary.errors.length} film{auditSummary.errors.length === 1 ? '' : 's'} could not be checked (verification call failed).
+            </div>
+          )}
         </div>
       )}
 
@@ -1140,7 +1239,7 @@ function ReclassifyPoolTab() {
               style={{
                 display: 'flex', gap: 16, padding: 16, borderRadius: 8,
                 background: POOL_COLORS.card,
-                border: `1px solid ${changed ? POOL_COLORS.gold : POOL_COLORS.border}`,
+                border: `1px solid ${row.disputed_at ? POOL_COLORS.red : changed ? POOL_COLORS.gold : POOL_COLORS.border}`,
                 opacity: dimmed ? 0.55 : 1,
               }}
             >
@@ -1188,6 +1287,15 @@ function ReclassifyPoolTab() {
                   <span style={{ color: POOL_COLORS.gold, fontFamily: 'monospace', fontWeight: 700 }}>{row.correct_answer}</span>
                 </div>
 
+                {row.disputed_at && (
+                  <div style={{
+                    padding: '8px 10px', borderRadius: 6, marginBottom: 10,
+                    background: '#2A1518', border: `1px solid ${POOL_COLORS.red}`,
+                    fontSize: 12, color: POOL_COLORS.red,
+                  }}>
+                    <strong>DISPUTED</strong> — {row.dispute_reason || 'conflicts with another entry for this film'}
+                  </div>
+                )}
                 {row.extraction_note && (
                   <div style={{ fontSize: 12, color: '#8B8B9A' }}>{row.extraction_note}</div>
                 )}

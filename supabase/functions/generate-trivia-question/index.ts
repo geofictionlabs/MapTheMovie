@@ -846,7 +846,7 @@ type VerifierCallResult = { ok: true; data: any } | { ok: false; reason: string 
 // bare null -- a rejection reason quoting the actual status/body or the
 // actual unparseable text is directly actionable; "network error or
 // unparseable response" told you nothing about which one happened or why.
-async function attemptVerifierCall(prompt: string): Promise<VerifierCallResult> {
+async function attemptVerifierCall(prompt: string, maxTokens: number = 300): Promise<VerifierCallResult> {
   let response: Response;
   try {
     response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -858,7 +858,7 @@ async function attemptVerifierCall(prompt: string): Promise<VerifierCallResult> 
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 300,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -886,10 +886,10 @@ async function attemptVerifierCall(prompt: string): Promise<VerifierCallResult> 
 // single retry catches the transient case without weakening the fail-
 // closed discipline for a genuinely broken verifier (two failures in a
 // row still rejects, with the second attempt's reason reported).
-async function callVerifier(prompt: string): Promise<VerifierCallResult> {
-  const first = await attemptVerifierCall(prompt);
+async function callVerifier(prompt: string, maxTokens: number = 300): Promise<VerifierCallResult> {
+  const first = await attemptVerifierCall(prompt, maxTokens);
   if (first.ok) return first;
-  return await attemptVerifierCall(prompt);
+  return await attemptVerifierCall(prompt, maxTokens);
 }
 
 // Call A: factual/provenance judgment -- does correct_answer genuinely mean
@@ -987,6 +987,91 @@ Return ONLY valid JSON, no markdown fences, no preamble:
   };
 }
 
+// Call C: semantic-duplicate detection -- shared by two call sites with
+// different framing but the identical underlying judgment. Given a list
+// of facts for ONE film, which ones describe the SAME underlying detail
+// with a DIFFERENT answer? At most one can be correct for any such group.
+//   - Forward-looking (handleBatchMode, Phase 2 below): facts is a fresh
+//     candidate (a synthetic id, see CANDIDATE_FACT_ID) plus every
+//     EXISTING pool row for that film, genre-wide, all difficulties. If
+//     the candidate lands in a conflict group, it's rejected and the
+//     other (real, existing) ids in that group get flagged disputed.
+//   - Retroactive (mode=audit): facts is every EXISTING row for a film,
+//     no candidate involved -- any conflict group found means the pool
+//     already contains a contradiction being served to players right now.
+// A plain numeric mismatch check can't do this (see the current
+// pairKey/seenPairs gate a few hundred lines below, which only catches
+// an EXACT correct_answer match) -- The Hangover's suite number being
+// 2269 in one row and 3204 in another never collides on that key. This
+// judges INTENT, not value equality.
+type ConflictFact = { id: string; question_text: string; correct_answer: number };
+
+const CANDIDATE_FACT_ID = '__candidate__';
+
+function buildConflictCheckPrompt(movieTitle: string, facts: ConflictFact[]): string {
+  const list = facts
+    .map((f, i) => `${i + 1}. [id: ${f.id}] question_text: "${f.question_text}" correct_answer: ${f.correct_answer}`)
+    .join('\n');
+
+  return `Below are trivia facts for the film "${movieTitle}". Some may describe the SAME underlying detail -- the same suite number, the same street address, the same headcount -- but with DIFFERENT answers. At most one answer can be correct for any such shared detail; the rest are wrong. Group any entries that genuinely conflict this way.
+
+Do NOT group entries that are simply about the same film but different, unrelated details -- e.g. one asks the hotel suite number, another asks how many friends went on the trip. That is not a conflict even though both are about the same film. Only group entries asking about the exact same underlying fact.
+
+Facts:
+${list}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "conflict_groups": [
+    { "ids": ["...", "..."], "reason": "both claim to be the hotel suite number, one says 2269 the other 3204" }
+  ]
+}
+Only include groups of 2 or more ids that genuinely conflict. Return an empty conflict_groups array if there are no conflicts at all.`;
+}
+
+type ConflictCheckResult =
+  | { ok: true; groups: { ids: string[]; reason: string }[] }
+  | { ok: false; reason: string };
+
+// Defensive cap, same reasoning as MAX_CLASSIFY_BATCH elsewhere in this
+// file -- a single blockbuster could in principle accumulate many pool
+// rows across genre/difficulty/cipher over a mature pool's lifetime.
+// Truncating (oldest facts dropped first, keeping the most recently
+// promoted ones -- see the sort below) means a very rare over-cap film
+// gets incomplete coverage this round rather than an oversized, lower-
+// quality single call.
+const MAX_CONFLICT_CHECK_FACTS = 30;
+
+async function checkForConflicts(movieTitle: string, facts: ConflictFact[]): Promise<ConflictCheckResult> {
+  if (facts.length < 2) return { ok: true, groups: [] }; // nothing to conflict with
+
+  const bounded = facts.length > MAX_CONFLICT_CHECK_FACTS
+    ? facts.slice(0, MAX_CONFLICT_CHECK_FACTS)
+    : facts;
+
+  const prompt = buildConflictCheckPrompt(movieTitle, bounded);
+  const maxTokens = 60 * bounded.length + 200;
+  const result = await callVerifier(prompt, maxTokens);
+  if (!result.ok) return { ok: false, reason: result.reason };
+
+  const parsed = result.data;
+  if (!Array.isArray(parsed?.conflict_groups)) {
+    return { ok: false, reason: 'conflict check response did not contain a conflict_groups array' };
+  }
+
+  const knownIds = new Set(bounded.map((f) => f.id));
+  const groups: { ids: string[]; reason: string }[] = [];
+  for (const g of parsed.conflict_groups) {
+    const ids = Array.isArray(g?.ids)
+      ? g.ids.filter((id: unknown): id is string => typeof id === 'string' && knownIds.has(id))
+      : [];
+    if (ids.length >= 2) {
+      groups.push({ ids, reason: String(g?.reason ?? 'same fact, different answers') });
+    }
+  }
+  return { ok: true, groups };
+}
+
 // Builds the batch-mode generation prompt: no digit framing at all (that's
 // the whole point -- see handleBatchMode below), asking instead for N
 // genuinely distinct real facts across N different approved films, with
@@ -1011,9 +1096,27 @@ function buildBatchPrompt(
   tier: string,
   existingTitles: string[],
   preferredDigits: number[],
-  filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean }
+  filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean },
+  bankedFacts: { movie_title: string; question_text: string; correct_answer: number }[]
 ): string {
   const { instruction: genreInstruction } = filmSection(existingTitles);
+
+  // Problem: existingTitles (above) only excludes films already
+  // well-represented at THIS SAME difficulty -- deliberately, so a rich
+  // film can still supply a genuinely different fact at another tier
+  // instead of being blocked outright once anything from it exists
+  // anywhere. But that means a fact banked at one tier is invisible to a
+  // batch filling a different tier, and the model has re-derived the
+  // exact same memorable fact under new wording (Home Alone's headcount,
+  // reclassified to Expert, resurfacing in the very next Casual batch).
+  // Fix: tell the prompt which FACTS are already banked for a film at
+  // ANY tier, not which films to avoid -- the model can still use the
+  // film, it just has to find a different fact. bankedFacts is genre-
+  // wide, all-difficulty (handleBatchMode), capped and sorted by
+  // promoted_at DESC before it ever reaches here.
+  const bankedFactsSection = bankedFacts.length > 0
+    ? `\nSome films already have facts banked in the pool at OTHER difficulty tiers. You may still use these films -- a rich film can supply several different facts across tiers -- but if you do, the fact must be genuinely different from what's listed below. Do not restate, reword, paraphrase, or re-derive the same fact under different phrasing:\n${bankedFacts.map((f) => `- ${f.movie_title}: "${f.question_text}" -> ${f.correct_answer}`).join('\n')}\n`
+    : '';
 
   // Soft preference only -- deliberately never a validation gate. Single-
   // question mode's HARD digit requirement is what caused the contrived-
@@ -1041,7 +1144,7 @@ Guidance: ${tierGuidance(tier)}
 Beyond varying the films, vary the KIND of numeric fact across the batch -- do not let every question be a street number, room number, address, or age (that pattern is over-represented already). Films are full of other rich material: a count of objects or characters, how many times an event repeats in the story, a quantity of something acquired or needed, a score or ranking, a countdown or time limit, a year spoken aloud in dialogue, a distance, a speed, an amount of money. Aim for a genuine mix of these categories across the batch, not a single repeated pattern. Prefer facts with multi-digit answers (3-4 digits) where a genuine, real fact naturally has that many digits -- a single well-chosen multi-digit fact covers as many future coordinate slots as 3-4 separate single-digit questions would, so it's worth deliberately favoring over an equally-valid 1-2 digit fact when both are genuinely true.
 
 Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
-${digitPreference}${genreInstruction}
+${digitPreference}${genreInstruction}${bankedFactsSection}
 Your extraction_note for each question must clearly document the real fact behind correct_answer (e.g. "The tens digit of 88 is 8" style phrasing is fine, but is no longer required to target any specific digit -- just document the real fact clearly and correctly).
 
 Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Each correct_answer field must contain ONLY the final integer -- no reasoning, no working, no explanation. question_text, extraction_note, and hint_text must be completely free of reasoning, self-correction, or alternate attempts -- never "wait", "actually", "let's go with", or any visible sign you reconsidered mid-question.
@@ -1175,11 +1278,46 @@ async function handleBatchMode(
     (existingPoolRows ?? []).map((r: any) => `${String(r.movie_title).trim().toLowerCase()}::${r.correct_answer}::${difficulty}`)
   );
 
+  // Genre-wide, ALL-difficulty query -- deliberately NOT scoped to
+  // `difficulty` like existingPoolRows above. Feeds two things that need
+  // visibility across tiers, not just the current one: the banked-facts
+  // prompt section below (a fact banked at one tier is otherwise
+  // invisible to a batch filling a different tier -- see buildBatchPrompt's
+  // own comment on why existingTitles staying per-tier is deliberate, not
+  // an oversight), and the semantic-duplicate check (Call C, Phase 2
+  // below) which needs every existing fact for a candidate's film
+  // regardless of which tier it was banked at.
+  const { data: genreWideFacts } = await supabase
+    .from('trivia_pool')
+    .select('id, movie_title, question_text, correct_answer, promoted_at')
+    .eq('genre', genre);
+
+  type PoolFact = { id: string; movie_title: string; question_text: string; correct_answer: number; promoted_at: string };
+
+  const factsByFilm = new Map<string, PoolFact[]>();
+  for (const f of (genreWideFacts ?? []) as PoolFact[]) {
+    const key = String(f.movie_title).trim().toLowerCase();
+    const list = factsByFilm.get(key) ?? [];
+    list.push(f);
+    factsByFilm.set(key, list);
+  }
+
+  // Capped and sorted by promoted_at DESC, not movie_title -- if a
+  // mature pool ever exceeds the cap, the most RECENTLY banked facts are
+  // the ones most likely to be re-derived, since the generator keeps
+  // reaching for the same memorable material.
+  const BANKED_FACTS_CAP = 60;
+  const bankedFacts = ((genreWideFacts ?? []) as PoolFact[])
+    .slice()
+    .sort((a, b) => new Date(b.promoted_at).getTime() - new Date(a.promoted_at).getTime())
+    .slice(0, BANKED_FACTS_CAP)
+    .map((f) => ({ movie_title: f.movie_title, question_text: f.question_text, correct_answer: f.correct_answer }));
+
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
-    const prompt = buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn);
+    const prompt = buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts);
 
     // 900/question (raised from 600 -- see comment below on why 600 was
     // suspect, not confirmed insufficient). Not empirically verified
@@ -1373,6 +1511,49 @@ async function handleBatchMode(
       }
       if (hygieneCheck.hedgingFound) {
         return { item, rejectionReason: `Text-hygiene verification rejected (hedging/self-correction): ${hygieneCheck.evidence || 'no evidence quoted'}` };
+      }
+
+      // Call C: semantic-duplicate detection against every existing pool
+      // row for this film, genre-wide, all difficulties (factsByFilm,
+      // built above from the same genre-wide query bankedFacts draws
+      // from). checkForConflicts's own facts.length < 2 guard skips the
+      // API call entirely when the film has no existing rows at all --
+      // the common case for a genuinely new film, nothing to compare
+      // against. Fail-closed, same discipline as calls A/B above: a
+      // broken conflict check rejects the candidate rather than letting
+      // an unverified one through.
+      const normalizedTitle = String(item.q?.movie_title ?? '').trim().toLowerCase();
+      const existingFactsForFilm = (factsByFilm.get(normalizedTitle) ?? []).map((f) => ({
+        id: f.id, question_text: f.question_text, correct_answer: f.correct_answer,
+      }));
+      const conflictCheck = await checkForConflicts(String(item.q?.movie_title ?? ''), [
+        { id: CANDIDATE_FACT_ID, question_text: item.questionText, correct_answer: item.correctAnswer },
+        ...existingFactsForFilm,
+      ]);
+      if (!conflictCheck.ok) {
+        return { item, rejectionReason: `Semantic-duplicate verification pass failed: ${conflictCheck.reason}` };
+      }
+      const candidateConflict = conflictCheck.groups.find((g) => g.ids.includes(CANDIDATE_FACT_ID));
+      if (candidateConflict) {
+        const conflictingExistingIds = candidateConflict.ids.filter((id) => id !== CANDIDATE_FACT_ID);
+        // Flag the existing row(s) disputed, not just reject the new
+        // candidate -- a same-intent/different-answer collision means at
+        // least one of the two is wrong, and silently discarding only
+        // the candidate would leave a possibly-wrong existing row
+        // looking untouched and trustworthy to everyone downstream.
+        if (conflictingExistingIds.length > 0) {
+          await supabase
+            .from('trivia_pool')
+            .update({
+              disputed_at: new Date().toISOString(),
+              dispute_reason: `New candidate "${item.questionText}" -> ${item.correctAnswer} conflicts: ${candidateConflict.reason}`,
+            })
+            .in('id', conflictingExistingIds);
+        }
+        return {
+          item,
+          rejectionReason: `Semantic duplicate of existing pool row(s) ${conflictingExistingIds.join(', ')} with a different answer (${candidateConflict.reason}) -- existing row(s) flagged disputed for review`,
+        };
       }
 
       return { item, rejectionReason: null as string | null };
@@ -1679,6 +1860,101 @@ async function handleClassifyMode(rawQuestions: any): Promise<Response> {
   );
 }
 
+// ============================================================
+// Audit mode -- retroactive contradiction scan (Phase 4b of the trivia
+// quality plan). handleBatchMode's Call C (checkForConflicts) only ever
+// sees a fresh candidate against existing rows, so it catches new
+// contradictions going forward but has no way to find ones already
+// sitting in the pool from before it existed. This mode runs the exact
+// same judgment over EXISTING rows only, grouped by film, once per
+// genre -- an admin-triggered pass (CommandCenter's Reclassify Pool
+// tab), not something that runs per-generation.
+//
+// Scans ALL difficulties, including cipher (4) -- a contradiction is
+// about the underlying FACT, not the tier or clue style it's dressed up
+// in (same reasoning as the genre-wide query in handleBatchMode).
+// get_pool_rows_for_review (migration 064/067) stays scoped to
+// difficulty 1-3 for its own, different purpose (tier reclassification
+// review) -- a disputed cipher row will have disputed_at set here but
+// won't currently surface in that tab; a disclosed gap, not an oversight
+// (see migration 067's header).
+// ============================================================
+
+async function handleAuditMode(supabase: any, genre: unknown): Promise<Response> {
+  if (typeof genre !== 'string' || !genre.trim()) {
+    return new Response(
+      JSON.stringify({ error: 'genre is required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const { data: allRows, error } = await supabase
+    .from('trivia_pool')
+    .select('id, movie_title, question_text, correct_answer')
+    .eq('genre', genre);
+
+  if (error) {
+    return new Response(
+      JSON.stringify({ error: `Could not load pool rows: ${error.message}` }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const byFilm = new Map<string, { movie_title: string; facts: ConflictFact[] }>();
+  for (const r of (allRows ?? []) as any[]) {
+    const key = String(r.movie_title).trim().toLowerCase();
+    const entry: { movie_title: string; facts: ConflictFact[] } =
+      byFilm.get(key) ?? { movie_title: r.movie_title, facts: [] };
+    entry.facts.push({ id: r.id, question_text: r.question_text, correct_answer: r.correct_answer });
+    byFilm.set(key, entry);
+  }
+
+  // Only films with 2+ rows can possibly conflict -- cheap pre-filter
+  // before spending an AI call, same discipline as the deterministic
+  // gates ahead of calls A/B/C in handleBatchMode.
+  const filmsToCheck = Array.from(byFilm.values()).filter((f) => f.facts.length >= 2);
+
+  const AUDIT_CONCURRENCY = 5;
+  const results = await mapWithConcurrency(filmsToCheck, AUDIT_CONCURRENCY, async (film) => {
+    const check = await checkForConflicts(film.movie_title, film.facts);
+    return { film, check };
+  });
+
+  const conflictsFound: { movie_title: string; ids: string[]; reason: string }[] = [];
+  const errors: { movie_title: string; reason: string }[] = [];
+
+  for (const { film, check } of results) {
+    if (!check.ok) {
+      errors.push({ movie_title: film.movie_title, reason: check.reason });
+      continue;
+    }
+    for (const group of check.groups) {
+      conflictsFound.push({ movie_title: film.movie_title, ids: group.ids, reason: group.reason });
+      // Written directly here, same as handleBatchMode's forward-looking
+      // flagging -- no RPC boundary to cross (service-role client,
+      // server-side, inside the Edge Function).
+      await supabase
+        .from('trivia_pool')
+        .update({
+          disputed_at: new Date().toISOString(),
+          dispute_reason: `Retroactive audit: ${group.reason}`,
+        })
+        .in('id', group.ids);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      genre,
+      films_checked: filmsToCheck.length,
+      conflicts_found: conflictsFound,
+      rows_flagged: conflictsFound.reduce((sum, c) => sum + c.ids.length, 0),
+      errors,
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -1723,6 +1999,7 @@ Deno.serve(async (req) => {
   const { locationName, tier, required_digit, genre, exclude_movies, mode, count, preferred_digits, questions } = body;
   const isBatch = mode === 'batch';
   const isClassify = mode === 'classify';
+  const isAudit = mode === 'audit';
 
   // Classify mode has an entirely different request shape (a `questions`
   // array of existing pool rows; it PRODUCES a tier, it doesn't take one)
@@ -1730,6 +2007,14 @@ Deno.serve(async (req) => {
   // none of which apply to it.
   if (isClassify) {
     return await handleClassifyMode(questions);
+  }
+
+  // Audit mode: retroactive contradiction scan over EXISTING trivia_pool
+  // rows for one genre -- same semantic-duplicate judgment as batch
+  // mode's Call C, run once per genre rather than per-generation (see
+  // handleAuditMode). Only needs genre, nothing else below applies.
+  if (isAudit) {
+    return await handleAuditMode(supabase, genre);
   }
 
   if (!tier) {
