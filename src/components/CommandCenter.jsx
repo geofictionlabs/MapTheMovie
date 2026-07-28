@@ -811,6 +811,467 @@ function QuestionPoolTab() {
   );
 }
 
+// Human-readable labels for generate-trivia-question mode=classify's
+// five fixed concern keys -- kept here rather than derived, so an
+// unrecognised key (should never happen, the Edge Function already
+// filters to this exact set) falls back to the raw key instead of
+// throwing.
+const CONCERN_LABELS = {
+  ambiguous_input: 'Ambiguous input',
+  contested_count: 'Contested count',
+  question_answer_mismatch: 'Answer mismatch',
+  approximation: 'Approximation',
+  unverifiable: 'Unverifiable',
+};
+
+// Must not exceed generate-trivia-question's own MAX_CLASSIFY_BATCH (25)
+// -- kept as a separate client-side constant rather than importing across
+// the Edge Function boundary, same as every other cross-boundary constant
+// in this file (e.g. TIER_TO_INT's cap-at-3 duplicated at each call site
+// rather than shared).
+const CLASSIFY_CHUNK_SIZE = 25;
+
+// Reclassify Pool — blind difficulty classification applied retroactively
+// to EXISTING trivia_pool rows (Phase 3 of the trivia quality plan). Reads
+// via get_pool_rows_for_review (migration 064), classifies via
+// generate-trivia-question mode=classify (question_text-only for tier,
+// full context for concerns -- see that function's own header), writes
+// approved changes via apply_pool_difficulty (migration 065). Same
+// review-card/approve-reject/bulk shell as QuestionPoolTab, but the
+// content being reviewed is the pool's EXISTING labels, not freshly
+// generated candidates -- separate tab, not a sub-mode of that one.
+function ReclassifyPoolTab() {
+  const [selectedGenre, setSelectedGenre] = useState(GENRES[0].key);
+
+  const [loading, setLoading] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [loadError, setLoadError] = useState(null);
+  const [progress, setProgress] = useState(null); // { done, total } chunks, while classifying
+
+  // Each row: { id, movie_title, question_text, correct_answer,
+  // extraction_note, current_difficulty, proposed_tier, proposed_difficulty,
+  // concerns, status: 'pending' | 'approved' | 'rejected', approving,
+  // approveError }. Populated once per Load & Classify run -- reloading
+  // replaces this wholesale rather than merging, so a stale card from a
+  // previous run never lingers.
+  const [rows, setRows] = useState([]);
+  // Rows the classifier itself could not return a valid entry for --
+  // { id, movie_title, question_text, reason } -- shown separately,
+  // mirroring QuestionPoolTab's `rejected` collapsible, never silently
+  // dropped.
+  const [failedRows, setFailedRows] = useState([]);
+  const [failedExpanded, setFailedExpanded] = useState(false);
+  const [showUnchanged, setShowUnchanged] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  useEffect(() => {
+    if (!loading) return;
+    setElapsed(0);
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [loading]);
+
+  async function handleLoadAndClassify() {
+    setLoading(true);
+    setLoadError(null);
+    setProgress(null);
+    setRows([]);
+    setFailedRows([]);
+    setShowUnchanged(false);
+
+    try {
+      const { data: poolRows, error: poolError } = await supabase.rpc('get_pool_rows_for_review', {
+        p_genre: selectedGenre,
+      });
+      if (poolError) {
+        setLoadError(poolError.message || 'Could not load pool rows');
+        return;
+      }
+      if (!poolRows || poolRows.length === 0) {
+        setLoadError('No difficulty 1-3 rows in this genre\'s pool yet.');
+        return;
+      }
+
+      const chunks = [];
+      for (let i = 0; i < poolRows.length; i += CLASSIFY_CHUNK_SIZE) {
+        chunks.push(poolRows.slice(i, i + CLASSIFY_CHUNK_SIZE));
+      }
+      setProgress({ done: 0, total: chunks.length });
+
+      const byId = new Map(poolRows.map((r) => [r.id, r]));
+      const classifiedIds = new Set();
+      const failed = [];
+
+      // Sequential, not concurrent -- same reasoning as approveAll below:
+      // predictable progress reporting, and doesn't fire several batches'
+      // worth of Anthropic calls at Supabase simultaneously.
+      for (const chunk of chunks) {
+        const { data, error } = await supabase.functions.invoke('generate-trivia-question', {
+          body: {
+            mode: 'classify',
+            questions: chunk.map((r) => ({
+              id: r.id,
+              question_text: r.question_text,
+              correct_answer: r.correct_answer,
+              extraction_note: r.extraction_note,
+            })),
+          },
+        });
+
+        if (error) {
+          let detail = error.message || 'Classification request failed';
+          if (error.context) {
+            try {
+              const body = await error.context.json();
+              detail = body?.error || detail;
+            } catch { /* no usable JSON body -- keep the generic message */ }
+          }
+          for (const r of chunk) failed.push({ id: r.id, movie_title: r.movie_title, question_text: r.question_text, reason: detail });
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
+          continue;
+        }
+        if (data?.error) {
+          for (const r of chunk) failed.push({ id: r.id, movie_title: r.movie_title, question_text: r.question_text, reason: data.error });
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
+          continue;
+        }
+
+        for (const c of (data.classifications || [])) {
+          const source = byId.get(c.id);
+          if (!source) continue; // defensive -- shouldn't happen, id echoed back doesn't match anything sent
+          classifiedIds.add(c.id);
+          source._proposed_tier = c.proposed_tier;
+          source._concerns = c.concerns || [];
+        }
+        for (const f of (data.failed || [])) {
+          const source = f.id ? byId.get(f.id) : null;
+          failed.push({ id: f.id, movie_title: source?.movie_title, question_text: source?.question_text, reason: f.reason });
+        }
+        setProgress((p) => ({ ...p, done: p.done + 1 }));
+      }
+
+      const classifiedRows = poolRows
+        .filter((r) => classifiedIds.has(r.id))
+        .map((r) => ({
+          id: r.id,
+          movie_title: r.movie_title,
+          question_text: r.question_text,
+          correct_answer: r.correct_answer,
+          extraction_note: r.extraction_note,
+          current_difficulty: r.difficulty,
+          proposed_tier: r._proposed_tier,
+          proposed_difficulty: TIER_TO_INT[r._proposed_tier],
+          concerns: r._concerns,
+          status: 'pending',
+          approving: false,
+          approveError: null,
+        }));
+
+      setRows(classifiedRows);
+      setFailedRows(failed);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approveOne(row) {
+    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, approving: true, approveError: null } : r)));
+
+    const { data, error } = await supabase.rpc('apply_pool_difficulty', {
+      p_id: row.id,
+      p_new_difficulty: row.proposed_difficulty,
+    });
+    const rpcError = error || (data && data.success === false ? { message: data.error } : null);
+
+    setRows((prev) => prev.map((r) => (
+      r.id === row.id
+        ? { ...r, approving: false, status: rpcError ? 'pending' : 'approved', approveError: rpcError ? rpcError.message : null }
+        : r
+    )));
+  }
+
+  function rejectOne(row) {
+    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: 'rejected' } : r)));
+  }
+
+  // Bulk actions operate on whatever is currently VISIBLE (respecting
+  // showUnchanged) and pending -- what-you-see-is-what-you-bulk-act-on,
+  // rather than silently also touching rows the admin hasn't chosen to
+  // look at yet.
+  async function approveAllVisible() {
+    setBulkBusy(true);
+    for (const row of visibleRows.filter((r) => r.status === 'pending')) {
+      await approveOne(row);
+    }
+    setBulkBusy(false);
+  }
+
+  function rejectAllVisible() {
+    const visibleIds = new Set(visibleRows.filter((r) => r.status === 'pending').map((r) => r.id));
+    setRows((prev) => prev.map((r) => (visibleIds.has(r.id) ? { ...r, status: 'rejected' } : r)));
+  }
+
+  // Change 2: biggest disagreements first. Absolute tier delta descending,
+  // then concern count descending, then alphabetical (matches
+  // get_pool_rows_for_review's own default order) as the final tiebreak.
+  const sortedRows = [...rows].sort((a, b) => {
+    const deltaA = Math.abs(a.proposed_difficulty - a.current_difficulty);
+    const deltaB = Math.abs(b.proposed_difficulty - b.current_difficulty);
+    if (deltaB !== deltaA) return deltaB - deltaA;
+    if (b.concerns.length !== a.concerns.length) return b.concerns.length - a.concerns.length;
+    return a.movie_title.localeCompare(b.movie_title);
+  });
+
+  const isUnchanged = (r) => r.proposed_difficulty === r.current_difficulty && r.concerns.length === 0;
+  const unchangedRows = sortedRows.filter(isUnchanged);
+  const flaggedRows = sortedRows.filter((r) => !isUnchanged(r));
+  // Change 1: unchanged rows are never hidden entirely -- shown behind a
+  // prominent, always-visible count-and-toggle, not a quiet corner
+  // control, since a question the classifier AGREES is casual is exactly
+  // the kind worth spot-checking (it's the tier that caused the
+  // complaint this whole phase exists to fix).
+  const visibleRows = showUnchanged ? sortedRows : flaggedRows;
+
+  const pendingCount = visibleRows.filter((r) => r.status === 'pending').length;
+  const approvedCount = rows.filter((r) => r.status === 'approved').length;
+  const rejectedCount = rows.filter((r) => r.status === 'rejected').length;
+
+  return (
+    <div style={{ background: POOL_COLORS.bg, borderRadius: 8, padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <select
+          value={selectedGenre}
+          onChange={(e) => setSelectedGenre(e.target.value)}
+          style={{
+            padding: '8px 12px', borderRadius: 6, fontSize: 13,
+            background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`,
+            color: POOL_COLORS.text, outline: 'none',
+          }}
+        >
+          {GENRES.map((g) => (
+            <option key={g.key} value={g.key}>{g.label}</option>
+          ))}
+        </select>
+
+        <button
+          onClick={handleLoadAndClassify}
+          disabled={loading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+            background: POOL_COLORS.purple, color: '#F1F0FF', border: 'none',
+            cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
+          }}
+        >
+          {loading && <Spinner size={14} />}
+          {loading ? 'Loading & classifying…' : 'Load & classify'}
+        </button>
+      </div>
+
+      {loading && (
+        <div style={{ fontSize: 12, color: POOL_COLORS.muted, marginBottom: 20 }}>
+          {elapsed}s elapsed{progress ? ` — chunk ${Math.min(progress.done + 1, progress.total)} of ${progress.total} (each chunk runs a blind tier pass and a separate full-context concerns pass)` : ' — fetching pool rows…'}
+        </div>
+      )}
+
+      {loadError && (
+        <div style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: '#2A1518', border: '1px solid #E24B4A', color: POOL_COLORS.red, fontSize: 13,
+        }}>
+          {loadError}
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button
+              onClick={approveAllVisible}
+              disabled={bulkBusy || pendingCount === 0}
+              style={{
+                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: pendingCount === 0 ? 'default' : 'pointer',
+                background: POOL_COLORS.green, color: '#04342C', border: 'none', opacity: pendingCount === 0 ? 0.5 : 1,
+              }}
+            >
+              Approve all visible
+            </button>
+            <button
+              onClick={rejectAllVisible}
+              disabled={bulkBusy || pendingCount === 0}
+              style={{
+                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: pendingCount === 0 ? 'default' : 'pointer',
+                background: 'transparent', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`, opacity: pendingCount === 0 ? 0.5 : 1,
+              }}
+            >
+              Reject all visible
+            </button>
+            <span style={{ fontSize: 12, color: POOL_COLORS.muted }}>
+              {flaggedRows.length} flagged · {approvedCount} approved · {rejectedCount} rejected
+            </span>
+          </div>
+
+          {unchangedRows.length > 0 && (
+            <button
+              onClick={() => setShowUnchanged((s) => !s)}
+              style={{
+                width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px', borderRadius: 6, marginBottom: 16, cursor: 'pointer',
+                background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`, color: POOL_COLORS.text,
+                fontSize: 13, fontWeight: 600,
+              }}
+            >
+              <span>{unchangedRows.length} unchanged, no concerns {showUnchanged ? '(shown below)' : '— show'}</span>
+              <span style={{ color: POOL_COLORS.muted }}>{showUnchanged ? '▾' : '▸'}</span>
+            </button>
+          )}
+        </>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {visibleRows.map((row) => {
+          const dimmed = row.status === 'approved' || row.status === 'rejected';
+          const changed = row.proposed_difficulty !== row.current_difficulty;
+          const currentTierKey = Object.keys(TIER_TO_INT).find((k) => TIER_TO_INT[k] === row.current_difficulty) || 'classic';
+
+          return (
+            <div
+              key={row.id}
+              style={{
+                display: 'flex', gap: 16, padding: 16, borderRadius: 8,
+                background: POOL_COLORS.card,
+                border: `1px solid ${changed ? POOL_COLORS.gold : POOL_COLORS.border}`,
+                opacity: dimmed ? 0.55 : 1,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: POOL_COLORS.gold, fontWeight: 700, fontSize: 14 }}>{row.movie_title}</span>
+
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, textTransform: 'capitalize', padding: '2px 8px', borderRadius: 999,
+                    color: POOL_COLORS.tier[currentTierKey], border: `1px solid ${POOL_COLORS.tier[currentTierKey]}`,
+                  }}>
+                    currently {currentTierKey}
+                  </span>
+
+                  {changed && <span style={{ color: POOL_COLORS.muted, fontSize: 12 }}>→</span>}
+
+                  {changed && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, textTransform: 'capitalize', padding: '2px 8px', borderRadius: 999,
+                      background: POOL_COLORS.tier[row.proposed_tier], color: '#0B0B14',
+                    }}>
+                      {row.proposed_tier}
+                    </span>
+                  )}
+
+                  {row.concerns.map((c) => (
+                    <span
+                      key={c}
+                      style={{
+                        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                        background: '#2A1518', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`,
+                      }}
+                    >
+                      {CONCERN_LABELS[c] || c}
+                    </span>
+                  ))}
+                </div>
+
+                <div style={{ fontSize: 15, color: '#F1F0FF', lineHeight: 1.5, marginBottom: 10 }}>
+                  {row.question_text}
+                </div>
+
+                <div style={{ fontSize: 13, marginBottom: 6 }}>
+                  <span style={{ color: POOL_COLORS.muted }}>Answer </span>
+                  <span style={{ color: POOL_COLORS.gold, fontFamily: 'monospace', fontWeight: 700 }}>{row.correct_answer}</span>
+                </div>
+
+                {row.extraction_note && (
+                  <div style={{ fontSize: 12, color: '#8B8B9A' }}>{row.extraction_note}</div>
+                )}
+                {row.approveError && (
+                  <div style={{ fontSize: 12, color: POOL_COLORS.red, marginTop: 6 }}>Approve failed: {row.approveError}</div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center', flexShrink: 0 }}>
+                {row.status === 'approved' ? (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: POOL_COLORS.green, padding: '8px 14px', textAlign: 'center' }}>
+                    Approved
+                  </span>
+                ) : row.status === 'rejected' ? (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: POOL_COLORS.red, padding: '8px 14px', textAlign: 'center' }}>
+                    Rejected
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => approveOne(row)}
+                      disabled={row.approving}
+                      style={{
+                        padding: '8px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                        cursor: row.approving ? 'default' : 'pointer',
+                        background: POOL_COLORS.green, color: '#04342C', border: 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      {row.approving ? <Spinner size={12} /> : (changed ? 'Approve' : 'Keep')}
+                    </button>
+                    <button
+                      onClick={() => rejectOne(row)}
+                      disabled={row.approving}
+                      style={{
+                        padding: '8px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        background: 'transparent', color: POOL_COLORS.red, border: `1px solid ${POOL_COLORS.red}`,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {failedRows.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <button
+            onClick={() => setFailedExpanded((e) => !e)}
+            style={{
+              background: 'transparent', border: 'none', color: POOL_COLORS.muted, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {failedExpanded ? '▾' : '▸'} Could not classify ({failedRows.length})
+          </button>
+          {failedExpanded && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {failedRows.map((f, i) => (
+                <div
+                  key={i}
+                  style={{ padding: 12, borderRadius: 6, background: POOL_COLORS.card, border: `1px solid ${POOL_COLORS.divider}` }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: POOL_COLORS.text, marginBottom: 4 }}>
+                    {f.movie_title || 'Unknown'}
+                  </div>
+                  {f.question_text && (
+                    <div style={{ fontSize: 13, color: POOL_COLORS.dimmer, marginBottom: 6 }}>{f.question_text}</div>
+                  )}
+                  <div style={{ fontSize: 12, color: POOL_COLORS.red }}>{f.reason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CommandCenter() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -1211,7 +1672,7 @@ export default function CommandCenter() {
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
-          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }].map((t) => (
+          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }, { key: 'reclassify', label: 'Reclassify Pool' }].map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
@@ -1231,6 +1692,8 @@ export default function CommandCenter() {
           <ManageHuntsTab />
         ) : activeTab === 'pool' ? (
           <QuestionPoolTab />
+        ) : activeTab === 'reclassify' ? (
+          <ReclassifyPoolTab />
         ) : (
         <>
         {/* Pack name */}

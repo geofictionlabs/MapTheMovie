@@ -1403,6 +1403,282 @@ async function handleBatchMode(
   );
 }
 
+// ============================================================
+// Classify mode (Phase 3 of the trivia quality plan) -- blind difficulty
+// classification + concern-flagging for EXISTING trivia_pool rows.
+//
+// TWO separate AI calls per batch, not one, and this split is a hard
+// data-visibility gate, not just a prompt instruction:
+//   - Tier call: built from a freshly-mapped {id, question_text}-only
+//     array. correct_answer, extraction_note, and current difficulty are
+//     never read into the objects passed to buildTierClassifyPrompt, so
+//     there is no field to accidentally interpolate -- knowing the
+//     answer makes any question look easy, which is the confirmed root
+//     cause of both the generator's own self-assessment and a prior
+//     manual review failing the same way.
+//   - Concerns call: built from {id, question_text, correct_answer,
+//     extraction_note}. Two of the five concern types
+//     (question_answer_mismatch, unverifiable) are structurally
+//     undetectable without seeing the answer, so this call gets full
+//     context. The other three (ambiguous_input, contested_count,
+//     approximation) are properties of the question's own phrasing and
+//     would work blind too, but there's no benefit to a third call just
+//     to keep them separate from the two that need full context.
+// Both calls run concurrently and are merged by id afterward -- never
+// trust response order, always correlate by the id echoed back.
+// ============================================================
+
+const MAX_CLASSIFY_BATCH = 25;
+
+const VALID_TIERS = ['casual', 'classic', 'expert'] as const;
+type ProposedTier = typeof VALID_TIERS[number];
+
+const VALID_CONCERNS = [
+  'ambiguous_input',
+  'contested_count',
+  'question_answer_mismatch',
+  'approximation',
+  'unverifiable',
+] as const;
+type Concern = typeof VALID_CONCERNS[number];
+
+type ClassifyBlindItem = { id: string; question_text: string };
+type ClassifyFullItem = ClassifyBlindItem & { correct_answer: number; extraction_note: string };
+
+// Deliberately typed to accept ONLY {id, question_text} -- see file
+// header. The prompt built here only ever interpolates question_text.
+function buildTierClassifyPrompt(items: ClassifyBlindItem[]): string {
+  const list = items.map((it, i) => `${i + 1}. [id: ${it.id}] ${it.question_text}`).join('\n');
+
+  return `You are classifying the difficulty of movie trivia questions for a treasure-hunt game. You are given ONLY the question text -- not the correct answer, not any existing difficulty label. Judge purely on what the question asks and how it is phrased, never on how easy the real answer would be to guess if you already knew it.
+
+For each question, ask: "Someone who has watched this film once, and enjoyed it, but hasn't thought about it since. Would they know this?"
+
+- casual: yes, immediately, without effort. The number is one the film is KNOWN for, or is structural to the plot (how many in the Fellowship, how many days you have left, how fast the car must go).
+- classic: they'd need to have paid attention the first time, or seen it more than once. The film states it clearly but doesn't hang on it.
+- expert: only a genuine fan who watched closely or rewatched would retain it. Stated once in passing, or visible on screen without being drawn attention to.
+
+THE KEY HEURISTIC -- this predicts the split better than anything else: is this a number the film is KNOWN for, or a number that merely APPEARS in it?
+- Known for -> casual. 88mph. Seven days. Say it three times. Nine walkers.
+- Appears in -> classic or expert. A taxi number. A house address. A count of accident reports. An age derived from a timeline.
+
+Addresses, room numbers, and incidental counts are almost never casual, however famous the film. Plot-structural counts usually are.
+
+Questions:
+${list}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "classifications": [
+    { "id": "...", "proposed_tier": "casual" }
+  ]
+}
+Include exactly one entry per question listed above, each with its id copied back exactly, and proposed_tier one of "casual", "classic", "expert".`;
+}
+
+function buildConcernsClassifyPrompt(items: ClassifyFullItem[]): string {
+  const list = items.map((it, i) =>
+    `${i + 1}. [id: ${it.id}]\n   question_text: "${it.question_text}"\n   correct_answer: ${it.correct_answer}\n   extraction_note: "${it.extraction_note || '(none provided)'}"`
+  ).join('\n');
+
+  return `You are reviewing movie trivia questions for a treasure-hunt game, checking for structural problems independent of difficulty. For each question you are given the question text, the stored correct answer, and the extraction note documenting how that answer was derived. Flag any of the following that apply -- a question can have zero, one, or several concerns. Do not invent concern types not listed here.
+
+- ambiguous_input: unclear what the player would type. Example: Groundhog Day's alarm reads 6:00 -- would a player enter 600, 6, or 6:00?
+- contested_count: reasonable people would count differently. Examples: how many people are killed in Scream; peak group size in 28 Days Later.
+- question_answer_mismatch: the question asks for one kind of thing and the answer is another. Example: Terminator 2 asks "on what DATE" and the answer is 1997, a year.
+- approximation: the question or the underlying fact is hedged with approximately/roughly/about.
+- unverifiable: reads like a figure derived or inferred rather than stated in the film. Example: Interstellar, Murph living to 124.
+
+Questions:
+${list}
+
+Return ONLY valid JSON, no markdown fences, no preamble:
+{
+  "classifications": [
+    { "id": "...", "concerns": [] }
+  ]
+}
+Include exactly one entry per question listed above, each with its id copied back exactly, and concerns as an array containing only the exact keys listed above (empty array if none apply).`;
+}
+
+type ClassifierCallResult<T> = { ok: true; byId: Map<string, T> } | { ok: false; reason: string };
+
+// One attempt + one retry, same discipline as callVerifier above -- fail
+// closed on a genuinely broken call (two failures in a row), but a single
+// transient network/parse blip doesn't discard an entire batch.
+async function attemptClassifyCall(prompt: string, maxTokens: number): Promise<
+  | { ok: true; parsed: any; stopReason: string }
+  | { ok: false; reason: string }
+> {
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+  } catch (err) {
+    return { ok: false, reason: `classifier request threw: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '(could not read response body)');
+    return { ok: false, reason: `classifier HTTP ${response.status}: ${bodyText.slice(0, 300)}` };
+  }
+
+  const data = await response.json();
+  const text = (data.content as any[]).map((b: any) => b.text || '').join('\n');
+  const parsed = extractLastJsonObject(text);
+  if (!parsed || !Array.isArray(parsed.classifications)) {
+    const reason = data.stop_reason === 'max_tokens'
+      ? `Response truncated at max_tokens (${maxTokens}) before a complete JSON object could be parsed`
+      : `classifier response did not contain a parseable classifications array (last 300 chars): "${text.slice(-300)}"`;
+    return { ok: false, reason };
+  }
+  return { ok: true, parsed, stopReason: data.stop_reason };
+}
+
+async function callTierClassifier(items: ClassifyBlindItem[]): Promise<ClassifierCallResult<ProposedTier>> {
+  if (items.length === 0) return { ok: true, byId: new Map() };
+  const prompt = buildTierClassifyPrompt(items);
+  const maxTokens = 60 * items.length + 200;
+
+  let result = await attemptClassifyCall(prompt, maxTokens);
+  if (!result.ok) result = await attemptClassifyCall(prompt, maxTokens);
+  if (!result.ok) return { ok: false, reason: result.reason };
+
+  const byId = new Map<string, ProposedTier>();
+  for (const entry of result.parsed.classifications) {
+    const id = String(entry?.id ?? '');
+    const tier = String(entry?.proposed_tier ?? '');
+    if (id && (VALID_TIERS as readonly string[]).includes(tier)) {
+      byId.set(id, tier as ProposedTier);
+    }
+  }
+  return { ok: true, byId };
+}
+
+async function callConcernsClassifier(items: ClassifyFullItem[]): Promise<ClassifierCallResult<Concern[]>> {
+  if (items.length === 0) return { ok: true, byId: new Map() };
+  const prompt = buildConcernsClassifyPrompt(items);
+  const maxTokens = 100 * items.length + 200;
+
+  let result = await attemptClassifyCall(prompt, maxTokens);
+  if (!result.ok) result = await attemptClassifyCall(prompt, maxTokens);
+  if (!result.ok) return { ok: false, reason: result.reason };
+
+  const byId = new Map<string, Concern[]>();
+  for (const entry of result.parsed.classifications) {
+    const id = String(entry?.id ?? '');
+    if (!id) continue;
+    const rawConcerns = Array.isArray(entry?.concerns) ? entry.concerns : [];
+    const concerns = rawConcerns.filter((c: unknown): c is Concern =>
+      typeof c === 'string' && (VALID_CONCERNS as readonly string[]).includes(c)
+    );
+    byId.set(id, concerns);
+  }
+  return { ok: true, byId };
+}
+
+async function handleClassifyMode(rawQuestions: any): Promise<Response> {
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'questions must be a non-empty array' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  if (rawQuestions.length > MAX_CLASSIFY_BATCH) {
+    return new Response(
+      JSON.stringify({ error: `questions array too large (${rawQuestions.length}) -- max ${MAX_CLASSIFY_BATCH} per call, chunk the request` }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const failed: { id: string | null; reason: string }[] = [];
+  const seenIds = new Set<string>();
+  const validItems: ClassifyFullItem[] = [];
+
+  for (const raw of rawQuestions) {
+    const id = typeof raw?.id === 'string' ? raw.id : null;
+    const questionText = typeof raw?.question_text === 'string' ? raw.question_text.trim() : '';
+    const correctAnswer = raw?.correct_answer;
+
+    if (!id) { failed.push({ id: null, reason: 'missing id' }); continue; }
+    if (seenIds.has(id)) { failed.push({ id, reason: 'duplicate id in request' }); continue; }
+    if (!questionText) { failed.push({ id, reason: 'missing or empty question_text' }); continue; }
+    if (typeof correctAnswer !== 'number' || !Number.isFinite(correctAnswer)) {
+      failed.push({ id, reason: 'missing or non-numeric correct_answer' });
+      continue;
+    }
+
+    seenIds.add(id);
+    validItems.push({
+      id,
+      question_text: questionText,
+      correct_answer: correctAnswer,
+      extraction_note: typeof raw?.extraction_note === 'string' ? raw.extraction_note : '',
+    });
+  }
+
+  if (validItems.length === 0) {
+    return new Response(
+      JSON.stringify({ classifications: [], failed }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Tier call is built from a freshly-mapped {id, question_text}-only
+  // array, not validItems itself -- see file header on why this needs to
+  // be a real data-visibility gate, not just prompt discipline.
+  const blindItems: ClassifyBlindItem[] = validItems.map((it) => ({ id: it.id, question_text: it.question_text }));
+
+  const [tierResult, concernsResult] = await Promise.all([
+    callTierClassifier(blindItems),
+    callConcernsClassifier(validItems),
+  ]);
+
+  if (!tierResult.ok) {
+    return new Response(
+      JSON.stringify({ error: `Tier classification failed: ${tierResult.reason}` }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  if (!concernsResult.ok) {
+    return new Response(
+      JSON.stringify({ error: `Concern classification failed: ${concernsResult.reason}` }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const classifications: { id: string; proposed_tier: ProposedTier; concerns: Concern[] }[] = [];
+  for (const item of validItems) {
+    const tier = tierResult.byId.get(item.id);
+    if (!tier) {
+      failed.push({ id: item.id, reason: 'tier classifier did not return a valid entry for this id' });
+      continue;
+    }
+    // Concerns are supplementary -- a missing concerns entry for an id
+    // that DID get a valid tier is treated as "no concerns flagged"
+    // (empty array), not a failure, so one call's hiccup doesn't discard
+    // an otherwise-good tier classification.
+    const concerns = concernsResult.byId.get(item.id) ?? [];
+    classifications.push({ id: item.id, proposed_tier: tier, concerns });
+  }
+
+  return new Response(
+    JSON.stringify({ classifications, failed }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -1444,8 +1720,17 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json();
-  const { locationName, tier, required_digit, genre, exclude_movies, mode, count, preferred_digits } = body;
+  const { locationName, tier, required_digit, genre, exclude_movies, mode, count, preferred_digits, questions } = body;
   const isBatch = mode === 'batch';
+  const isClassify = mode === 'classify';
+
+  // Classify mode has an entirely different request shape (a `questions`
+  // array of existing pool rows; it PRODUCES a tier, it doesn't take one)
+  // -- dispatched before any of the single/batch-mode field checks below,
+  // none of which apply to it.
+  if (isClassify) {
+    return await handleClassifyMode(questions);
+  }
 
   if (!tier) {
     return new Response(JSON.stringify({ error: 'tier is required' }), {
