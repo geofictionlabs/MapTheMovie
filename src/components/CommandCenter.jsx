@@ -555,6 +555,18 @@ function QuestionPoolTab() {
         <div style={{ fontSize: 12, color: POOL_COLORS.muted }}>
           {coverage.covered_digits.length} of 10 digits covered · {coverage.row_count} question{coverage.row_count === 1 ? '' : 's'} in pool
         </div>
+        {selectedTier === 'casual' && (
+          // Casual-only -- without this, the red squares above invite
+          // exactly the forcing behaviour buildCasualBatchPrompt exists
+          // to prevent. Genuine "known for" facts are capped by what
+          // real famous film-numbers exist, not by how much you
+          // generate -- a gap here can be permanent, and repeatedly
+          // regenerating to chase it just reproduces the mislabeling
+          // this whole pass was fixing.
+          <div style={{ fontSize: 12, color: POOL_COLORS.muted, marginTop: 6 }}>
+            Casual coverage is capped by real-world scarcity, not by generation effort — some digits may never fill.
+          </div>
+        )}
       </div>
 
       {/* Controls row */}

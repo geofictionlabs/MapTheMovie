@@ -1171,6 +1171,115 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 }`;
 }
 
+// Casual-tier batch prompt -- deliberately a SEPARATE function, not a
+// branch inside buildBatchPrompt. That function's shared framing
+// actively fights casual in three places: "don't limit yourself to
+// films whose number is already a famous, oft-quoted detail" (the
+// opposite of what casual needs), "vary the KIND of numeric fact... a
+// street number, room number... a score... an amount of money" (names
+// the exact categories that were polluting the Casual pool), and
+// "prefer facts with multi-digit answers" (genuine known-for facts are
+// usually small, memorable numbers -- 7, 9, 13, 88 -- so this pushes
+// away from them). Confirmed across two rounds of blind reclassification:
+// Comedy Casual went from 18 questions to 4 once mislabeled entries were
+// caught, including a batch generated AS casual minutes earlier -- the
+// shared prompt was actively producing classic/expert-difficulty facts
+// under a casual label, not occasionally missing the mark.
+//
+// Structurally different in one more way: this does NOT ask for `count`
+// distinct facts across `count` films. Most approved films have zero or
+// one genuine casual fact -- asking the model to hit a count target
+// against a resource this scarce is the same pressure that already
+// caused the digit-requirement fabrication problem (platform 9 3/4
+// written as "934" -- see buildPrompt's own CRITICAL CONSTRAINT comment
+// elsewhere in this file), just on the tier axis instead of the digit
+// axis. Instead: the full remaining film list is already shown by
+// filmSection (unfiltered by count -- see buildFilmSection), and the
+// instruction is to return AT MOST ONE fact per film, only for films
+// that genuinely have one, skipping the rest outright. Returning far
+// fewer than `count` -- including zero -- is the expected, correct
+// outcome for this tier, stated explicitly so under-delivery reads as
+// success, not failure.
+//
+// preferredDigits is accepted for call-site uniformity with
+// buildBatchPrompt but deliberately NEVER rendered into the prompt --
+// naming a wanted digit at all reintroduces the exact pressure this
+// prompt exists to remove. An earlier draft tried to hedge that away
+// ("never let this influence which fact you pick... some digits may not
+// exist") -- the hedge doesn't undo it, naming the digit at all is
+// already the pressure. Scarcity is the point at this tier, not
+// something to route around.
+//
+// The "appears in" exception below is deliberately scoped to PREMISE,
+// not TITLE. correct_answer appearing in movie_title is already a hard
+// Phase 1 rejection gate a few hundred lines below (titleNumbers.has --
+// this is exactly how "21 Jump Street" -> 21 and "The 40-Year-Old
+// Virgin" -> 40 get caught). An earlier draft's exception named Ocean's
+// Eleven and Se7en as passing because the number is "the film's own
+// title" -- both would actually be rejected by that same gate
+// (extractNumbers parses spelled-out number words too, so "Eleven"
+// matches 11 the same as a literal digit would), which would have
+// produced candidates this prompt encourages and Phase 1 then silently
+// discards every time. The exception now points back at the SAME
+// positive anchors already given above (nine walkers, thirteen dwarves,
+// four Pevensie children) -- none of which appear in their own titles --
+// rather than introducing a new title-based example.
+//
+// Same JSON response shape as buildBatchPrompt (movie_title,
+// correct_answer, extraction_note, etc.) -- handleBatchMode's Phase 1/2
+// candidate processing, dedup, and Call C conflict-check are all reused
+// unchanged downstream. Only the PROMPT differs.
+function buildCasualBatchPrompt(
+  count: number,
+  existingTitles: string[],
+  preferredDigits: number[],
+  filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean },
+  bankedFacts: { movie_title: string; question_text: string; correct_answer: number }[]
+): string {
+  const { instruction: genreInstruction } = filmSection(existingTitles);
+
+  const bankedFactsSection = bankedFacts.length > 0
+    ? `\nSome films below already have facts banked in the pool at OTHER difficulty tiers -- do not re-derive these under different wording, and do not assume a film has a second, different casual-eligible fact just because it has an entry elsewhere. Most films have at most ONE fact that clears the casual bar, period:\n${bankedFacts.map((f) => `- ${f.movie_title}: "${f.question_text}" -> ${f.correct_answer}`).join('\n')}\n`
+    : '';
+
+  return `Find CASUAL-tier movie trivia facts for a treasure-hunt trivia pool. Casual is a much narrower, scarcer category than classic or expert -- most approved films have at most ONE genuinely casual fact, and many have none at all. You are not being asked to generate ${count} questions. You are being asked to go through the approved film list below and return a fact ONLY for the films that genuinely have one. Returning far fewer than ${count} -- even zero -- is the expected, correct outcome, not a shortfall to make up. Never force a fact out of a film that doesn't have one.
+
+THE TEST, for every film: would someone who watched this film once, enjoyed it, and hasn't thought about it since, know this number immediately, without effort? The number must be one the film is KNOWN for -- something that comes up when people casually describe or reference the film -- not merely a number that happens to appear somewhere in it.
+
+KNOWN FOR (casual, these pass): 88mph (Back to the Future). Seven days (The Ring). Say it three times (Beetlejuice). Nine walkers (The Fellowship of the Ring). Thirteen dwarves (The Hobbit). Four Pevensie children (Narnia). Each of these is something a fan would state as part of describing the film itself, not a detail you'd have to recall from a specific scene.
+
+APPEARS IN (NOT casual, even for a very famous film): a street address, a room or suite number, a price or dollar amount, a score or ranking, an ID/badge/locker number, an incidental count of background objects or minor events. These are real, correctly-documented facts -- they may be excellent CLASSIC or EXPERT material -- they are simply not what the film is known for. ONE exception: an incidental-looking count still qualifies if the STORY ITSELF is structurally built around that number -- not a detail the plot happens to contain, but the thing the plot organizes around (the Fellowship has to be nine walkers, the dwarves are thirteen, the Pevensies are four). A number is premise, not incidental, when the story wouldn't make sense with a different count.
+
+Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
+${genreInstruction}${bankedFactsSection}
+Your extraction_note for each question must clearly document the real fact behind correct_answer, in plain language -- no digit-position phrasing required or expected.
+
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Each correct_answer field must contain ONLY the final integer -- no reasoning, no working, no explanation. question_text, extraction_note, and hint_text must be completely free of reasoning, self-correction, or alternate attempts -- never "wait", "actually", "let's go with", or any visible sign you reconsidered mid-question.
+
+Each question must be about exactly one film: movie_title. Before finalising each question, check its question_text, extraction_note, and hint_text for any OTHER film title mentioned -- list every such title in that question's other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films (rare).
+
+Return AT MOST ONE entry per film. Do not pad the list to reach ${count} -- an empty "questions" array is a valid, correct response if nothing in the list genuinely clears the casual bar.
+
+For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
+
+Return ONLY valid JSON with no markdown fences and no preamble:
+{
+  "questions": [
+    {
+      "question_text": "...",
+      "movie_title": "...",
+      "movie_year": 1985,
+      "movie_emoji": "...",
+      "correct_answer": 88,
+      "extraction_note": "...",
+      "hint_text": "...",
+      "other_films_mentioned": [],
+      "fact_category": "speed"
+    }
+  ]
+}`;
+}
+
 // Runs `fn` over `items` with at most `limit` in flight at once, preserving
 // each result at its original index. No external dependency -- a simple
 // worker-pool: each worker pulls the next unclaimed index until none
@@ -1317,7 +1426,15 @@ async function handleBatchMode(
   let candidates: any[] | null = null;
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
-    const prompt = buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts);
+    // Casual gets its own prompt entirely -- buildBatchPrompt's shared
+    // framing (vary the kind of fact, prefer multi-digit answers, don't
+    // just reach for the famous number) actively fights genuine casual
+    // facts. See buildCasualBatchPrompt's own header for the full
+    // reasoning and the two rounds of blind reclassification that
+    // confirmed it.
+    const prompt = tier === 'casual'
+      ? buildCasualBatchPrompt(count, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts)
+      : buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts);
 
     // 900/question (raised from 600 -- see comment below on why 600 was
     // suspect, not confirmed insufficient). Not empirically verified
