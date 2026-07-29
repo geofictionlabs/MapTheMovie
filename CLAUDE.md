@@ -27,8 +27,10 @@ destination, and claim a reward on arrival.
 ```
 mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
   src/
-    App.jsx               - player-facing app (~1700 lines, state-based nav)
-    Dashboard.jsx         - business portal (~1200 lines)
+    App.jsx               - player-facing app (5,000+ lines, state-based nav)
+                            large enough that targeted investigations should use
+                            a subagent rather than reading it into the main session
+    Dashboard.jsx         - business portal (2,035 lines)
     main.jsx              - entry point: ErrorBoundary + path routing
     ErrorBoundary.jsx     - standalone error boundary component
     index.css             - global reset (dark background forced here)
@@ -45,10 +47,8 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
 
 ../mapthemovie/           <- sibling folder (schema + migrations)
   MapTheMovie_Schema.sql  - full schema: 10 tables, 8 RPC functions, RLS
-  migrations/
-    001_comic_con.sql     - live session, voucher, push tables + RPCs
-    002_seed_data.sql     - seed data (generic, no event/location names)
-    003_functions_only.sql - corrected get_active_hunts (starts_at/ends_at)
+  migrations/             - numbered 001-067; list the directory rather than
+                            relying on this file, which will always drift
 ```
 
 ## SECURITY
@@ -129,7 +129,8 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
   `get_business_dashboard`
 - Full RLS on all tables — trivia answers never exposed to client
 - `validate_answer` receives the FULL answer (e.g. 88), compares against
-  `correct_answer`, extracts `coordinate_digit` server-side
+  `correct_answer`, extracts `coordinate_digit` server-side, and returns it to
+  the client under the key `digit`, not `coordinate_digit`.
 
 ## Vercel
 
@@ -155,6 +156,75 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
 | Text | `#F1F0FF` |
 | Subtext | `#B8B4D8` |
 | Muted | `#6B67A0` |
+
+## Standing Rules — Database and Relay
+
+**Build every function replacement from a live `pg_get_functiondef` pull.**
+Unconditional. Never from a migration file. Never from reasoning that a file
+"must still match live because nothing has touched it since" — that exemption is
+exactly how migration 052 silently reverted 046's coordinate fix and reintroduced
+a live coordinate leak. Postgres replaces a function whole with no diff, so a
+reverted fix leaves no trace. Michael runs the query and pastes the result; wait
+for it rather than substituting a file.
+
+**`validate_answer` must return a scalar `jsonb`.** Never `RETURNS TABLE`, never
+`RETURNS SETOF`. The frontend reads `data.correct`, not `data[0].correct`
+(App.jsx, handleSubmitAnswer). If PostgREST returns an array, every property read
+becomes undefined, `correct` is falsy, and every submission — right or wrong —
+renders as incorrect with no error shown. Silently unsolvable puzzle.
+
+Seven load-bearing keys, none of which may be renamed:
+`signal_points_remaining`, `correct`, `digit`, `all_solved`, `locked_out`,
+`locked_until`, `attempts_remaining`.
+
+`digit` in particular: it is NOT `coordinate_digit`. Renaming it for consistency
+with the column name breaks slot solving. Adding new keys is safe — no caller
+spreads, destructures exhaustively, or schema-validates.
+
+Also: `signal_points_remaining` must be a real number, not a string — the
+frontend guards on `typeof === 'number'` and fails silently on `"3"`. And
+`attempts_remaining` must be absent or null when there is no lockout, never 0 —
+the test is `!= null`.
+
+**`CREATE OR REPLACE` cannot change a `RETURNS TABLE` or `RETURNS SETOF`
+signature.** Adding a column to the return type is a return-type change and
+Postgres rejects it with "cannot change return type of existing function". It
+needs an explicit `DROP FUNCTION IF EXISTS fn(argtypes);` first. The DROP takes
+the function's grants with it, so the REVOKE/GRANT block afterwards is required
+to restore access — not a harmless re-issue. DROP + CREATE count as one logical
+statement; they must run together.
+
+**Every admin RPC needs both halves of the gate.** `is_platform_admin()` inside
+the function body AND an explicit `REVOKE EXECUTE ON FUNCTION fn(argtypes) FROM
+anon;`. This is a standing requirement for every new RPC, not a fix for one past
+bug. `REVOKE ALL ... FROM PUBLIC` does NOT reach anon in this database — Supabase
+grants EXECUTE to anon/authenticated directly at function-creation time, not via
+the PUBLIC pseudo-role. Neither half is sufficient alone: the body guard without
+the revoke leaves the function callable, and the revoke without the body guard
+leaves it open to any authenticated player.
+
+**Two deploy paths. Confusing them has cost hours twice.**
+- Edge Functions — auto-deploy via GitHub Actions on push to main
+- Frontend — requires `npx vercel --prod` manually. CI does NOT ship it.
+
+Verify a deploy by content, not by hash: fetch the deployed chunk and grep for a
+distinctive string. If a change is pure control flow with no new strings, say so
+rather than claiming a check that wasn't possible.
+
+**Never request or accept a service-role key, database connection string, or
+Supabase access token.** A service-role key bypasses RLS entirely and would undo
+the security posture built across several sessions. If blocked, say what is
+blocking and ask for a query to be run instead.
+
+**Type long content directly into the reply body.** File contents, SQL, and diffs
+must be typed out in the reply, never referenced from a tool result — the
+copy-paste relay truncates and corrupts them, and has already done so repeatedly.
+For very long files use the clipboard, and remember the clipboard holds one thing
+at a time.
+
+**"Success. No rows returned" means no error was thrown — not that the state is
+correct.** Always follow with a real verification query. This has already caught
+a REVOKE that silently hadn't applied.
 
 ## Critical Rules
 
@@ -191,7 +261,8 @@ Within `<App />` all screen transitions are state-driven. No client-side router.
 2. Tap PLAY — anonymous auth via `supabase.auth.signInAnonymously()`
 3. `hunt_sessions` row inserted, `get_puzzle_for_player` RPC fetches questions
 4. Trivia — player types FULL answer, `validate_answer` RPC checks it and
-   extracts coordinate digit (e.g. answer=88, coordinate_digit=8)
+   extracts coordinate digit (e.g. answer=88, coordinate_digit=8), and returns
+   it to the client under the key `digit`, not `coordinate_digit`.
 5. All slots solved → `unlock_coordinates` RPC returns real lat/lon
 6. GPS compass — player walks to location
 7. `confirm_arrival` RPC validates PostGIS geofence → issues voucher
