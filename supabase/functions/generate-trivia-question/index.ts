@@ -1225,6 +1225,16 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 // four Pevensie children) -- none of which appear in their own titles --
 // rather than introducing a new title-based example.
 //
+// The prompt now also states the title-number rule OUTRIGHT rather than
+// leaving Phase 1 to enforce it silently. The gate has always caught
+// these; the prompt never mentioned them. So the model kept proposing
+// "The 40-Year-Old Virgin" -> 40 and "21 Jump Street" -> 21 -- correctly
+// following the casual instruction it was given (for those films the
+// title number genuinely IS the number they are known for) and being
+// killed by an instruction it was never shown. That was most of a comedy
+// batch lost to a rule the model could not see. Stating it here changes
+// nothing about the gate, which is correct and stays exactly as it is.
+//
 // Same JSON response shape as buildBatchPrompt (movie_title,
 // correct_answer, extraction_note, etc.) -- handleBatchMode's Phase 1/2
 // candidate processing, dedup, and Call C conflict-check are all reused
@@ -1249,6 +1259,8 @@ THE TEST, for every film: would someone who watched this film once, enjoyed it, 
 KNOWN FOR (casual, these pass): 88mph (Back to the Future). Seven days (The Ring). Say it three times (Beetlejuice). Nine walkers (The Fellowship of the Ring). Thirteen dwarves (The Hobbit). Four Pevensie children (Narnia). Each of these is something a fan would state as part of describing the film itself, not a detail you'd have to recall from a specific scene.
 
 APPEARS IN (NOT casual, even for a very famous film): a street address, a room or suite number, a price or dollar amount, a score or ranking, an ID/badge/locker number, an incidental count of background objects or minor events. These are real, correctly-documented facts -- they may be excellent CLASSIC or EXPERT material -- they are simply not what the film is known for. ONE exception: an incidental-looking count still qualifies if the STORY ITSELF is structurally built around that number -- not a detail the plot happens to contain, but the thing the plot organizes around (the Fellowship has to be nine walkers, the dwarves are thirteen, the Pevensies are four). A number is premise, not incidental, when the story wouldn't make sense with a different count.
+
+TITLE NUMBERS -- SKIP THE FILM: if the number a film is known for IS the number in its title, that film has no usable casual fact. The question would be answerable from the title alone, without ever seeing the film. Skip that film entirely -- do not reach for a weaker second number just to keep it in the list. The 40-Year-Old Virgin (40) and 21 Jump Street (21) are exactly this case: the number each film is known for is its own title number, so both must be skipped, not rewritten around. Spelled-out numbers in a title count the same way -- Ocean's Eleven (11) and Se7en (7) are the same case. This does NOT exclude every film with a number in its title. The test is the fact you were about to write, not the title: if a film has a number in its title but the fact you have in mind is a genuinely different number from elsewhere in the film, that film is still eligible and you should write it.
 
 Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
 ${genreInstruction}${bankedFactsSection}
