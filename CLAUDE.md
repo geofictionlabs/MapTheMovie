@@ -47,7 +47,7 @@ mapthemovie-app/          <- this repo (GitHub: geofictionlabs/MapTheMovie)
 
 ../mapthemovie/           <- sibling folder (schema + migrations)
   MapTheMovie_Schema.sql  - full schema: 10 tables, 8 RPC functions, RLS
-  migrations/             - numbered 001-067; list the directory rather than
+  migrations/             - numbered 001-070; list the directory rather than
                             relying on this file, which will always drift
 ```
 

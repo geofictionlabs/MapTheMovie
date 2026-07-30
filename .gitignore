@@ -35,3 +35,7 @@ supabase/.temp/
 .env
 .env.*
 !.env.example
+
+# Deno lockfile — byproduct of `npx deno@latest check` on the Edge
+# Functions. There is no deno.json in this repo, so nothing reads it.
+deno.lock
