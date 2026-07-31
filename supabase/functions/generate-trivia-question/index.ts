@@ -1306,6 +1306,67 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 }`;
 }
 
+// Films that have repeatedly failed at Casual and keep being proposed
+// anyway, burning a slot and up to three verifier calls every batch.
+// Keyed by genre so each list can grow independently as repeat offenders
+// surface -- add to the array, nothing else needs touching.
+//
+// `absolute: true`  -- the film can never yield a casual fact; never propose it.
+// `absolute: false` -- one specific ANSWER is barred, but the film stays
+//                      eligible if a genuinely different fact qualifies.
+//
+// The split matters: collapsing these into one "banned films" list would
+// permanently lock out a film that does have a usable fact behind a
+// number the model happens to keep reaching for first, which is exactly
+// the One Hundred and One Dalmatians case below.
+//
+// These are a prompt-side optimisation only. Nothing here is a gate --
+// Phase 1 and the verifiers still judge whatever comes back, so a stale
+// or wrong entry costs a missed question, never a bad one.
+type CasualExclusion = { title: string; absolute: boolean; reason: string };
+
+const CASUAL_EXCLUSIONS: Record<string, CasualExclusion[]> = {
+  family: [
+    {
+      title: 'Snow White and the Seven Dwarfs',
+      absolute: true,
+      reason: 'the number it is known for (seven) is its own title number',
+    },
+    {
+      title: 'Big Hero 6',
+      absolute: true,
+      reason: 'the number it is known for (six) is its own title number',
+    },
+    {
+      title: 'The Princess Bride',
+      absolute: true,
+      reason: 'Vizzini\'s "classic blunders" have come back with three different invented numbers across three batches; the film never states a count, so any number here is fabricated',
+    },
+    {
+      title: 'One Hundred and One Dalmatians',
+      absolute: false,
+      reason: '101 is the title number and is never a valid answer. The film\'s actual puppy count is 99 -- a question that genuinely resolves to 99 is allowed; 101 is not',
+    },
+  ],
+};
+
+function buildCasualExclusionSection(genre: string): string {
+  const entries = CASUAL_EXCLUSIONS[genre];
+  if (!entries || entries.length === 0) return '';
+
+  const never = entries.filter((e) => e.absolute);
+  const barred = entries.filter((e) => !e.absolute);
+
+  let out = '';
+  if (never.length > 0) {
+    out += `\nDO NOT PROPOSE THESE FILMS AT ALL. Each has been tried and cannot produce a casual fact. Leave them out of your response entirely -- do not include them under any wording, and do not include an entry explaining why you left them out:\n${never.map((e) => `- ${e.title}: ${e.reason}`).join('\n')}\n`;
+  }
+  if (barred.length > 0) {
+    out += `\nTHESE FILMS ARE STILL ELIGIBLE, but one specific answer is barred. Use the film ONLY if a genuinely different fact qualifies on its own merits:\n${barred.map((e) => `- ${e.title}: ${e.reason}`).join('\n')}\n`;
+  }
+  return out;
+}
+
 // Casual-tier batch prompt -- deliberately a SEPARATE function, not a
 // branch inside buildBatchPrompt. That function's shared framing
 // actively fights casual in three places: "don't limit yourself to
@@ -1376,12 +1437,14 @@ Return ONLY valid JSON with no markdown fences and no preamble:
 // unchanged downstream. Only the PROMPT differs.
 function buildCasualBatchPrompt(
   count: number,
+  genre: string,
   existingTitles: string[],
   preferredDigits: number[],
   filmSection: (attemptedTitles: string[]) => { instruction: string; hasConstraint: boolean },
   bankedFacts: { movie_title: string; question_text: string; correct_answer: number }[]
 ): string {
   const { instruction: genreInstruction } = filmSection(existingTitles);
+  const exclusionSection = buildCasualExclusionSection(genre);
 
   const bankedFactsSection = bankedFacts.length > 0
     ? `\nSome films below already have facts banked in the pool at OTHER difficulty tiers -- do not re-derive these under different wording, and do not assume a film has a second, different casual-eligible fact just because it has an entry elsewhere. Most films have at most ONE fact that clears the casual bar, period:\n${bankedFacts.map((f) => `- ${f.movie_title}: "${f.question_text}" -> ${f.correct_answer}`).join('\n')}\n`
@@ -1396,7 +1459,7 @@ KNOWN FOR (casual, these pass): 88mph (Back to the Future). Seven days (The Ring
 APPEARS IN (NOT casual, even for a very famous film): a street address, a room or suite number, a price or dollar amount, a score or ranking, an ID/badge/locker number, an incidental count of background objects or minor events. These are real, correctly-documented facts -- they may be excellent CLASSIC or EXPERT material -- they are simply not what the film is known for. ONE exception: an incidental-looking count still qualifies if the STORY ITSELF is structurally built around that number -- not a detail the plot happens to contain, but the thing the plot organizes around (the Fellowship has to be nine walkers, the dwarves are thirteen, the Pevensies are four). A number is premise, not incidental, when the story wouldn't make sense with a different count.
 
 TITLE NUMBERS -- SKIP THE FILM: if the number a film is known for IS the number in its title, that film has no usable casual fact. The question would be answerable from the title alone, without ever seeing the film. Skip that film entirely -- do not reach for a weaker second number just to keep it in the list. The 40-Year-Old Virgin (40) and 21 Jump Street (21) are exactly this case: the number each film is known for is its own title number, so both must be skipped, not rewritten around. Spelled-out numbers in a title count the same way -- Ocean's Eleven (11) and Se7en (7) are the same case. This does NOT exclude every film with a number in its title. The test is the fact you were about to write, not the title: if a film has a number in its title but the fact you have in mind is a genuinely different number from elsewhere in the film, that film is still eligible and you should write it.
-
+${exclusionSection}
 Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
 ${genreInstruction}${bankedFactsSection}
 Your extraction_note for each question must clearly document the real fact behind correct_answer, in plain language -- no digit-position phrasing required or expected.
@@ -1406,6 +1469,8 @@ Do not include any reasoning or thinking before the JSON. Return ONLY the JSON o
 Each question must be about exactly one film: movie_title. Before finalising each question, check its question_text, extraction_note, and hint_text for any OTHER film title mentioned -- list every such title in that question's other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films (rare).
 
 Return AT MOST ONE entry per film. Do not pad the list to reach ${count} -- an empty "questions" array is a valid, correct response if nothing in the list genuinely clears the casual bar.
+
+HOW TO DECLINE A FILM -- there is exactly one way: leave it out of the "questions" array. That is the entire mechanism, and a shorter array is the correct, expected way to say no. Never emit an entry in order to decline one. An entry whose question_text (or any other field) contains a withdrawal, a skip note, a phrase like "no clean casual number clears the bar here", a deliberation about whether the film qualifies, or any other commentary instead of a real question is a malformed response. Every entry you return must be a finished, answerable trivia question and nothing else. If you find yourself writing about a film rather than writing a question for it, that film simply does not go in the array.
 
 For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
 
@@ -1580,7 +1645,7 @@ async function handleBatchMode(
     // reasoning and the two rounds of blind reclassification that
     // confirmed it.
     const prompt = tier === 'casual'
-      ? buildCasualBatchPrompt(count, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts)
+      ? buildCasualBatchPrompt(count, genre, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts)
       : buildBatchPrompt(count, tier, existingTitles, preferredDigits, buildFilmSectionFn, bankedFacts);
 
     // 900/question (raised from 600 -- see comment below on why 600 was
