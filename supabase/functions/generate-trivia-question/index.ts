@@ -1450,39 +1450,51 @@ function buildCasualBatchPrompt(
     ? `\nSome films below already have facts banked in the pool at OTHER difficulty tiers -- do not re-derive these under different wording, and do not assume a film has a second, different casual-eligible fact just because it has an entry elsewhere. Most films have at most ONE fact that clears the casual bar, period:\n${bankedFacts.map((f) => `- ${f.movie_title}: "${f.question_text}" -> ${f.correct_answer}`).join('\n')}\n`
     : '';
 
-  return `What numbers are ${genre} films famous for? Name every one you genuinely know.
+  return `Find CASUAL-tier movie trivia facts for a treasure-hunt trivia pool. Casual is a much narrower, scarcer category than classic or expert -- most approved films have at most ONE genuinely casual fact, and many have none at all. You are not being asked to generate ${count} questions. You are being asked to go through the approved film list below and return a fact ONLY for the films that genuinely have one. Returning far fewer than ${count} -- even zero -- is the expected, correct outcome, not a shortfall to make up. Never force a fact out of a film that doesn't have one.
 
-Start from the numbers themselves -- the ones that surface when people talk about these films -- not from a list of films to work through. You are recalling what you already know, not searching a catalogue for something to say about each entry.
+THE TEST, for every film: would someone who watched this film once, enjoyed it, and hasn't thought about it since, know this number immediately, without effort? The number must be one the film is KNOWN for -- something that comes up when people casually describe or reference the film -- not merely a number that happens to appear somewhere in it.
 
-THE TEST for every number: would someone who watched the film once, enjoyed it, and hasn't thought about it since know this number immediately, without effort? It must be a number the film is KNOWN for -- something that comes up when people casually describe or reference it -- not merely a number that appears somewhere in it.
+KNOWN FOR (casual, these pass): 88mph (Back to the Future). Seven days (The Ring). Say it three times (Beetlejuice). Nine walkers (The Fellowship of the Ring). Thirteen dwarves (The Hobbit). Four Pevensie children (Narnia). Each of these is something a fan would state as part of describing the film itself, not a detail you'd have to recall from a specific scene.
 
-KNOWN FOR (these pass): 88mph (Back to the Future). Seven days (The Ring). Say it three times (Beetlejuice). Nine walkers (The Fellowship of the Ring). Thirteen dwarves (The Hobbit). Four Pevensie children (Narnia). Each is something a fan would state as part of describing the film itself, not a detail you would have to recall from a specific scene.
+APPEARS IN (NOT casual, even for a very famous film): a street address, a room or suite number, a price or dollar amount, a score or ranking, an ID/badge/locker number, an incidental count of background objects or minor events. These are real, correctly-documented facts -- they may be excellent CLASSIC or EXPERT material -- they are simply not what the film is known for. ONE exception: an incidental-looking count still qualifies if the STORY ITSELF is structurally built around that number -- not a detail the plot happens to contain, but the thing the plot organizes around (the Fellowship has to be nine walkers, the dwarves are thirteen, the Pevensies are four). A number is premise, not incidental, when the story wouldn't make sense with a different count.
 
-APPEARS IN (these do NOT pass, even for a very famous film): a street address, a room or suite number, a price or dollar amount, a score or ranking, an ID/badge/locker number, an incidental count of background objects or minor events. These are real, correctly-documented facts -- they may be excellent CLASSIC or EXPERT material -- they are simply not what the film is known for. ONE exception: an incidental-looking count still qualifies if the STORY ITSELF is structurally built around that number -- not a detail the plot happens to contain, but the thing the plot organizes around (the Fellowship has to be nine walkers, the dwarves are thirteen, the Pevensies are four). A number is premise, not incidental, when the story would not make sense with a different count.
-
-TITLE NUMBERS -- DO NOT OFFER THESE: if the number a film is known for IS the number in its title, it is not usable -- the answer would be gettable from the title alone, without ever seeing the film. The 40-Year-Old Virgin (40) and 21 Jump Street (21) are exactly this case. Spelled-out numbers in a title count the same way -- Ocean's Eleven (11) and Se7en (7). This does not rule out every film that has a number in its title: the test is the number you are about to offer, not the title. If the number you have in mind is genuinely different from the title number, it is fine.
+TITLE NUMBERS -- SKIP THE FILM: if the number a film is known for IS the number in its title, that film has no usable casual fact. The question would be answerable from the title alone, without ever seeing the film. Skip that film entirely -- do not reach for a weaker second number just to keep it in the list. The 40-Year-Old Virgin (40) and 21 Jump Street (21) are exactly this case: the number each film is known for is its own title number, so both must be skipped, not rewritten around. Spelled-out numbers in a title count the same way -- Ocean's Eleven (11) and Se7en (7) are the same case. This does NOT exclude every film with a number in its title. The test is the fact you were about to write, not the title: if a film has a number in its title but the fact you have in mind is a genuinely different number from elsewhere in the film, that film is still eligible and you should write it.
 ${exclusionSection}
-Each entry must be a genuine, independently-verifiable fact -- true regardless of this task, something a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, exactly as it exists in the real world.
-
-THE APPROVED LIST BELOW IS A FILTER, NOT A WORK QUEUE. Only facts from films on it can be used -- a fact about any film not on the list is discarded, so do not offer one. Do NOT walk the list film by film looking for something to say about each entry. Recall numbers you actually know, then keep the ones that land on an approved film and drop the rest. Films on the list you know no famous number for simply do not appear in your answer, and that needs no explanation, no note, and no entry of any kind.
+Each fact must be a genuine, independently-verifiable fact from the film -- something true regardless of this task, that a fan would already know or could look up. Never invent, transform, multiply, recompute, or reformat a real fact to produce a different number. correct_answer must be the fact itself, stated exactly as it exists in the real world.
 ${genreInstruction}${bankedFactsSection}
-CONFIDENCE. Mark every entry "certain" or "uncertain". Marking something uncertain is free and useful -- an uncertain entry is kept and checked, not thrown away, and it costs you nothing to say so. A wrong number stated as certain is the worst output you can produce here: worse than offering nothing at all, because it is the one failure nothing downstream can catch. If you are reaching, reconstructing rather than recalling, or you half-remember the number but not exactly, mark it uncertain. Never inflate confidence to make an entry look stronger.
+Your extraction_note for each question must clearly document the real fact behind correct_answer, in plain language -- no digit-position phrasing required or expected.
 
-HOW MANY. There is no target count. Return as many as you genuinely know -- five is fine, thirty is fine, and if you truly know none, an empty array is fine. Do not pad the list, and do not hold back a real fact because the list is already long. Neither under-delivery nor over-delivery is a problem here; inventing a fact to reach a number is.
+Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Each correct_answer field must contain ONLY the final integer -- no reasoning, no working, no explanation. question_text, extraction_note, and hint_text must be completely free of reasoning, self-correction, or alternate attempts -- never "wait", "actually", "let's go with", or any visible sign you reconsidered mid-question.
 
-Each entry is exactly one film and one number. The "fact" field is ONE plain line saying what the number is -- not a question, not a puzzle, not a derivation, not a hint. Question wording is written later by a separate pass; do not attempt it here.
+Each question must be about exactly one film: movie_title. Before finalising each question, check its question_text, extraction_note, and hint_text for any OTHER film title mentioned -- list every such title in that question's other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films (rare).
 
-Do not include any reasoning or thinking before the JSON. Return ONLY the JSON object, nothing else. Do not write commentary, deliberation, or notes about films you considered and left out -- omit them silently. Each correct_answer must contain ONLY the final integer.
+Return AT MOST ONE entry per film. Do not pad the list to reach ${count} -- an empty "questions" array is a valid, correct response if nothing in the list genuinely clears the casual bar.
+
+HOW TO DECLINE A FILM: put it in the "skipped" array. If a film does not clear the casual bar, add { "movie_title": "...", "reason": "one short line" } to "skipped" and move on. This applies at ANY point -- including when you only realise the film does not qualify after you have already started thinking a question through. There is no cost to changing your mind: the film goes in "skipped", not in "questions". Using "skipped" is a correct, expected outcome, not a failure, and a long "skipped" array alongside a short "questions" array is exactly what a good response to this task usually looks like.
+
+"questions" is only ever for films that qualify. Omit a declined film from "questions" entirely. Never write an entry in "questions" containing a withdrawal, a skip note, a phrase like "removing this entry as it does not clear the casual bar" or "no clean casual number here", a deliberation about whether the film belongs, or any other commentary in place of a real question -- all of that belongs in "skipped" as a one-line reason. Every entry in "questions" must be a finished, answerable trivia question and nothing else. If you find yourself writing ABOUT a film rather than writing a question FOR it, that film belongs in "skipped".
+
+Both arrays may be empty. An empty "questions" array is a valid, correct response.
+
+For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
 
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
-  "facts": [
+  "questions": [
     {
-      "movie_title": "Back to the Future",
+      "question_text": "...",
+      "movie_title": "...",
+      "movie_year": 1985,
+      "movie_emoji": "...",
       "correct_answer": 88,
-      "fact": "the speed in mph the DeLorean has to reach to time travel",
-      "confidence": "certain"
+      "extraction_note": "...",
+      "hint_text": "...",
+      "other_films_mentioned": [],
+      "fact_category": "speed"
     }
+  ],
+  "skipped": [
+    { "movie_title": "...", "reason": "no number this film is known for -- the only candidates are incidental background details" }
   ]
 }`;
 }
@@ -1647,16 +1659,6 @@ async function handleBatchMode(
 
   console.log(`[batch-timing] prefetch (2 trivia_pool queries): ${Date.now() - tBatchStart}ms -- ${existingPoolRows?.length ?? 0} rows at this tier, ${genreWideFacts?.length ?? 0} genre-wide`);
 
-  // Casual generation is now FACT-FIRST and returns a different shape.
-  // The prompt asks "what numbers are these films famous for" and gets
-  // back { movie_title, correct_answer, fact, confidence } -- no
-  // question_text, no extraction_note, no hint_text. Writing the question
-  // is a separate second pass that DOES NOT EXIST YET, so a Casual batch
-  // currently ends at facts and cannot be promoted into trivia_pool.
-  // Deliberate and agreed; see the fact-first block below for exactly
-  // which downstream steps are skipped as a result.
-  const isFactFirst = tier === 'casual';
-
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
 
@@ -1713,13 +1715,7 @@ async function handleBatchMode(
     const text = (aiData.content as any[]).map((b) => b.text || '').join('\n');
     const obj = extractLastJsonObject(text);
 
-    // Casual is fact-first: its prompt returns a `facts` array of
-    // { movie_title, correct_answer, fact, confidence } and no question
-    // text at all. Every other tier still returns `questions` with the
-    // full question shape, unchanged.
-    const responseArray = isFactFirst ? obj?.facts : obj?.questions;
-
-    if (!obj || !Array.isArray(responseArray)) {
+    if (!obj || !Array.isArray(obj.questions)) {
       // Anthropic sets stop_reason: 'max_tokens' when a response is cut
       // off by the token budget, distinct from the model genuinely
       // finishing (stop_reason: 'end_turn') with malformed output. Without
@@ -1729,11 +1725,11 @@ async function handleBatchMode(
       // authoritative signal instead of guessing from the text alone.
       batchFailureReason = aiData.stop_reason === 'max_tokens'
         ? `Response truncated at max_tokens (${maxTokens} tokens for ${count} questions) before a complete JSON object could be parsed -- raise max_tokens or reduce count`
-        : `Could not locate a valid ${isFactFirst ? 'facts' : 'questions'} array in the AI response`;
+        : 'Could not locate a valid questions array in the AI response';
       continue;
     }
 
-    candidates = responseArray;
+    candidates = obj.questions;
 
     // Sanitised, never trusted as-is -- same discipline as every other
     // model-supplied field in this file. An entry without a usable title
@@ -1762,102 +1758,6 @@ async function handleBatchMode(
   // Deno.serve -- recomputed locally rather than reused from the request
   // handler's own copy, which is out of scope here.
   const allowlistFilms = GENRE_FILM_ALLOWLIST[genre];
-
-  // ── FACT-FIRST PATH (Casual only) ──────────────────────────────────
-  //
-  // Returns here, before Phase 1 proper and before Phase 2 entirely.
-  //
-  // WHAT STILL RUNS: the four deterministic gates that need only a title
-  // and a number -- allowlist membership, clean-integer format,
-  // answer-in-title (the title-number rule, enforced in code and not just
-  // stated in the prompt), and the seenPairs duplicate check. These are
-  // free, need no API call, and would behave identically on a finished
-  // question, so there is no reason to defer them to pass 2.
-  //
-  // WHAT DOES NOT RUN, and why: the four phrasing gates (answer-in-
-  // question, other-films-mentioned, calculation-without-derivation,
-  // self-correction markers) all read question_text/extraction_note/
-  // hint_text, which do not exist yet. Neither do the three verifier
-  // calls -- Call A and Call B take questionText and extractionNote as
-  // arguments, and Call C compares question_text against banked rows.
-  //
-  // CONSEQUENCE, stated rather than assumed away: a Casual batch now
-  // produces UNVERIFIED facts. Nothing has checked them for factual
-  // accuracy or fabrication -- the confidence flag is the model's own
-  // self-report, not a verification result. They cannot be promoted:
-  // promote_bulk_question_to_pool takes p_question_text and trivia_pool
-  // declares question_text NOT NULL, so there is nothing to insert. Until
-  // the second pass exists, Casual generation is a diagnostic that
-  // produces no pool rows.
-  if (isFactFirst) {
-    const tFactGates = Date.now();
-    const facts: any[] = [];
-    const factRejected: any[] = [];
-
-    for (const f of candidates) {
-      const rejectFact = (reason: string) => factRejected.push({ ...f, rejection_reason: reason });
-
-      const title = String(f?.movie_title ?? '').trim();
-      if (!title) {
-        rejectFact('entry had no movie_title');
-        continue;
-      }
-
-      if (allowlistFilms && allowlistFilms.length > 0) {
-        const isAllowed = allowlistFilms.some((a) => a.trim().toLowerCase() === title.toLowerCase());
-        if (!isAllowed) {
-          rejectFact(`movie_title "${title}" is not in the approved ${genre} allowlist`);
-          continue;
-        }
-      }
-
-      const rawAnswer = String(f?.correct_answer ?? '').trim();
-      if (!/^\d+$/.test(rawAnswer)) {
-        rejectFact(`correct_answer was not a clean integer: "${rawAnswer}"`);
-        continue;
-      }
-      const answer = parseInt(rawAnswer, 10);
-
-      if (extractNumbers(title).has(answer)) {
-        rejectFact(`correct_answer (${answer}) appears directly in movie_title "${title}" -- answerable without seeing the film`);
-        continue;
-      }
-
-      const factLine = String(f?.fact ?? '').trim();
-      if (!factLine) {
-        rejectFact('entry had no one-line fact description');
-        continue;
-      }
-
-      const pairKey = `${title.toLowerCase()}::${answer}::${difficulty}`;
-      if (seenPairs.has(pairKey)) {
-        rejectFact(`duplicate: "${title}" with correct_answer ${answer} already exists in trivia_pool for genre "${genre}" at this difficulty (or earlier in this batch)`);
-        continue;
-      }
-      seenPairs.add(pairKey);
-
-      // Anything that isn't exactly "certain" is treated as uncertain --
-      // the safe direction. A missing, misspelled or invented confidence
-      // value must never read as a confident one.
-      const confidence = String(f?.confidence ?? '').trim().toLowerCase() === 'certain' ? 'certain' : 'uncertain';
-
-      facts.push({
-        movie_title: title,
-        correct_answer: answer,
-        fact: factLine,
-        confidence,
-        available_digits: computeAvailableDigits(answer),
-      });
-    }
-
-    console.log(`[batch-timing] fact gates: ${Date.now() - tFactGates}ms -- ${facts.length} kept, ${factRejected.length} rejected (${facts.filter((x) => x.confidence === 'certain').length} certain, ${facts.filter((x) => x.confidence === 'uncertain').length} uncertain)`);
-    console.log(`[batch-timing] TOTAL handleBatchMode (fact-first, no verification): ${Date.now() - tBatchStart}ms`);
-
-    return new Response(
-      JSON.stringify({ facts, rejected: factRejected, survivors: [], skipped: modelSkipped }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
 
   const survivors: any[] = [];
   const rejected: any[] = [];

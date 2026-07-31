@@ -372,14 +372,6 @@ function QuestionPoolTab() {
   // prompt asks for this, so it stays empty elsewhere by design.
   const [skipped, setSkipped] = useState([]);
   const [skippedExpanded, setSkippedExpanded] = useState(false);
-
-  // Casual is fact-first: the Edge Function returns `facts` (title, number,
-  // one-line description, model self-reported confidence) instead of
-  // `survivors`, because no question text is written at this stage. These
-  // are NOT promotable -- the second pass that writes question wording does
-  // not exist yet, and promote_bulk_question_to_pool requires question_text.
-  // Rendered read-only, deliberately with no Approve control.
-  const [facts, setFacts] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const [coverage, setCoverage] = useState({ covered_digits: [], row_count: 0 });
@@ -426,7 +418,6 @@ function QuestionPoolTab() {
     setSurvivors([]);
     setRejected([]);
     setSkipped([]);
-    setFacts([]);
     try {
       // Derived from the coverage panel's own data -- already fetched,
       // already visible on screen -- so this needs no separate control or
@@ -493,7 +484,6 @@ function QuestionPoolTab() {
       setSurvivors((data.survivors || []).map((s) => ({ ...s, _id: crypto.randomUUID(), status: 'pending', approving: false, approveError: null })));
       setRejected(data.rejected || []);
       setSkipped(data.skipped || []);
-      setFacts(data.facts || []);
     } finally {
       setGenerating(false);
     }
@@ -806,75 +796,6 @@ function QuestionPoolTab() {
           );
         })}
       </div>
-
-      {/* Casual fact-first output. Read-only by design: these have had no
-          factual verification at all (Calls A/B/C need question text, which
-          does not exist yet) and cannot be promoted, since
-          promote_bulk_question_to_pool requires question_text and
-          trivia_pool declares it NOT NULL. The banner says so rather than
-          leaving an operator to infer it from a missing button. */}
-      {facts.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{
-            padding: 12, borderRadius: 6, marginBottom: 12,
-            background: '#241C08', border: '1px solid #F59E0B', color: '#FCD34D', fontSize: 13,
-          }}>
-            Pass 1 of 2 — facts only. Nothing here has been fact-checked, and none of it can be
-            promoted yet: the pass that writes question wording does not exist. Confidence is the
-            model's own self-report, not a verification result.
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {facts.map((f, i) => {
-              const gaps = (f.available_digits || []).filter((d) => !coverage.covered_digits.includes(d));
-              const certain = f.confidence === 'certain';
-              return (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex', gap: 16, padding: 14, borderRadius: 8,
-                    background: POOL_COLORS.card, border: `1px solid ${POOL_COLORS.border}`,
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                      <span style={{ color: POOL_COLORS.gold, fontWeight: 700, fontSize: 14 }}>{f.movie_title}</span>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                        background: certain ? '#0F2A1F' : '#2A2410',
-                        color: certain ? POOL_COLORS.green : POOL_COLORS.gold,
-                        border: `1px solid ${certain ? POOL_COLORS.green : POOL_COLORS.gold}`,
-                      }}>
-                        {certain ? 'certain' : 'uncertain'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 14, color: '#F1F0FF', lineHeight: 1.5, marginBottom: 8 }}>{f.fact}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ color: POOL_COLORS.muted, fontSize: 13 }}>Answer </span>
-                      <span style={{ color: POOL_COLORS.gold, fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>
-                        {f.correct_answer}
-                      </span>
-                      {(f.available_digits || []).map((d) => (
-                        <span key={d} style={{
-                          width: 22, height: 22, borderRadius: 999, background: '#26215C', color: '#CECBF6',
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 11, fontWeight: 700, fontFamily: 'monospace',
-                        }}>{d}</span>
-                      ))}
-                      {gaps.map((d) => (
-                        <span key={`gap-${d}`} style={{
-                          background: '#0F2A1F', color: '#5DCAA5', fontSize: 11, fontWeight: 600,
-                          padding: '3px 8px', borderRadius: 999,
-                        }}>fills digit {d} gap</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {rejected.length > 0 && (
         <div style={{ marginTop: 24 }}>
