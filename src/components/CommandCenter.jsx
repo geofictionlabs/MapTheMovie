@@ -365,6 +365,13 @@ function QuestionPoolTab() {
   const [survivors, setSurvivors] = useState([]);
   const [rejected, setRejected] = useState([]);
   const [rejectedExpanded, setRejectedExpanded] = useState(false);
+
+  // Films the model itself declined via the "skipped" array in its response,
+  // rather than ones our gates threw out. Diagnostic only -- nothing is
+  // promoted from here and nothing reads it. Casual is the only tier whose
+  // prompt asks for this, so it stays empty elsewhere by design.
+  const [skipped, setSkipped] = useState([]);
+  const [skippedExpanded, setSkippedExpanded] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const [coverage, setCoverage] = useState({ covered_digits: [], row_count: 0 });
@@ -410,6 +417,7 @@ function QuestionPoolTab() {
     setGenerationError(null);
     setSurvivors([]);
     setRejected([]);
+    setSkipped([]);
     try {
       // Derived from the coverage panel's own data -- already fetched,
       // already visible on screen -- so this needs no separate control or
@@ -475,6 +483,7 @@ function QuestionPoolTab() {
 
       setSurvivors((data.survivors || []).map((s) => ({ ...s, _id: crypto.randomUUID(), status: 'pending', approving: false, approveError: null })));
       setRejected(data.rejected || []);
+      setSkipped(data.skipped || []);
     } finally {
       setGenerating(false);
     }
@@ -813,6 +822,40 @@ function QuestionPoolTab() {
                     <div style={{ fontSize: 13, color: POOL_COLORS.dimmer, marginBottom: 6 }}>{r.question_text}</div>
                   )}
                   <div style={{ fontSize: 12, color: POOL_COLORS.red }}>{r.rejection_reason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Films the model declined itself, via the "skipped" array in its
+          response. Deliberately styled differently from the rejected list
+          above: those are failures, these are the model working correctly.
+          Muted rather than red, and worded "Declined by the model" so the
+          two are never read as the same thing. */}
+      {skipped.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <button
+            onClick={() => setSkippedExpanded((e) => !e)}
+            style={{
+              background: 'transparent', border: 'none', color: POOL_COLORS.muted, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {skippedExpanded ? '▾' : '▸'} Declined by the model ({skipped.length})
+          </button>
+          {skippedExpanded && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {skipped.map((s, i) => (
+                <div
+                  key={i}
+                  style={{ padding: 12, borderRadius: 6, background: POOL_COLORS.card, border: `1px solid ${POOL_COLORS.divider}` }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: POOL_COLORS.text, marginBottom: 4 }}>
+                    {s.movie_title || 'Unknown'}
+                  </div>
+                  <div style={{ fontSize: 12, color: POOL_COLORS.muted }}>{s.reason}</div>
                 </div>
               ))}
             </div>

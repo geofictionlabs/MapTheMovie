@@ -1470,7 +1470,11 @@ Each question must be about exactly one film: movie_title. Before finalising eac
 
 Return AT MOST ONE entry per film. Do not pad the list to reach ${count} -- an empty "questions" array is a valid, correct response if nothing in the list genuinely clears the casual bar.
 
-HOW TO DECLINE A FILM -- there is exactly one way: leave it out of the "questions" array. That is the entire mechanism, and a shorter array is the correct, expected way to say no. Never emit an entry in order to decline one. An entry whose question_text (or any other field) contains a withdrawal, a skip note, a phrase like "no clean casual number clears the bar here", a deliberation about whether the film qualifies, or any other commentary instead of a real question is a malformed response. Every entry you return must be a finished, answerable trivia question and nothing else. If you find yourself writing about a film rather than writing a question for it, that film simply does not go in the array.
+HOW TO DECLINE A FILM: put it in the "skipped" array. If a film does not clear the casual bar, add { "movie_title": "...", "reason": "one short line" } to "skipped" and move on. This applies at ANY point -- including when you only realise the film does not qualify after you have already started thinking a question through. There is no cost to changing your mind: the film goes in "skipped", not in "questions". Using "skipped" is a correct, expected outcome, not a failure, and a long "skipped" array alongside a short "questions" array is exactly what a good response to this task usually looks like.
+
+"questions" is only ever for films that qualify. Omit a declined film from "questions" entirely. Never write an entry in "questions" containing a withdrawal, a skip note, a phrase like "removing this entry as it does not clear the casual bar" or "no clean casual number here", a deliberation about whether the film belongs, or any other commentary in place of a real question -- all of that belongs in "skipped" as a one-line reason. Every entry in "questions" must be a finished, answerable trivia question and nothing else. If you find yourself writing ABOUT a film rather than writing a question FOR it, that film belongs in "skipped".
+
+Both arrays may be empty. An empty "questions" array is a valid, correct response.
 
 For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
 
@@ -1488,6 +1492,9 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       "other_films_mentioned": [],
       "fact_category": "speed"
     }
+  ],
+  "skipped": [
+    { "movie_title": "...", "reason": "no number this film is known for -- the only candidates are incidental background details" }
   ]
 }`;
 }
@@ -1558,6 +1565,22 @@ async function handleBatchMode(
 ): Promise<Response> {
   const count = Number.isInteger(rawCount) && (rawCount as number) > 0 ? (rawCount as number) : 10;
   const BATCH_MAX_ATTEMPTS = 2;
+
+  // Wall-clock instrumentation. There was none at all before this, so every
+  // latency figure in this file's comments is arithmetic on estimates --
+  // and those estimates predate both Call C (a third sequential verifier
+  // call per candidate) and the 300 -> 1000 max_tokens change, so they are
+  // known-stale in two directions at once. Logged rather than returned:
+  // this is operational data for the Supabase function logs, not something
+  // the Question Pool UI should render.
+  //
+  // NOTE ON "WAVES": mapWithConcurrency is a worker pool, not a batched
+  // wave scheduler -- each worker pulls the next unclaimed candidate the
+  // moment it frees up, so there is no discrete wave boundary to measure.
+  // Per-candidate durations plus the Phase 2 total are logged instead,
+  // which is strictly more informative: the distribution shows whether one
+  // slow candidate is holding a worker, which a wave average would hide.
+  const tBatchStart = Date.now();
 
   // Sanitised, never trusted as-is -- client-supplied, soft preference
   // only (see buildBatchPrompt's own comment on why this must never
@@ -1634,8 +1657,19 @@ async function handleBatchMode(
     .slice(0, BANKED_FACTS_CAP)
     .map((f) => ({ movie_title: f.movie_title, question_text: f.question_text, correct_answer: f.correct_answer }));
 
+  console.log(`[batch-timing] prefetch (2 trivia_pool queries): ${Date.now() - tBatchStart}ms -- ${existingPoolRows?.length ?? 0} rows at this tier, ${genreWideFacts?.length ?? 0} genre-wide`);
+
   let batchFailureReason = 'unknown';
   let candidates: any[] | null = null;
+
+  // Films the model explicitly declined, via the "skipped" array added to
+  // buildCasualBatchPrompt's response contract. Distinct from `rejected`
+  // (our gates threw the candidate out) -- these never became candidates
+  // at all because the model itself judged them unqualified. Diagnostic
+  // only: nothing downstream reads it, no gate consults it, it is not
+  // persisted. Only the Casual prompt asks for it, so it is empty for
+  // every other tier, which is correct and not a fault.
+  let modelSkipped: { movie_title: string; reason: string }[] = [];
 
   for (let attempt = 1; attempt <= BATCH_MAX_ATTEMPTS; attempt++) {
     // Casual gets its own prompt entirely -- buildBatchPrompt's shared
@@ -1656,6 +1690,7 @@ async function handleBatchMode(
     // as an identical, unexplained "malformed response" failure.
     const maxTokens = 900 * count;
 
+    const tGenStart = Date.now();
     const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1669,6 +1704,7 @@ async function handleBatchMode(
         messages: [{ role: 'user', content: prompt }],
       }),
     });
+    console.log(`[batch-timing] generation attempt ${attempt}/${BATCH_MAX_ATTEMPTS} (tier=${tier} genre=${genre} count=${count} max_tokens=${maxTokens}): ${Date.now() - tGenStart}ms, http ${aiResponse.status}`);
 
     if (!aiResponse.ok) {
       batchFailureReason = `AI request failed: ${await aiResponse.text()}`;
@@ -1694,6 +1730,20 @@ async function handleBatchMode(
     }
 
     candidates = obj.questions;
+
+    // Sanitised, never trusted as-is -- same discipline as every other
+    // model-supplied field in this file. An entry without a usable title
+    // is dropped rather than rendered as "undefined" in the panel.
+    modelSkipped = Array.isArray(obj.skipped)
+      ? obj.skipped
+          .filter((s: any) => s && typeof s.movie_title === 'string' && s.movie_title.trim())
+          .map((s: any) => ({
+            movie_title: String(s.movie_title).trim(),
+            reason: String(s.reason ?? '').trim() || '(no reason given)',
+          }))
+      : [];
+
+    console.log(`[batch-timing] parsed response: ${obj.questions.length} candidate question(s), ${modelSkipped.length} film(s) in skipped, stop_reason=${aiData.stop_reason}`);
     break;
   }
 
@@ -1724,6 +1774,7 @@ async function handleBatchMode(
   };
   const pendingVerification: PendingVerification[] = [];
 
+  const tPhase1Start = Date.now();
   for (const q of candidates) {
     const reject = (reason: string) => rejected.push({ ...q, rejection_reason: reason });
 
@@ -1806,22 +1857,35 @@ async function handleBatchMode(
     pendingVerification.push({ q, correctAnswer, questionText, extractionNote, hintText });
   }
 
+  console.log(`[batch-timing] phase1 deterministic gates: ${Date.now() - tPhase1Start}ms -- ${pendingVerification.length} of ${candidates.length} candidate(s) passed to verification, ${rejected.length} rejected`);
+
   // Phase 2 -- the two verifier calls per candidate are independent of
   // every other candidate, so this is the part that actually parallelises.
   // Capped rather than firing all of them at once (see VERIFICATION_CONCURRENCY
   // comment on handleBatchMode above).
   const VERIFICATION_CONCURRENCY = 5;
 
+  const tPhase2Start = Date.now();
   const verificationResults = await mapWithConcurrency(
     pendingVerification,
     VERIFICATION_CONCURRENCY,
     async (item) => {
+      // try/finally rather than logging before each of the seven returns --
+      // one log line per candidate, emitted on every exit path including an
+      // early rejection, so a candidate can never complete silently. A call
+      // left at -1 was never reached (Call C in particular is skipped
+      // outright for a film with no existing pool rows).
+      const tItem = Date.now();
+      let msFactual = -1, msHygiene = -1, msConflict = -1;
+      try {
+      const tFactual = Date.now();
       const factualCheck = await verifyFactualAccuracy(
         item.questionText,
         item.extractionNote,
         String(item.q?.movie_title ?? ''),
         item.correctAnswer
       );
+      msFactual = Date.now() - tFactual;
       if ('failureReason' in factualCheck) {
         return { item, rejectionReason: `Factual verification pass failed: ${factualCheck.failureReason}` };
       }
@@ -1834,7 +1898,9 @@ async function handleBatchMode(
         return { item, rejectionReason: `Factual verification rejected (${reasons}): ${factualCheck.evidence || 'no evidence quoted'}` };
       }
 
+      const tHygiene = Date.now();
       const hygieneCheck = await verifyTextHygiene(item.questionText, item.extractionNote, item.hintText);
+      msHygiene = Date.now() - tHygiene;
       if ('failureReason' in hygieneCheck) {
         return { item, rejectionReason: `Text-hygiene verification pass failed: ${hygieneCheck.failureReason}` };
       }
@@ -1855,10 +1921,12 @@ async function handleBatchMode(
       const existingFactsForFilm = (factsByFilm.get(normalizedTitle) ?? []).map((f) => ({
         id: f.id, question_text: f.question_text, correct_answer: f.correct_answer,
       }));
+      const tConflict = Date.now();
       const conflictCheck = await checkForConflicts(String(item.q?.movie_title ?? ''), [
         { id: CANDIDATE_FACT_ID, question_text: item.questionText, correct_answer: item.correctAnswer },
         ...existingFactsForFilm,
       ]);
+      msConflict = Date.now() - tConflict;
       if (!conflictCheck.ok) {
         return { item, rejectionReason: `Semantic-duplicate verification pass failed: ${conflictCheck.reason}` };
       }
@@ -1886,8 +1954,13 @@ async function handleBatchMode(
       }
 
       return { item, rejectionReason: null as string | null };
+      } finally {
+        console.log(`[batch-timing] verify "${String(item.q?.movie_title ?? 'unknown')}": factual=${msFactual < 0 ? 'n/a' : msFactual + 'ms'} hygiene=${msHygiene < 0 ? 'n/a' : msHygiene + 'ms'} conflict=${msConflict < 0 ? 'n/a (no existing pool rows for this film)' : msConflict + 'ms'} total=${Date.now() - tItem}ms`);
+      }
     }
   );
+
+  console.log(`[batch-timing] phase2 verification: ${Date.now() - tPhase2Start}ms for ${pendingVerification.length} candidate(s) at concurrency ${VERIFICATION_CONCURRENCY}`);
 
   for (const { item, rejectionReason } of verificationResults) {
     if (rejectionReason) {
@@ -1907,8 +1980,10 @@ async function handleBatchMode(
     });
   }
 
+  console.log(`[batch-timing] TOTAL handleBatchMode: ${Date.now() - tBatchStart}ms -- ${survivors.length} survivor(s), ${rejected.length} rejected, ${modelSkipped.length} declined by the model`);
+
   return new Response(
-    JSON.stringify({ survivors, rejected }),
+    JSON.stringify({ survivors, rejected, skipped: modelSkipped }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
