@@ -914,6 +914,23 @@ function extractLastJsonObject(text: string): any | null {
 
 type VerifierCallResult = { ok: true; data: any } | { ok: false; reason: string };
 
+// Per-candidate verifier budget. Was a flat 300 (an unnamed default on
+// attemptVerifierCall/callVerifier), which is what caused real, CLEARED
+// candidates to be rejected: the model reasons before answering, that
+// prose ate the budget, and the response was cut off mid-JSON -- so a
+// verdict of "clean on all three checks" arrived as an unparseable
+// fragment and fell into the fail-closed reject path. Observed on
+// A Bug's Life (truncated with the object half-written) and
+// The Princess Bride (300 tokens of prose, JSON never begun).
+//
+// 1000 rather than a smaller bump because the point is headroom, not a
+// tighter fit: these responses are a handful of booleans plus two short
+// strings, so anything actually well-formed lands far below this, and
+// the cost of being wrong in this direction is silently discarding good
+// questions. The prompts below now also give reasoning a home INSIDE
+// the object, so it is budgeted for rather than spilling in front of it.
+const VERIFIER_MAX_TOKENS = 1000;
+
 // One attempt at the verifier call -- separated from callVerifier itself so
 // the retry below is a second, independent attempt rather than a loop
 // wrapped around shared mutable state. Distinguishes the two ways this can
@@ -921,7 +938,12 @@ type VerifierCallResult = { ok: true; data: any } | { ok: false; reason: string 
 // bare null -- a rejection reason quoting the actual status/body or the
 // actual unparseable text is directly actionable; "network error or
 // unparseable response" told you nothing about which one happened or why.
-async function attemptVerifierCall(prompt: string, maxTokens: number = 300): Promise<VerifierCallResult> {
+// maxTokens is deliberately REQUIRED, not defaulted. The flat 300 default
+// this used to carry was invisible at the two call sites that relied on it
+// (verifyFactualAccuracy and verifyTextHygiene both called callVerifier
+// with one argument), so the budget that was starving them appeared
+// nowhere near the code it broke. Every caller now states its own.
+async function attemptVerifierCall(prompt: string, maxTokens: number): Promise<VerifierCallResult> {
   let response: Response;
   try {
     response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -950,7 +972,21 @@ async function attemptVerifierCall(prompt: string, maxTokens: number = 300): Pro
   const text = (data.content as any[]).map((b: any) => b.text || '').join('\n');
   const parsed = extractLastJsonObject(text);
   if (!parsed) {
-    return { ok: false, reason: `verifier response did not contain a parseable JSON object (last 300 chars): "${text.slice(-300)}"` };
+    // Distinguish the two failure modes instead of reporting both as
+    // "did not contain a parseable JSON object". Anthropic sets
+    // stop_reason: 'max_tokens' when it cut the response off, so a
+    // truncated verdict (the candidate may well have been CLEARED, the
+    // object just never closed) is a budget problem, while 'end_turn'
+    // with unparseable text is the model genuinely not complying. The
+    // batch and classify call sites already made this distinction; the
+    // verifier path was the only one that didn't, which is why a
+    // truncation and a real refusal were indistinguishable in the
+    // rejection message shown in the Question Pool UI.
+    const truncated = data.stop_reason === 'max_tokens';
+    const detail = truncated
+      ? `verifier response TRUNCATED at max_tokens (${maxTokens}) before its JSON object closed -- this is a budget failure, not a verdict; the candidate may have been cleared`
+      : `verifier response did not contain a parseable JSON object (stop_reason: ${data.stop_reason ?? 'unknown'})`;
+    return { ok: false, reason: `${detail} (last 300 chars): "${text.slice(-300)}"` };
   }
   return { ok: true, data: parsed };
 }
@@ -961,7 +997,7 @@ async function attemptVerifierCall(prompt: string, maxTokens: number = 300): Pro
 // single retry catches the transient case without weakening the fail-
 // closed discipline for a genuinely broken verifier (two failures in a
 // row still rejects, with the second attempt's reason reported).
-async function callVerifier(prompt: string, maxTokens: number = 300): Promise<VerifierCallResult> {
+async function callVerifier(prompt: string, maxTokens: number): Promise<VerifierCallResult> {
   const first = await attemptVerifierCall(prompt, maxTokens);
   if (first.ok) return first;
   return await attemptVerifierCall(prompt, maxTokens);
@@ -999,20 +1035,25 @@ async function verifyFactualAccuracy(
 
 (5) Is the fact behind correct_answer something that appears WITHIN the film itself -- diegetic content the audience can see or hear on screen (a number shown, a line of dialogue, a count of objects or characters, an in-story date or address, an age stated in the story) -- or is it PRODUCTION or MARKETING metadata: a fact about how the film was made, shot, or marketed, that a viewer could only know from reading about the film, never from watching it (runtime, budget, box office, number of takes or cuts, technical specs like screen reflectivity or film stock, shooting schedule, release date, awards, off-screen crew counts)? Reject as non-diegetic if it's the latter.
 
-Quote the exact problematic phrase or value for any check that fires. Respond with structured JSON: { topic_mismatch: boolean, contrived_answer: boolean, non_diegetic_fact: boolean, evidence: string }.
+Quote the exact problematic phrase or value for any check that fires. Respond with structured JSON: { reasoning: string, topic_mismatch: boolean, contrived_answer: boolean, non_diegetic_fact: boolean, evidence: string }.
 
 Question: ${questionText}
 Derivation: ${extractionNote}
 
-Return ONLY valid JSON, no markdown fences, no preamble:
+OUTPUT FORMAT -- read this before writing anything. Your entire response must be a single JSON object and nothing else. Do not write any reasoning, working, explanation, restatement of the question, or preamble of any kind before the opening brace. Do not wrap the object in markdown fences. Do not write anything after the closing brace.
+
+If you need to think through the three checks before deciding, do it in the "reasoning" field INSIDE the object, which is placed first for exactly that purpose -- keep it to no more than two short sentences. Reasoning written before the opening brace is discarded and causes the whole response to be thrown away, taking your verdict with it.
+
+Return ONLY valid JSON, no markdown fences, no preamble, beginning with { and ending with }:
 {
+  "reasoning": "",
   "topic_mismatch": false,
   "contrived_answer": false,
   "non_diegetic_fact": false,
   "evidence": ""
 }`;
 
-  const result = await callVerifier(factualPrompt);
+  const result = await callVerifier(factualPrompt, VERIFIER_MAX_TOKENS);
   if (!result.ok) return { failureReason: result.reason };
   const parsed = result.data;
   return {
@@ -1041,19 +1082,24 @@ async function verifyTextHygiene(
 
 (3) Separately from (2): does the QUESTION TEXT itself show any visible deliberation, false start, or self-correction -- e.g. proposing one fact then abandoning it for "a cleaner one," narrating indecision over which detail to use, or any sign the writer reconsidered mid-question? A question can leak this even when its derivation is completely clean, so judge it independently, not as an afterthought to (2).
 
-Quote the exact problematic phrase if either is found. Respond with structured JSON: { hedging_found: boolean, evidence: string } -- set hedging_found to true if EITHER (2) or (3) applies.
+Quote the exact problematic phrase if either is found. Respond with structured JSON: { reasoning: string, hedging_found: boolean, evidence: string } -- set hedging_found to true if EITHER (2) or (3) applies.
 
 Question: ${questionText}
 Derivation: ${extractionNote}
 Hint: ${hintText}
 
-Return ONLY valid JSON, no markdown fences, no preamble:
+OUTPUT FORMAT -- read this before writing anything. Your entire response must be a single JSON object and nothing else. Do not write any reasoning, working, explanation, restatement of the question, or preamble of any kind before the opening brace. Do not wrap the object in markdown fences. Do not write anything after the closing brace.
+
+If you need to think through the two checks before deciding, do it in the "reasoning" field INSIDE the object, which is placed first for exactly that purpose -- keep it to no more than two short sentences. Reasoning written before the opening brace is discarded and causes the whole response to be thrown away, taking your verdict with it.
+
+Return ONLY valid JSON, no markdown fences, no preamble, beginning with { and ending with }:
 {
+  "reasoning": "",
   "hedging_found": false,
   "evidence": ""
 }`;
 
-  const result = await callVerifier(hygienePrompt);
+  const result = await callVerifier(hygienePrompt, VERIFIER_MAX_TOKENS);
   if (!result.ok) return { failureReason: result.reason };
   const parsed = result.data;
   return {
@@ -1095,8 +1141,13 @@ Do NOT group entries that are simply about the same film but different, unrelate
 Facts:
 ${list}
 
-Return ONLY valid JSON, no markdown fences, no preamble:
+OUTPUT FORMAT -- read this before writing anything. Your entire response must be a single JSON object and nothing else. Do not write any reasoning, working, explanation, restatement of the facts, or preamble of any kind before the opening brace. Do not wrap the object in markdown fences. Do not write anything after the closing brace.
+
+If you need to think through which facts describe the same underlying detail before deciding, do it in the "reasoning" field INSIDE the object, which is placed first for exactly that purpose -- keep it to no more than two short sentences. Reasoning written before the opening brace is discarded and causes the whole response to be thrown away, taking your verdict with it.
+
+Return ONLY valid JSON, no markdown fences, no preamble, beginning with { and ending with }:
 {
+  "reasoning": "",
   "conflict_groups": [
     { "ids": ["...", "..."], "reason": "both claim to be the hotel suite number, one says 2269 the other 3204" }
   ]
@@ -1125,7 +1176,16 @@ async function checkForConflicts(movieTitle: string, facts: ConflictFact[]): Pro
     : facts;
 
   const prompt = buildConflictCheckPrompt(movieTitle, bounded);
-  const maxTokens = 60 * bounded.length + 200;
+  // Floored at VERIFIER_MAX_TOKENS, not left to scale down to nothing. The
+  // old 60 * n + 200 gave a 2-fact film 320 tokens and a 3-entry candidate
+  // check 380 -- the same order as the flat 300 that was truncating the
+  // other two verifiers mid-JSON and rejecting candidates they had
+  // actually cleared. A conflict check has MORE to emit than those do, not
+  // less: every group repeats full UUIDs plus a prose reason, so the
+  // formula was tightest exactly where the output is least compressible.
+  // Still scales (a 30-fact blockbuster gets 4000), but the floor means
+  // the common small-film case can no longer starve.
+  const maxTokens = Math.max(VERIFIER_MAX_TOKENS, 120 * bounded.length + 400);
   const result = await callVerifier(prompt, maxTokens);
   if (!result.ok) return { ok: false, reason: result.reason };
 
