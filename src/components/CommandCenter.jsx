@@ -502,6 +502,13 @@ function QuestionPoolTab() {
       p_extraction_note: card.extraction_note,
       p_genre: selectedGenre,
       p_difficulty: difficulty,
+      // Eleventh parameter, added migration 072. Defaulted NULL server-side,
+      // but sent explicitly so an unclassified candidate stores NULL rather
+      // than relying on the default. A value outside the eleven allowed
+      // shapes is NOT filtered here on purpose -- the CHECK constraint
+      // rejects the whole insert and the error surfaces on the card below,
+      // which is the behaviour we want: visible, not silently dropped.
+      p_fact_shape: card.fact_shape ?? null,
     });
 
     setSurvivors((prev) => prev.map((s) => (
@@ -703,12 +710,12 @@ function QuestionPoolTab() {
                   {card.movie_year != null && (
                     <span style={{ color: '#8B8B9A', fontSize: 12 }}>{card.movie_year}</span>
                   )}
-                  {card.fact_category && (
+                  {card.fact_shape && (
                     <span style={{
                       background: '#26215C', color: '#CECBF6', fontSize: 11, fontWeight: 600,
                       padding: '2px 8px', borderRadius: 999,
                     }}>
-                      {card.fact_category}
+                      {card.fact_shape}
                     </span>
                   )}
                 </div>

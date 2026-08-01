@@ -1306,6 +1306,46 @@ async function checkForConflicts(movieTitle: string, facts: ConflictFact[]): Pro
 // where a number IS the famous thing (Spinal Tap's eleven, Home Alone's
 // address, a quoted price), so the prompt now says most films have SOME
 // usable number even without one being iconic.
+
+// The fact_shape taxonomy, shared verbatim by BOTH batch prompts.
+// Deliberately one const rather than two copies: the two prompts differ
+// on purpose (see buildCasualBatchPrompt's header for why), but the shape
+// definitions are one taxonomy, and silent drift between two copies would
+// feed two incompatible vocabularies into a single CHECK-constrained
+// column.
+//
+// Replaces fact_category, which asked for an eleven-value list that was
+// never persisted anywhere -- no column, not a parameter of
+// promote_bulk_question_to_pool, never logged -- and so was discarded on
+// every Approve. fact_shape lands in trivia_pool.fact_shape (migration
+// 072) and is CHECK-constrained to exactly these eleven values.
+//
+// SHAPE, NOT PHRASING. What kind of number this is in the film is
+// independent of how a question about it is worded. Conflating the two is
+// why Cipher currently asks for harder phrasing over a fact chosen by no
+// relevant criterion; shape is what will eventually let Cipher select
+// facts that can actually carry a riddle.
+//
+// NOT A GENERATION GATE. Nothing here rejects a candidate. A wrong shape
+// costs a missed selection later, never a rejected question now -- same
+// principle as CASUAL_EXCLUSIONS. The only hard enforcement is the
+// database CHECK constraint, and it fires at Approve, not at generation.
+const FACT_SHAPE_INSTRUCTION = `For each question, also classify the SHAPE of the numeric fact using fact_shape -- what kind of number it is IN THE FILM, not how the question is worded. Exactly one of:
+
+- designation -- a number that NAMES a specific thing: room, address, platform, locker, badge, cell, flight, apartment, vehicle.
+- deadline -- a time limit or countdown before something happens.
+- threshold -- a number that must be REACHED or REPEATED for something to occur (88mph; say it three times). Not a measurement -- a trigger.
+- stake -- money attached to a transaction: ransom, prize, bounty, bet, debt, price.
+- score -- the result of a contest: game score, race position, ranking, points.
+- age -- a character's stated age.
+- duration -- an elapsed span of time.
+- measure -- a physical quantity: distance, height, weight, temperature, or speed when it is NOT a threshold/trigger.
+- ensemble -- a premise count defining a group (nine walkers, thirteen dwarves).
+- year -- a calendar year stated in the story.
+- tally -- a count of things visible or countable on screen; how many times something occurs. THE WEAKEST SHAPE. Use this only when nothing else fits.
+
+The governing test: does the number belong to a named thing in the story that a clue could describe without naming the number? If yes, it is one of the first five. If the number only exists once someone performs an operation like counting, it is tally.`;
+
 function buildBatchPrompt(
   count: number,
   tier: string,
@@ -1366,7 +1406,7 @@ Do not include any reasoning or thinking before the JSON. Return ONLY the JSON o
 
 Each question must be about exactly one film: movie_title. Before finalising each question, check its question_text, extraction_note, and hint_text for any OTHER film title mentioned -- list every such title in that question's other_films_mentioned. This must be an empty array unless the question deliberately and coherently discusses two named films (rare).
 
-For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
+${FACT_SHAPE_INSTRUCTION}
 
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
@@ -1380,7 +1420,7 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       "extraction_note": "...",
       "hint_text": "...",
       "other_films_mentioned": [],
-      "fact_category": "count"
+      "fact_shape": "threshold"
     }
   ]
 }`;
@@ -1556,7 +1596,7 @@ HOW TO DECLINE A FILM: put it in the "skipped" array. If a film does not clear t
 
 Both arrays may be empty. An empty "questions" array is a valid, correct response.
 
-For each question, also classify the kind of numeric fact using fact_category: one of "count", "quantity", "score", "countdown", "year", "distance", "speed", "money", "age", "address_or_room_or_platform", "other".
+${FACT_SHAPE_INSTRUCTION}
 
 Return ONLY valid JSON with no markdown fences and no preamble:
 {
@@ -1570,7 +1610,7 @@ Return ONLY valid JSON with no markdown fences and no preamble:
       "extraction_note": "...",
       "hint_text": "...",
       "other_films_mentioned": [],
-      "fact_category": "speed"
+      "fact_shape": "threshold"
     }
   ],
   "skipped": [
@@ -2055,7 +2095,12 @@ async function handleBatchMode(
       correct_answer: item.correctAnswer,
       extraction_note: item.q.extraction_note,
       hint_text: item.q.hint_text,
-      fact_category: typeof item.q?.fact_category === 'string' ? item.q.fact_category : null,
+      // Type check only, deliberately not membership-checked against the
+      // eleven allowed values. Validating here would turn a wrong shape
+      // into a rejected question; the CHECK constraint on
+      // trivia_pool.fact_shape is the single hard enforcement point, and
+      // it fires at Approve where an operator sees the error.
+      fact_shape: typeof item.q?.fact_shape === 'string' ? item.q.fact_shape : null,
       available_digits: computeAvailableDigits(item.correctAnswer),
     });
   }
