@@ -805,19 +805,38 @@ const NUMBER_WORDS: Record<string, number> = {
   sixty: 60, seventy: 70, eighty: 80, ninety: 90,
 };
 
+const SCALE_WORDS: Record<string, number> = { hundred: 100, thousand: 1000 };
+
 // Numbers in text, as digit runs AND spelled-out words (single words like
-// "forty", plus two-token compounds like "twenty"+"one" -- the [a-z]+
-// tokenizer strips both hyphens and spaces the same way, so "Twenty-One"
-// and "Twenty One" are handled identically). Deliberately bounded to 0-99:
-// movie titles overwhelmingly spell out small numbers ("Ocean's Eleven",
-// "The Hateful Eight", "21 Jump Street"), not four-digit years or
-// "one hundred"-style compounds. Fixed vocabulary, same caveat as
-// SELF_CORRECTION_MARKERS -- forms outside this list won't be caught.
+// "forty", two-token compounds like "twenty"+"one", and scale compounds
+// like "one hundred and one" -- the [a-z]+ tokenizer strips both hyphens
+// and spaces the same way, so "Twenty-One" and "Twenty One" are handled
+// identically). Fixed vocabulary, same caveat as SELF_CORRECTION_MARKERS
+// -- forms outside NUMBER_WORDS/SCALE_WORDS won't be caught.
+//
+// Scale support added 2026-08-01. This parser was previously bounded to
+// 0-99, on the reasoning that titles spell out small numbers rather than
+// "one hundred"-style compounds. That reasoning was wrong in the one case
+// that mattered: "One Hundred and One Dalmatians" extracted {1}, so the
+// answer-in-title gate never fired on an answer of 101 -- the exact
+// failure the gate exists to catch, on a film sitting in the family
+// allowlist. Only CASUAL_EXCLUSIONS was stopping it, and that is
+// advisory, Casual-only, and not a gate: at Classic or Expert the
+// candidate passed every deterministic check.
+//
+// STRUCTURED AS TWO PASSES ON PURPOSE. Pass 1 is the original loop,
+// unchanged to the byte. Pass 2 only ever calls found.add(), so the
+// result is always a SUPERSET of what this function returned before --
+// no existing extraction can be lost or altered by the new code, which
+// is what makes the change safe for both callers (the answer-in-title
+// gates at Phase 1 and in single-question mode, which only ever widen).
 function extractNumbers(text: string): Set<number> {
   const found = new Set<number>();
   for (const m of text.match(/\d+/g) || []) found.add(parseInt(m, 10));
 
   const tokens = text.toLowerCase().match(/[a-z]+/g) || [];
+
+  // ── Pass 1: unchanged. Single words, plus tens+ones compounds. ──────
   for (let i = 0; i < tokens.length; i++) {
     if (NUMBER_WORDS[tokens[i]] !== undefined) found.add(NUMBER_WORDS[tokens[i]]);
     if (i + 1 < tokens.length) {
@@ -828,6 +847,67 @@ function extractNumbers(text: string): Set<number> {
       }
     }
   }
+
+  // ── Pass 2: scale composition. Additive only. ──────────────────────
+  //
+  // `expectRemainder` is the whole reason this is a state machine rather
+  // than another sliding window: it marks the position immediately after
+  // a scale word, which is the ONLY place a following unit should be
+  // added to what came before. Without it, "Seven and Eight" would
+  // compose to 15. With it, "and" is a bridge only when a scale word has
+  // just opened a remainder slot, and a terminator everywhere else -- so
+  // "Snow White and the Seven Dwarfs" still yields just {7}.
+  let total = 0;
+  let current = 0;
+  let active = false;
+  let expectRemainder = false;
+
+  const flush = () => {
+    if (active) found.add(total + current);
+    total = 0;
+    current = 0;
+    active = false;
+    expectRemainder = false;
+  };
+
+  for (const tok of tokens) {
+    const unit = NUMBER_WORDS[tok];
+    const scale = SCALE_WORDS[tok];
+
+    if (unit !== undefined) {
+      if (!active) {
+        current = unit;
+        active = true;
+        expectRemainder = false;
+      } else if (expectRemainder) {
+        current += unit;            // "one hundred and ONE" -> 101
+        expectRemainder = false;
+      } else if (current >= 20 && current % 10 === 0 && unit < 10) {
+        current += unit;            // "twenty" + "ONE" -> 21
+      } else {
+        flush();                    // two unrelated numbers in a row
+        current = unit;
+        active = true;
+      }
+    } else if (scale !== undefined) {
+      if (!active) {
+        current = scale;            // bare "Hundred" reads as 100
+        active = true;
+      } else if (scale === 100) {
+        current = current * 100;    // "two HUNDRED" -> 200
+      } else {
+        total += (current === 0 ? 1 : current) * 1000;
+        current = 0;                // "two THOUSAND" -> 2000
+      }
+      expectRemainder = true;
+    } else if (tok === 'and' && active && expectRemainder) {
+      // British form: "one hundred AND one". Bridge, not a terminator.
+    } else {
+      flush();
+    }
+  }
+  flush();
+
   return found;
 }
 
