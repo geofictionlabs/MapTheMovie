@@ -202,7 +202,16 @@ Deno.serve(async (req) => {
   try {
     const res = await fetch(OVERPASS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      // overpass-api.de tightened its request requirements (~18 April
+      // 2026): a contact-identifying User-Agent is required, and generic
+      // runtime-default agents are rejected. Accept and Accept-Encoding
+      // are sent explicitly rather than left to the runtime.
+      headers: {
+        'Content-Type': 'text/plain',
+        'User-Agent': 'MapTheMovie-LocationScout/1.0 (+https://geofictionlabs.co.uk; hello@geofictionlabs.co.uk)',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate, br',
+      },
       body: buildOverpassQuery(lat, lon),
     });
     if (!res.ok) {
