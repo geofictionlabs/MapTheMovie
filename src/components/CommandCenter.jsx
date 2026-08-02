@@ -1455,9 +1455,12 @@ function ReclassifyPoolTab() {
 // generate-trivia-question, and what lets the function's own
 // platform_admins check pass without anyone hand-extracting a JWT.
 //
-// Permanent utility, not a one-night scaffold: the water-polygon and
-// hazard-proximity checks are coming and each needs the same trigger, so
-// CHECKS below is the list to extend rather than rebuilding this.
+// Permanent utility, not a one-night scaffold. Both point-based checks
+// built so far are already in SCOUT_CHECKS below; what remains is the
+// corridor work -- osm_corridor_intersect, covering corridor_segment and
+// approach_sweep subjects, which both existing checks currently record as
+// 'skipped' rather than pretend to answer. When that lands it is one more
+// entry in the list, not a rebuild of this panel.
 const SCOUT_CHECKS = [
   { fn: 'location-scout-streetview-check', label: 'Street View metadata' },
   { fn: 'location-scout-osm-hazard-check', label: 'OSM hazard proximity' },

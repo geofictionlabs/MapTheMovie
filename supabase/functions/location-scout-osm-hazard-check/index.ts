@@ -192,6 +192,12 @@ Deno.serve(async (req) => {
   let rawStatus = 'OK';
   let elements: any[] = [];
   let overpassErrorMessage: string | null = null;
+  // Overpass reports how current its own data was when the query ran
+  // (osm3s.timestamp_osm_base). This is the honest data-currency figure
+  // for a live query, and is deliberately NOT written to
+  // osm_extract_date -- that column's static-extract framing cannot
+  // describe a continuously-updated source. May be absent; null then.
+  let overpassDataTimestamp: string | null = null;
 
   try {
     const res = await fetch(OVERPASS_URL, {
@@ -206,6 +212,10 @@ Deno.serve(async (req) => {
       try {
         const parsed = await res.json();
         elements = Array.isArray(parsed?.elements) ? parsed.elements : [];
+        overpassDataTimestamp =
+          typeof parsed?.osm3s?.timestamp_osm_base === 'string'
+            ? parsed.osm3s.timestamp_osm_base
+            : null;
       } catch (parseErr) {
         rawStatus = 'PARSE_ERROR';
         overpassErrorMessage = parseErr instanceof Error ? parseErr.message : String(parseErr);
@@ -264,6 +274,13 @@ Deno.serve(async (req) => {
   // Ways that cannot form a valid geometry are also recorded rather than
   // dropped, same principle as relations_skipped.
   const malformedWaysSkipped: Array<{ id: number; reason: string }> = [];
+
+  // Candidates whose PostGIS test failed. One bad geometry must not
+  // abort the whole check -- a single self-intersecting OSM way would
+  // otherwise throw away the verdict on every other feature nearby. Each
+  // failure is recorded with its reason, same named-limitation principle
+  // as the two arrays above.
+  const postgisErrorsSkipped: Array<{ osm_id: number; category: string; reason: string }> = [];
 
   type Candidate = {
     osmId: number;
@@ -331,22 +348,28 @@ Deno.serve(async (req) => {
       p_geojson: c.geojson,
     });
 
-    // A failing RPC is not a hazard verdict. Surface it and record
-    // nothing, same as the streetview function does for a missing 073.
+    // A failing RPC on ONE candidate is not a reason to abandon the
+    // others. Record it and carry on; whether the failures amount to a
+    // meaningless result is decided after the loop, once it is known how
+    // many candidates were actually testable.
     if (rpcError) {
-      return jsonResponse(
-        {
-          error: 'Failed to test candidate geometry',
-          detail: rpcError.message,
-          hint: 'If this reads "function does not exist", migration 074 has not been run yet.',
-          osm_id: c.osmId,
-        },
-        502
-      );
+      postgisErrorsSkipped.push({
+        osm_id: c.osmId,
+        category: c.category,
+        reason: rpcError.message,
+      });
+      continue;
     }
 
     const row = Array.isArray(rows) ? rows[0] : rows;
-    if (!row) continue;
+    if (!row) {
+      postgisErrorsSkipped.push({
+        osm_id: c.osmId,
+        category: c.category,
+        reason: 'RPC succeeded but returned no row',
+      });
+      continue;
+    }
 
     const distance = typeof row.distance_m === 'number' ? row.distance_m : null;
     if (row.is_contained === true) anyContained = true;
@@ -364,8 +387,18 @@ Deno.serve(async (req) => {
   }
 
   // ── Outcome ─────────────────────────────────────────────────────────
+  // "Found things to test and could not test any of them" is NOT a pass.
+  // It is distinct from finding nothing nearby, which genuinely is one:
+  // zero candidates means the area is clear, whereas every candidate
+  // failing means the check has no idea what is there. Only the first of
+  // those is safe to report as pass.
+  const zeroSuccessfulCandidates =
+    candidates.length > 0 && postgisErrorsSkipped.length === candidates.length;
+
   let outcome: string;
-  if (anyContained) {
+  if (zeroSuccessfulCandidates) {
+    outcome = 'error';
+  } else if (anyContained) {
     outcome = 'block';
   } else if (nearestDistance !== null && nearestDistance <= BLOCK_DISTANCE_M) {
     outcome = 'block';
@@ -387,6 +420,9 @@ Deno.serve(async (req) => {
     by_category: byCategory,
     relations_skipped: relationsSkipped,
     malformed_ways_skipped: malformedWaysSkipped,
+    postgis_errors_skipped: postgisErrorsSkipped,
+    zero_successful_candidates: zeroSuccessfulCandidates,
+    overpass_data_timestamp: overpassDataTimestamp,
     search_radius_m: OVERPASS_RADIUS_M,
   };
 
