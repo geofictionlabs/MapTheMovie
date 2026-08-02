@@ -18,7 +18,16 @@ jobs:
         with:
           version: latest
 
+      # One step per function, by name. The path filter above fires on any
+      # change under supabase/functions/**, but a function with no step
+      # here is never deployed -- a push that looks green ships nothing.
+      # Add a step whenever a function is added.
       - name: Deploy generate-trivia-question
         run: supabase functions deploy generate-trivia-question --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy location-scout-streetview-check
+        run: supabase functions deploy location-scout-streetview-check --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
