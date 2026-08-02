@@ -31,3 +31,8 @@ jobs:
         run: supabase functions deploy location-scout-streetview-check --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy location-scout-osm-hazard-check
+        run: supabase functions deploy location-scout-osm-hazard-check --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

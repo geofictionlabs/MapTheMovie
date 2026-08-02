@@ -1460,11 +1460,14 @@ function ReclassifyPoolTab() {
 // CHECKS below is the list to extend rather than rebuilding this.
 const SCOUT_CHECKS = [
   { fn: 'location-scout-streetview-check', label: 'Street View metadata' },
+  { fn: 'location-scout-osm-hazard-check', label: 'OSM hazard proximity' },
 ];
 
 function LocationScoutTab() {
   const [subjectId, setSubjectId] = useState('');
-  const [running, setRunning] = useState(false);
+  // Which function is in flight, not a bare boolean -- with more than one
+  // check sharing this panel the spinner has to say WHICH one is running.
+  const [runningFn, setRunningFn] = useState(null);
   const [result, setResult] = useState(null);
   const [errorText, setErrorText] = useState(null);
 
@@ -1475,7 +1478,7 @@ function LocationScoutTab() {
       setResult(null);
       return;
     }
-    setRunning(true);
+    setRunningFn(fnName);
     setErrorText(null);
     setResult(null);
     try {
@@ -1500,7 +1503,7 @@ function LocationScoutTab() {
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : String(err));
     } finally {
-      setRunning(false);
+      setRunningFn(null);
     }
   }
 
@@ -1531,23 +1534,27 @@ function LocationScoutTab() {
       />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-        {SCOUT_CHECKS.map((c) => (
-          <button
-            key={c.fn}
-            onClick={() => handleRunCheck(c.fn)}
-            disabled={running}
-            title={c.fn}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
-              background: POOL_COLORS.purple, color: '#F1F0FF', border: 'none',
-              cursor: running ? 'default' : 'pointer', opacity: running ? 0.7 : 1,
-            }}
-          >
-            {running && <Spinner size={14} />}
-            {running ? 'Running…' : 'Run Check'}
-          </button>
-        ))}
+        {SCOUT_CHECKS.map((c) => {
+          const isRunning = runningFn === c.fn;
+          const anyRunning = runningFn !== null;
+          return (
+            <button
+              key={c.fn}
+              onClick={() => handleRunCheck(c.fn)}
+              disabled={anyRunning}
+              title={c.fn}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                background: POOL_COLORS.purple, color: '#F1F0FF', border: 'none',
+                cursor: anyRunning ? 'default' : 'pointer', opacity: anyRunning ? 0.7 : 1,
+              }}
+            >
+              {isRunning && <Spinner size={14} />}
+              {isRunning ? 'Running…' : `Run Check — ${c.label}`}
+            </button>
+          );
+        })}
       </div>
 
       {errorText && (
