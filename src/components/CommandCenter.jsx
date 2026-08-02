@@ -1442,6 +1442,139 @@ function ReclassifyPoolTab() {
   );
 }
 
+// Location Scout — manual trigger for a single Scout check against one
+// subject. Deliberately a raw-JSON diagnostic, not an interpreted result
+// view: during this early real-data phase the whole point is seeing
+// exactly what the Edge Function recorded, including the detail blob and
+// any Postgres/API error text, without a styled layer deciding what
+// matters. Interpretation comes later, once there's real data to know
+// what's worth surfacing.
+//
+// supabase.functions.invoke attaches the current admin's session
+// automatically -- same mechanism QuestionPoolTab already relies on for
+// generate-trivia-question, and what lets the function's own
+// platform_admins check pass without anyone hand-extracting a JWT.
+//
+// Permanent utility, not a one-night scaffold: the water-polygon and
+// hazard-proximity checks are coming and each needs the same trigger, so
+// CHECKS below is the list to extend rather than rebuilding this.
+const SCOUT_CHECKS = [
+  { fn: 'location-scout-streetview-check', label: 'Street View metadata' },
+];
+
+function LocationScoutTab() {
+  const [subjectId, setSubjectId] = useState('');
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [errorText, setErrorText] = useState(null);
+
+  async function handleRunCheck(fnName) {
+    const id = subjectId.trim();
+    if (!id) {
+      setErrorText('Enter a subject_id first.');
+      setResult(null);
+      return;
+    }
+    setRunning(true);
+    setErrorText(null);
+    setResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: { subject_id: id },
+      });
+      // A non-2xx from the function surfaces here as `error`, but the
+      // function's own JSON body (the useful part -- which migration is
+      // missing, which status came back) is on error.context. Show both
+      // rather than collapsing to a generic message.
+      if (error) {
+        let body = null;
+        try {
+          body = await error.context?.json();
+        } catch {
+          body = null;
+        }
+        setResult({ invoke_error: error.message, response_body: body });
+      } else {
+        setResult(data);
+      }
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 14, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 4px', color: POOL_COLORS.text }}>
+        Location Scout — Run Check
+      </h2>
+      <p style={{ fontSize: 12, color: POOL_COLORS.muted, margin: '0 0 16px' }}>
+        Paste a location_scout_subjects UUID and run a check against it. Raw response only — this is a diagnostic.
+      </p>
+
+      <label style={{ display: 'block', fontSize: 11, color: POOL_COLORS.dimmer, marginBottom: 4 }}>
+        subject_id
+      </label>
+      <input
+        value={subjectId}
+        onChange={(e) => setSubjectId(e.target.value)}
+        placeholder="00000000-0000-0000-0000-000000000000"
+        spellCheck={false}
+        style={{
+          width: '100%', padding: '8px 12px', borderRadius: 6, fontSize: 13,
+          fontFamily: 'Share Tech Mono, monospace',
+          background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`,
+          color: POOL_COLORS.text, outline: 'none', marginBottom: 12,
+          boxSizing: 'border-box',
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        {SCOUT_CHECKS.map((c) => (
+          <button
+            key={c.fn}
+            onClick={() => handleRunCheck(c.fn)}
+            disabled={running}
+            title={c.fn}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+              background: POOL_COLORS.purple, color: '#F1F0FF', border: 'none',
+              cursor: running ? 'default' : 'pointer', opacity: running ? 0.7 : 1,
+            }}
+          >
+            {running && <Spinner size={14} />}
+            {running ? 'Running…' : 'Run Check'}
+          </button>
+        ))}
+      </div>
+
+      {errorText && (
+        <div style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: '#2A1518', border: '1px solid #E24B4A', color: POOL_COLORS.red, fontSize: 13,
+        }}>
+          {errorText}
+        </div>
+      )}
+
+      {result && (
+        <pre style={{
+          padding: 12, borderRadius: 6, marginBottom: 20,
+          background: POOL_COLORS.panel, border: `1px solid ${POOL_COLORS.border}`,
+          color: POOL_COLORS.text, fontSize: 12,
+          fontFamily: 'Share Tech Mono, monospace',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          maxHeight: 480, overflowY: 'auto', margin: 0,
+        }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export default function CommandCenter() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -1842,7 +1975,7 @@ export default function CommandCenter() {
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
-          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }, { key: 'reclassify', label: 'Reclassify Pool' }].map((t) => (
+          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }, { key: 'reclassify', label: 'Reclassify Pool' }, { key: 'scout', label: 'Location Scout' }].map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
@@ -1864,6 +1997,8 @@ export default function CommandCenter() {
           <QuestionPoolTab />
         ) : activeTab === 'reclassify' ? (
           <ReclassifyPoolTab />
+        ) : activeTab === 'scout' ? (
+          <LocationScoutTab />
         ) : (
         <>
         {/* Pack name */}
