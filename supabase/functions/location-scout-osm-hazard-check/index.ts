@@ -66,6 +66,8 @@ function buildOverpassQuery(lat: number, lon: number): string {
   way["highway"~"^(motorway|trunk|primary|motorway_link|trunk_link)$"](around:${OVERPASS_RADIUS_M},${lat},${lon});
   way["natural"="cliff"](around:${OVERPASS_RADIUS_M},${lat},${lon});
   way["man_made"="embankment"](around:${OVERPASS_RADIUS_M},${lat},${lon});
+  way["natural"="wetland"](around:${OVERPASS_RADIUS_M},${lat},${lon});
+  relation["natural"="wetland"](around:${OVERPASS_RADIUS_M},${lat},${lon});
 );
 out geom;`;
 }
@@ -82,13 +84,14 @@ function categoriseWay(tags: Record<string, string> | undefined): string | null 
   if (tags.highway) return 'road';
   if (tags.natural === 'cliff') return 'cliff';
   if (tags.man_made === 'embankment') return 'embankment';
+  if (tags.natural === 'wetland') return 'wetland';
   return null;
 }
 
-// Only natural=water is treated as an area. Everything else is linear --
-// a coastline, rail line, road centreline, cliff edge or embankment is a
-// line even when it bounds something.
-const AREA_CATEGORIES = ['water'];
+// natural=water and natural=wetland are treated as areas. Everything else is
+// linear -- a coastline, rail line, road centreline, cliff edge or embankment
+// is a line even when it bounds something.
+const AREA_CATEGORIES = ['water', 'wetland'];
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -347,7 +350,7 @@ Deno.serve(async (req) => {
   let nearestDistance: number | null = null;
   let nearestFeature: Record<string, unknown> | null = null;
   const byCategory: Record<string, number | null> = {
-    water: null, coastline: null, rail: null, road: null, cliff: null, embankment: null,
+    water: null, coastline: null, rail: null, road: null, cliff: null, embankment: null, wetland: null,
   };
 
   for (const c of candidates) {
