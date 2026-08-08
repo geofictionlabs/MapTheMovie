@@ -56,7 +56,22 @@ function jsonResponse(payload: unknown, status?: number) {
   });
 }
 
+// Two independent searches, unioned into one candidate set. The around
+// clauses below find anything whose GEOMETRY (an edge or vertex) passes
+// within OVERPASS_RADIUS_M of the point -- proximity, not containment. For
+// area categories (AREA_CATEGORIES) that breaks down on a large polygon: a
+// point can be genuinely INSIDE a big marsh or reservoir while every edge of
+// it is still well outside the search radius, so around finds no candidate
+// at all and check_point_against_geojson's containment test never gets to
+// run. is_in()/pivot below finds the containing way or relation directly,
+// however large, and is unioned into .proximity's result so a contained
+// feature flows through the exact same candidate-testing loop below as a
+// nearby one -- no separate outcome path. Only water/wetland
+// (AREA_CATEGORIES) get this second search -- coastline/rail/road/cliff/
+// embankment are correctly linear, and "inside" isn't a meaningful question
+// for them.
 function buildOverpassQuery(lat: number, lon: number): string {
+  const areaTagPattern = AREA_CATEGORIES.join('|');
   return `[out:json][timeout:25];
 (
   way["natural"="water"](around:${OVERPASS_RADIUS_M},${lat},${lon});
@@ -68,7 +83,13 @@ function buildOverpassQuery(lat: number, lon: number): string {
   way["man_made"="embankment"](around:${OVERPASS_RADIUS_M},${lat},${lon});
   way["natural"="wetland"](around:${OVERPASS_RADIUS_M},${lat},${lon});
   relation["natural"="wetland"](around:${OVERPASS_RADIUS_M},${lat},${lon});
-);
+)->.proximity;
+is_in(${lat},${lon})->.pivotPoint;
+(
+  way(pivot.pivotPoint)["natural"~"^(${areaTagPattern})$"];
+  relation(pivot.pivotPoint)["natural"~"^(${areaTagPattern})$"];
+)->.containment;
+(.proximity; .containment;);
 out geom;`;
 }
 
@@ -303,8 +324,16 @@ Deno.serve(async (req) => {
 
   const candidates: Candidate[] = [];
 
+  // Overpass's own set union already de-duplicates a way found by both
+  // .proximity and .containment (same id, one element in the response) --
+  // this is a defensive backstop against relying on that, not a case
+  // expected to fire in practice.
+  const seenWayIds = new Set<number>();
+
   for (const el of elements) {
     if (el.type !== 'way') continue;
+    if (seenWayIds.has(el.id)) continue;
+    seenWayIds.add(el.id);
 
     const category = categoriseWay(el.tags);
     if (!category) {
