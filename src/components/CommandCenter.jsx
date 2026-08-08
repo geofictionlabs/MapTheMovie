@@ -1610,6 +1610,11 @@ export default function CommandCenter() {
   // after save (see saveHunt), never blocks the save UI, and a failure
   // here just leaves this null rather than surfacing an error.
   const [scoutWarnings, setScoutWarnings] = useState(null);
+  // Same response, same fire-and-forget fetch, same failure handling --
+  // these are not safety findings (a check simply didn't get a usable
+  // result), kept in a separate state var so they render in their own
+  // neutral panel instead of the amber one.
+  const [scoutErrors, setScoutErrors] = useState(null);
 
   // Campaign fields — required business, everything else defaulted.
   const [businesses, setBusinesses] = useState([]);
@@ -1933,10 +1938,12 @@ export default function CommandCenter() {
       supabase.functions
         .invoke('location-scout-check-pack', { body: { pack_id: data.pack_id } })
         .then(({ data: scoutData, error: scoutError }) => {
-          setScoutWarnings(scoutError || !scoutData ? null : scoutData);
+          setScoutWarnings(scoutError || !scoutData ? null : scoutData.warnings);
+          setScoutErrors(scoutError || !scoutData ? null : scoutData.check_errors);
         })
         .catch(() => {
           setScoutWarnings(null);
+          setScoutErrors(null);
         });
 
       setPackName('');
@@ -2389,12 +2396,12 @@ export default function CommandCenter() {
           </div>
         )}
 
-        {scoutWarnings && scoutWarnings.warnings && scoutWarnings.warnings.length > 0 && (
+        {scoutWarnings && scoutWarnings.length > 0 && (
           <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)' }}>
             <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
-              Location Scout flagged {scoutWarnings.warnings.length} thing{scoutWarnings.warnings.length === 1 ? '' : 's'} to review.
+              Location Scout flagged {scoutWarnings.length} thing{scoutWarnings.length === 1 ? '' : 's'} to review.
             </p>
-            {scoutWarnings.warnings.map((w, i) => (
+            {scoutWarnings.map((w, i) => (
               <p key={i} style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 6px' }}>
                 <strong style={{ color: COLORS.textBright }}>{w.subject_type}</strong> / {w.check_type} — {w.outcome}: {w.reason}
               </p>
@@ -2402,6 +2409,27 @@ export default function CommandCenter() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => setScoutWarnings(null)}
+                style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {scoutErrors && scoutErrors.length > 0 && (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(50,50,74,0.08)', border: '1px solid rgba(50,50,74,0.35)' }}>
+            <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
+              Location Scout could not complete {scoutErrors.length} check{scoutErrors.length === 1 ? '' : 's'}.
+            </p>
+            {scoutErrors.map((e, i) => (
+              <p key={i} style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 6px' }}>
+                <strong style={{ color: COLORS.textBright }}>{e.subject_type}</strong> / {e.check_type} — {e.reason}
+              </p>
+            ))}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setScoutErrors(null)}
                 style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
               >
                 Dismiss
