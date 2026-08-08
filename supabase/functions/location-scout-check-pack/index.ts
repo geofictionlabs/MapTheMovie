@@ -164,6 +164,19 @@ function describeOutcome(checkType: string, outcome: string, detail: Record<stri
     return { reason: `${checkType} came back ${outcome} with no detail payload.`, relevantDetail: {} };
   }
 
+  if (outcome === 'error') {
+    const rawError =
+      typeof detail.overpass_error === 'string'
+        ? detail.overpass_error
+        : typeof detail.raw_status === 'string'
+        ? detail.raw_status
+        : 'unknown error';
+    return {
+      reason: `${checkType} could not complete (${rawError}). This is not a safety flag -- the check simply did not get a usable result and should be re-run.`,
+      relevantDetail: { raw_status: detail.raw_status ?? null, error: rawError },
+    };
+  }
+
   if (checkType === 'streetview_metadata') {
     const distanceM = typeof detail.distance_m === 'number' ? detail.distance_m : null;
     const rawStatus = typeof detail.raw_status === 'string' ? detail.raw_status : 'UNKNOWN';
@@ -350,6 +363,14 @@ Deno.serve(async (req) => {
     runOneCheck(task, authHeader)
   );
 
+  const checkErrors: Array<{
+    subject_id: string;
+    subject_type: string;
+    check_type: string;
+    reason: string;
+    detail: Record<string, unknown>;
+  }> = [];
+
   const warnings: Array<{
     subject_id: string;
     subject_type: string;
@@ -387,6 +408,18 @@ Deno.serve(async (req) => {
         reason,
         detail: relevantDetail,
       });
+      continue;
+    }
+
+    if (result.outcome === 'error') {
+      const { reason, relevantDetail } = describeOutcome(result.checkType, result.outcome, result.detail);
+      checkErrors.push({
+        subject_id: result.subjectId,
+        subject_type: result.subjectType,
+        check_type: result.checkType,
+        reason,
+        detail: relevantDetail,
+      });
     }
   }
 
@@ -395,6 +428,7 @@ Deno.serve(async (req) => {
     subjects_checked: subjects.length,
     checks_run: tasks.length,
     warnings,
+    check_errors: checkErrors,
     call_failures: callFailures,
   });
 });
