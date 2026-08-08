@@ -5,11 +5,11 @@
 // real warnings instead of requiring a manual per-subject paste into the
 // Location Scout diagnostic panel.
 //
-// Deploy: via CI only (.github/workflows/deploy-edge-functions.yml). That
-// workflow deploys one named step per function -- a NEW step must be
-// added for location-scout-check-pack, exactly the same trap the file's
-// own comment warns about for every function before this one. Not added
-// here; this file is not being deployed yet.
+// Deploy: via CI only (.github/workflows/deploy-edge-functions.yml). The
+// named step for location-scout-check-pack exists there (lines 40-43 as
+// of this writing) -- this function is live, not pending. Called from
+// CommandCenter.jsx after every hunt save (wired up in a1bc1bd, the same
+// commit that added the CI step).
 //
 // Auth: byte-identical to location-scout-streetview-check and
 // location-scout-osm-hazard-check, confirmed by re-reading both in full
