@@ -1605,6 +1605,11 @@ export default function CommandCenter() {
   // { packId, campaignId, packName } of the most recently saved hunt, or null.
   // Stays visible (no auto-hide timer) until dismissed.
   const [savedInfo, setSavedInfo] = useState(null);
+  // location-scout-check-pack's response for the most recently saved
+  // hunt, or null. Best-effort advisory only -- fetched fire-and-forget
+  // after save (see saveHunt), never blocks the save UI, and a failure
+  // here just leaves this null rather than surfacing an error.
+  const [scoutWarnings, setScoutWarnings] = useState(null);
 
   // Campaign fields — required business, everything else defaulted.
   const [businesses, setBusinesses] = useState([]);
@@ -1915,6 +1920,25 @@ export default function CommandCenter() {
       if (error) throw error;
 
       setSavedInfo({ packId: data.pack_id, campaignId: data.campaign_id, packName: data.campaign_name });
+
+      // Location Scout, fire-and-forget: best-effort advisory on top of a
+      // save that has already succeeded, not part of the save itself. Not
+      // awaited -- nothing below this line should wait on it, and the
+      // save-confirmation UI above must appear immediately regardless of
+      // how long this takes or whether it fails. Same invoke pattern (and
+      // same automatic admin-session auth) as the diagnostic panel's
+      // handleRunCheck. Any failure -- network error, non-2xx, timeout --
+      // is swallowed into scoutWarnings staying null; it must never look
+      // like the hunt itself failed to save.
+      supabase.functions
+        .invoke('location-scout-check-pack', { body: { pack_id: data.pack_id } })
+        .then(({ data: scoutData, error: scoutError }) => {
+          setScoutWarnings(scoutError || !scoutData ? null : scoutData);
+        })
+        .catch(() => {
+          setScoutWarnings(null);
+        });
+
       setPackName('');
       setWaypoints([]);
       setSelectedBusinessId('');
@@ -2357,6 +2381,27 @@ export default function CommandCenter() {
               </a>
               <button
                 onClick={() => setSavedInfo(null)}
+                style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {scoutWarnings && scoutWarnings.warnings && scoutWarnings.warnings.length > 0 && (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)' }}>
+            <p style={{ fontSize: 13, color: COLORS.textBright, fontWeight: 700, margin: '0 0 6px' }}>
+              Location Scout flagged {scoutWarnings.warnings.length} thing{scoutWarnings.warnings.length === 1 ? '' : 's'} to review.
+            </p>
+            {scoutWarnings.warnings.map((w, i) => (
+              <p key={i} style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 6px' }}>
+                <strong style={{ color: COLORS.textBright }}>{w.subject_type}</strong> / {w.check_type} — {w.outcome}: {w.reason}
+              </p>
+            ))}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setScoutWarnings(null)}
                 style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: COLORS.textDim, border: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
               >
                 Dismiss
