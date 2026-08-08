@@ -1606,6 +1606,18 @@ function scoutFindingDetailText(f) {
     const distance = typeof d.distance_m === 'number' ? `${Math.round(d.distance_m)}m` : 'distance unknown';
     return `${distance}, ${d.raw_status || 'UNKNOWN'}`;
   }
+  if (f.check_type === 'osm_corridor_intersect') {
+    // is_contained means something genuinely different here than for
+    // osm_hazard_proximity -- ST_Intersects (migration 078), not
+    // ST_Covers: the corridor crosses/enters the hazard at some point
+    // along its length, not that it's fully inside it. "contained" or
+    // "inside" would misstate what actually happened for a line.
+    const feature = d.nearest_feature;
+    const label = feature?.tags?.name || feature?.category || 'hazard';
+    if (d.is_contained) return `route crosses ${label}`;
+    const distance = typeof d.nearest_distance_m === 'number' ? `${Math.round(d.nearest_distance_m)}m away` : 'distance unknown';
+    return `${label} — ${distance}`;
+  }
   return JSON.stringify(d);
 }
 
