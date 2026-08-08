@@ -1585,6 +1585,200 @@ function LocationScoutTab() {
   );
 }
 
+// Structured fields per check_type, read directly off location_scout_checks'
+// own detail column (the RPC returns this raw -- NOT check-pack's reshaped
+// relevantDetail). Field names confirmed against the actual check functions'
+// own detail construction (location-scout-streetview-check: distance_m,
+// raw_status; location-scout-osm-hazard-check: nearest_distance_m,
+// nearest_feature { category, tags }, is_contained), not guessed. Mirrors
+// describeOutcome's field selection but deliberately does NOT reconstruct
+// its prose reason sentence -- that stays in the Edge Function only.
+function scoutFindingDetailText(f) {
+  const d = f.detail || {};
+  if (f.check_type === 'osm_hazard_proximity') {
+    const feature = d.nearest_feature;
+    const label = feature?.tags?.name || feature?.category || 'hazard';
+    if (d.is_contained) return `${label} — contained`;
+    const distance = typeof d.nearest_distance_m === 'number' ? `${Math.round(d.nearest_distance_m)}m away` : 'distance unknown';
+    return `${label} — ${distance}`;
+  }
+  if (f.check_type === 'streetview_metadata') {
+    const distance = typeof d.distance_m === 'number' ? `${Math.round(d.distance_m)}m` : 'distance unknown';
+    return `${distance}, ${d.raw_status || 'UNKNOWN'}`;
+  }
+  return JSON.stringify(d);
+}
+
+function ScoutResultsTab() {
+  const [rows, setRows] = useState(null); // null = still loading
+  const [loadError, setLoadError] = useState(null);
+  const [expandedIds, setExpandedIds] = useState({});
+
+  useEffect(() => {
+    loadResults();
+  }, []);
+
+  async function loadResults() {
+    setLoadError(null);
+    const { data, error } = await supabase.rpc('get_location_scout_results');
+    if (error) {
+      setLoadError(error.message);
+      return;
+    }
+    setRows(data || []);
+  }
+
+  function toggleExpanded(packId) {
+    setExpandedIds((prev) => ({ ...prev, [packId]: !prev[packId] }));
+  }
+
+  // A real failure surfaces here, visibly -- this is a user-initiated tab
+  // load, not the fire-and-forget check-pack call elsewhere in this file
+  // that silently leaves its state null on failure.
+  if (loadError) {
+    return (
+      <p style={{ color: '#F43F5E', fontSize: 13, margin: 0 }}>
+        Failed to load Location Scout results — {loadError}
+      </p>
+    );
+  }
+
+  if (rows === null) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+        <Spinner size={20} style={{ color: COLORS.textDim }} />
+      </div>
+    );
+  }
+
+  // Group the flat rows into per-hunt buckets, client-side (17 total rows
+  // today -- unpaginated single fetch, no memoization needed at this volume).
+  const byPack = {};
+  for (const r of rows) {
+    if (!byPack[r.pack_id]) {
+      byPack[r.pack_id] = {
+        pack_id: r.pack_id,
+        hunt_name: r.hunt_name,
+        campaign_status: r.campaign_status,
+        findings: [],
+      };
+    }
+    byPack[r.pack_id].findings.push(r);
+  }
+
+  const hunts = Object.values(byPack).map((h) => {
+    const hasBlock = h.findings.some((f) => f.outcome === 'block');
+    const hasFlag = h.findings.some((f) => f.outcome === 'flag');
+    const hasError = h.findings.some((f) => f.outcome === 'error');
+    const bucket = hasBlock || hasFlag ? 'attention' : hasError ? 'errors-only' : 'clean';
+    return { ...h, bucket, hasBlock };
+  });
+
+  const attentionHunts = hunts
+    .filter((h) => h.bucket === 'attention')
+    .sort((a, b) => (b.hasBlock ? 1 : 0) - (a.hasBlock ? 1 : 0));
+  const errorHunts = hunts.filter((h) => h.bucket === 'errors-only');
+  const cleanHunts = hunts.filter((h) => h.bucket === 'clean');
+
+  if (hunts.length === 0) {
+    return (
+      <p style={{ color: COLORS.textDim, fontSize: 12, textAlign: 'center', padding: '24px 0', margin: 0 }}>
+        No Location Scout results yet.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 14, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 4px', color: COLORS.textBright }}>
+        Location Scout — Results
+      </h2>
+      <p style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 16px' }}>
+        Grouped by hunt from the latest Location Scout checks.
+      </p>
+
+      {attentionHunts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: (errorHunts.length || cleanHunts.length) ? 24 : 0 }}>
+          {attentionHunts.map((h) => {
+            const isOpen = !!expandedIds[h.pack_id];
+            const statusColor = STATUS_COLORS[h.campaign_status] || COLORS.textDim;
+            const findings = h.findings.filter((f) => f.outcome !== 'pass' && f.outcome !== 'skipped');
+            return (
+              <div key={h.pack_id} style={{ borderRadius: 8, padding: 12, background: COLORS.panel, border: `1px solid ${h.hasBlock ? '#F43F5E' : COLORS.gold}` }}>
+                <button
+                  onClick={() => toggleExpanded(h.pack_id)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.textBright }}>{h.hunt_name}</div>
+                    <p style={{ fontSize: 11, color: COLORS.textDim, margin: '2px 0 0' }}>
+                      <span style={{ color: statusColor }}>{h.campaign_status}</span>
+                      {' · '}{findings.length} finding{findings.length === 1 ? '' : 's'}
+                      {h.hasBlock ? ' · contains a block' : ''}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 12, color: COLORS.textDim }}>{isOpen ? '▾' : '▸'}</span>
+                </button>
+
+                {isOpen && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {findings.map((f) => (
+                      <div key={f.check_id} style={{ padding: 10, borderRadius: 6, background: COLORS.bg, border: `1px solid ${COLORS.border}` }}>
+                        <p style={{ fontSize: 12, color: COLORS.textBright, margin: '0 0 2px', fontWeight: 600 }}>
+                          {f.subject_type} / {f.check_type} — {f.outcome}
+                        </p>
+                        <p style={{ fontSize: 11, color: COLORS.textDim, margin: 0 }}>
+                          {scoutFindingDetailText(f)}
+                        </p>
+                        <p style={{ fontSize: 10, color: COLORS.textDim, margin: '4px 0 0' }}>
+                          {new Date(f.checked_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {errorHunts.length > 0 && (
+        <div style={{ marginBottom: cleanHunts.length ? 24 : 0 }}>
+          <h3 style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: COLORS.textDim, margin: '0 0 8px' }}>
+            Checks that could not complete
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {errorHunts.map((h) => (
+              <div key={h.pack_id} style={{ borderRadius: 8, padding: 12, background: 'rgba(50,50,74,0.08)', border: '1px solid rgba(50,50,74,0.35)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.textBright, marginBottom: 6 }}>
+                  {h.hunt_name}
+                </div>
+                {h.findings.filter((f) => f.outcome === 'error').map((f) => (
+                  <p key={f.check_id} style={{ fontSize: 12, color: COLORS.textDim, margin: '0 0 4px' }}>
+                    <strong style={{ color: COLORS.textBright }}>{f.subject_type}</strong> / {f.check_type} — {new Date(f.checked_at).toLocaleString()}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {cleanHunts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {cleanHunts.map((h) => (
+            <div key={h.pack_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: COLORS.panel, border: `1px solid ${COLORS.border}` }}>
+              <span style={{ fontSize: 12, color: COLORS.textBright }}>{h.hunt_name}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#10B981' }}>Clean</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CommandCenter() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -2016,7 +2210,7 @@ export default function CommandCenter() {
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
-          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }, { key: 'reclassify', label: 'Reclassify Pool' }, { key: 'scout', label: 'Location Scout' }].map((t) => (
+          {[{ key: 'build', label: 'Build Hunt' }, { key: 'manage', label: 'Manage Hunts' }, { key: 'pool', label: 'Question Pool' }, { key: 'reclassify', label: 'Reclassify Pool' }, { key: 'scout', label: 'Location Scout' }, { key: 'results', label: 'Scout Results' }].map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
@@ -2040,6 +2234,8 @@ export default function CommandCenter() {
           <ReclassifyPoolTab />
         ) : activeTab === 'scout' ? (
           <LocationScoutTab />
+        ) : activeTab === 'results' ? (
+          <ScoutResultsTab />
         ) : (
         <>
         {/* Pack name */}
