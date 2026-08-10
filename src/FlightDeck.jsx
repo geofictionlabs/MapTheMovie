@@ -253,6 +253,7 @@ export default function FlightDeck() {
     prizePool:       0,
     triviaCount:     0,
     businesses:      [],
+    businessIdsWithActiveCampaign: new Set(),
     recentActivity:  [],
     alerts:          [],
   });
@@ -270,19 +271,27 @@ export default function FlightDeck() {
     setLoading(true);
     Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('businesses').select('id, name, is_active, billing_tier, subscription_active'),
+      supabase.from('businesses').select('id, name, is_active, billing_tier, subscription_active, contact_email, requested_genre, requested_difficulty'),
       supabase.from('campaigns').select('id', { count: 'exact', head: true }),
       supabase.from('redemptions').select('id', { count: 'exact', head: true }),
       supabase.from('prize_pools').select('prize_amount_gbp').eq('status', 'active').maybeSingle(),
       supabase.from('trivia_pool').select('id', { count: 'exact', head: true }),
       supabase.from('hunt_sessions').select('id, created_at, businesses(name)').order('created_at', { ascending: false }).limit(20),
-    ]).then(([players, businesses, hunts, redemptions, prize, trivia, sessions]) => {
+      // Per-business "has an active campaign" signal for the businesses tab's
+      // three-state status column. Deliberately separate from the campaigns
+      // count query above (that one stays a bare head-count for totalHunts)
+      // and from the `active` variable below (is_live-based, feeds alerts
+      // only -- a different concept, not reused here per this session's
+      // investigation).
+      supabase.from('campaigns').select('business_id').eq('status', 'active'),
+    ]).then(([players, businesses, hunts, redemptions, prize, trivia, sessions, activeCampaigns]) => {
       const bizData = businesses.data || [];
-      const paying  = bizData.filter(b => b.subscription_tier && b.subscription_tier !== 'free');
+      const paying  = bizData.filter(b => b.billing_tier && b.billing_tier !== 'free');
       const active  = bizData.filter(b => b.is_live);
+      const businessIdsWithActiveCampaign = new Set((activeCampaigns.data || []).map(c => c.business_id));
       const mrr     = paying.reduce((sum, b) => {
         const prices = { starter: 49, featured: 99, sponsored: 249 };
-        return sum + (prices[b.subscription_tier] || 0);
+        return sum + (prices[b.billing_tier] || 0);
       }, 0);
 
       // Build alerts
@@ -305,6 +314,7 @@ export default function FlightDeck() {
         prizePool:  prize.data?.prize_amount_gbp || 0,
         triviaCount:trivia.count || 0,
         businesses: bizData,
+        businessIdsWithActiveCampaign,
         recentActivity: (sessions.data || []).map(s => ({
           time: new Date(s.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
           text: `Hunt started${s.businesses?.name ? ` — ${s.businesses.name}` : ''}`,
@@ -612,48 +622,81 @@ export default function FlightDeck() {
                   NO BUSINESSES YET
                 </div>
               ) : (
-                data.businesses.map((b, i) => (
-                  <div key={b.id} style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
-                    padding: '16px 20px',
-                    background: i % 2 === 0 ? D.card : D.cardAlt,
-                    borderBottom: i < data.businesses.length - 1 ? `1px solid ${D.border}` : 'none',
-                    alignItems: 'center',
-                  }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '14px', color: D.text }}>{b.name || 'Unnamed'}</div>
-                      <div style={{ fontFamily: D.mono, fontSize: '10px', color: D.textDim, marginTop: '2px' }}>
-                        {b.email || '—'}
+                data.businesses.map((b, i) => {
+                  // Three-state status, replacing the old is_live-based LIVE/
+                  // OFFLINE toggle (is_live was never a queried column, so that
+                  // was always OFFLINE regardless of real state). Uses
+                  // businessIdsWithActiveCampaign (a real per-business active-
+                  // campaign lookup, not the is_live-based `active` variable
+                  // the alerts logic uses -- confirmed this session that the
+                  // two mean different things).
+                  const hasActiveCampaign = data.businessIdsWithActiveCampaign.has(b.id);
+                  const status = !b.is_active
+                    ? { label: 'NEW SIGNUP', color: D.textDim }
+                    : hasActiveCampaign
+                      ? { label: 'LIVE', color: D.green }
+                      : { label: 'AWAITING HUNT', color: D.gold };
+                  return (
+                    <div key={b.id} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                      padding: '16px 20px',
+                      background: i % 2 === 0 ? D.card : D.cardAlt,
+                      borderBottom: i < data.businesses.length - 1 ? `1px solid ${D.border}` : 'none',
+                      alignItems: 'center',
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '14px', color: D.text }}>{b.name || 'Unnamed'}</div>
+                        <div style={{ fontFamily: D.mono, fontSize: '10px', color: D.textDim, marginTop: '2px' }}>
+                          {b.contact_email || '—'}
+                        </div>
+                        {(b.requested_genre || b.requested_difficulty) && (
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                            {b.requested_genre && (
+                              <span style={{
+                                fontFamily: D.mono, fontSize: '9px', color: D.purple,
+                                background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)',
+                                borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase',
+                              }}>{b.requested_genre}</span>
+                            )}
+                            {b.requested_difficulty && (
+                              <span style={{
+                                fontFamily: D.mono, fontSize: '9px', color: D.textMuted,
+                                background: 'rgba(107,103,160,0.1)', border: '1px solid rgba(107,103,160,0.3)',
+                                borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.5px', textTransform: 'uppercase',
+                              }}>{b.requested_difficulty}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div style={{
-                      fontFamily: D.mono, fontSize: '10px',
-                      color: tierColour[b.subscription_tier] || D.textMuted,
-                      letterSpacing: '1px', textTransform: 'uppercase',
-                    }}>{b.subscription_tier || 'free'}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <div style={{
-                        width: '6px', height: '6px', borderRadius: '50%',
-                        background: b.is_live ? D.green : D.textDim,
-                        boxShadow: b.is_live ? `0 0 6px ${D.green}` : 'none',
-                      }} />
-                      <span style={{
                         fontFamily: D.mono, fontSize: '10px',
-                        color: b.is_live ? D.green : D.textDim,
-                        letterSpacing: '1px',
-                      }}>{b.is_live ? 'LIVE' : 'OFFLINE'}</span>
+                        color: tierColour[b.billing_tier] || D.textMuted,
+                        letterSpacing: '1px', textTransform: 'uppercase',
+                      }}>{b.billing_tier || 'free'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{
+                          width: '6px', height: '6px', borderRadius: '50%',
+                          background: status.color,
+                          boxShadow: status.label === 'LIVE' ? `0 0 6px ${status.color}` : 'none',
+                        }} />
+                        <span style={{
+                          fontFamily: D.mono, fontSize: '10px',
+                          color: status.color,
+                          letterSpacing: '1px',
+                        }}>{status.label}</span>
+                      </div>
+                      <div style={{
+                        fontFamily: D.display, fontWeight: 900, fontSize: '16px',
+                        color: D.gold,
+                      }}>£{tierPrices[b.billing_tier] || 0}</div>
+                      <div style={{
+                        fontFamily: D.mono, fontSize: '10px', color: D.textMuted,
+                        letterSpacing: '1px', textTransform: 'uppercase',
+                      }}>{b.venue_category || '—'}</div>
                     </div>
-                    <div style={{
-                      fontFamily: D.display, fontWeight: 900, fontSize: '16px',
-                      color: D.gold,
-                    }}>£{tierPrices[b.subscription_tier] || 0}</div>
-                    <div style={{
-                      fontFamily: D.mono, fontSize: '10px', color: D.textMuted,
-                      letterSpacing: '1px', textTransform: 'uppercase',
-                    }}>{b.venue_category || '—'}</div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -696,7 +739,7 @@ export default function FlightDeck() {
             <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: '16px', padding: '24px', marginBottom: '20px' }}>
               <SectionLabel>TIER BREAKDOWN</SectionLabel>
               {['starter', 'featured', 'sponsored'].map(tier => {
-                const count = data.businesses.filter(b => b.subscription_tier === tier).length;
+                const count = data.businesses.filter(b => b.billing_tier === tier).length;
                 const revenue = count * (tierPrices[tier] || 0);
                 return (
                   <div key={tier} style={{
