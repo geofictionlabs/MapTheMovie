@@ -3041,7 +3041,7 @@ function PuzzleCard({ question, solvedDigit, onSubmitAnswer, accent, difficulty 
 
 //  Compass Screen
 // target = { lat, lon, geofence_m, isWaypoint, label }
-function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarget, compassMsg }) {
+function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarget, compassMsg, sessionId, isFirstWaypoint }) {
   const [playerPos, setPlayerPos] = useState(null)
   const [distance, setDistance] = useState(null)
   const [startDist, setStartDist] = useState(null)
@@ -3057,6 +3057,13 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
   // deliberately not Date.now() here, which would be an impure call at
   // render time.
   const distanceStaleRef = useRef({ value: null, changedAt: null })
+  // Location Scout approach check (Item 16) -- true once a poll's response
+  // says should_fire:true or reason:'already_fired', so later polls stop
+  // calling the Edge Function at all. This is a polling-frequency
+  // optimisation only, not the dedupe guarantee itself -- that lives
+  // server-side in hunt_sessions.approach_check_fired_at (migration 080)
+  // and is safe to hit repeatedly regardless of this ref's state.
+  const approachCheckDoneRef = useRef(false)
   // null | 'denied' | 'unavailable' — set from getCurrentPosition's error
   // callback. Only surfaced in the UI before a first fix (see gpsStatus
   // below) so a later transient failure doesn't wipe an already-showing
@@ -3187,6 +3194,25 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
           // gpsStatus) -- so "playerPos is updating" is already guaranteed
           // true at this point, and the staleness check below only needs to
           // compare against when distance itself last changed.
+
+          // Location Scout approach check (Item 16) -- fire-and-forget on
+          // the same poll tick, only while navigating to waypoint 1 (sort_
+          // order 0) and only until a response confirms the server-side
+          // dedupe has already claimed this session. No client-side distance
+          // gate here, deliberately: evaluate_approach_check (migration 081)
+          // enforces the trigger radius and sanity cap server-side, and this
+          // call is cheap (a single DB round trip) unless it should_fire,
+          // which only ever happens once per session. Never awaited -- must
+          // never affect compass render regardless of latency or failure.
+          if (isFirstWaypoint && effectiveTarget?.isWaypoint && sessionId && !approachCheckDoneRef.current) {
+            supabase.functions.invoke('location-scout-approach-check', {
+              body: { session_id: sessionId, player_lat: lat, player_lon: lon },
+            }).then(({ data }) => {
+              if (data?.should_fire === true || data?.reason === 'already_fired') {
+                approachCheckDoneRef.current = true
+              }
+            }).catch(() => {})
+          }
 
           if (isValidTarget(effectiveTarget)) {
             const R = 6371000
@@ -5454,6 +5480,8 @@ export default function App() {
               onWaypointReached={handleWaypointReached}
               onRetryTarget={retryCompassTarget}
               compassMsg={compassMsg}
+              sessionId={activeSession?.id}
+              isFirstWaypoint={waypointPhase === 0}
             />
             {import.meta.env.DEV && (
               <button
