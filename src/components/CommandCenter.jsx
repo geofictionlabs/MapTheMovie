@@ -129,14 +129,27 @@ const GENRES = [
 
 const DEFAULT_VOUCHER_HEADLINE = 'Show this screen to claim your reward';
 
+// 'ended' was '#8B8B9A' (same gray as 'draft') until the Manage Hunts
+// archive toggle (Item 24C) could put both in view at once -- changed to
+// '#7C3AED' (brand purple, matches COLORS.purple below) so a finished
+// hunt reads distinctly from a never-launched one, not just from
+// removed/flagged's red. All six values now visually distinct from each
+// other: active green, draft gray, paused gold, ended purple,
+// removed/flagged red (those two intentionally share a color -- both are
+// moderation/removal outcomes, not worth telling apart at a glance here).
 const STATUS_COLORS = {
   active: '#10B981',
   draft: '#8B8B9A',
   paused: '#F59E0B',
-  ended: '#8B8B9A',
+  ended: '#7C3AED',
   removed: '#F43F5E',
   flagged: '#F43F5E',
 };
+
+// Terminal/non-current campaign states -- hidden by default in Manage
+// Hunts behind the archive toggle. 'draft', 'active', 'paused' always
+// show regardless of toggle state.
+const ARCHIVED_STATUSES = ['ended', 'removed', 'flagged'];
 
 function toDateInputValue(d) {
   return d.toISOString().slice(0, 10);
@@ -167,6 +180,7 @@ function ManageHuntsTab() {
   const [loadError, setLoadError] = useState(null);
   const [confirming, setConfirming] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     loadHunts();
@@ -183,26 +197,30 @@ function ManageHuntsTab() {
     setHunts(data || []);
   }
 
+  // All three actions re-fetch via loadHunts() on success rather than
+  // guessing the resulting status client-side (Item 24C follow-up) --
+  // archive_hunt/remove_hunt don't return a row at all, and issue_strike's
+  // returned status is NOT reliably 'flagged' on a single call (migration
+  // 047: 'flagged' only applies after 2+ business_strikes), so the old
+  // per-action local-state mutation was either guessing (archive/remove
+  // assumed the row should just vanish, which fought the archive toggle
+  // once one existed) or trusting a response shape that could go stale.
+  // get_all_hunts_admin() is the one authoritative source for status.
   async function runAction(campaignId, action) {
     setBusyId(campaignId);
     try {
       if (action === 'strike') {
-        const { data, error } = await supabase.rpc('issue_strike', { p_campaign_id: campaignId });
+        const { error } = await supabase.rpc('issue_strike', { p_campaign_id: campaignId });
         if (error) throw error;
-        const result = Array.isArray(data) ? data[0] : data;
-        setHunts((prev) => prev.map((h) => h.campaign_id !== campaignId ? h : {
-          ...h,
-          strike_count: result?.strike_count ?? h.strike_count + 1,
-          status: result?.status ?? h.status,
-        }));
+        await loadHunts();
       } else if (action === 'archive') {
         const { error } = await supabase.rpc('archive_hunt', { p_campaign_id: campaignId });
         if (error) throw error;
-        setHunts((prev) => prev.filter((h) => h.campaign_id !== campaignId));
+        await loadHunts();
       } else if (action === 'remove') {
         const { error } = await supabase.rpc('remove_hunt', { p_campaign_id: campaignId });
         if (error) throw error;
-        setHunts((prev) => prev.filter((h) => h.campaign_id !== campaignId));
+        await loadHunts();
       }
     } catch (err) {
       console.error(action + ' failed:', err);
@@ -221,6 +239,13 @@ function ManageHuntsTab() {
     );
   }
 
+  // Computed from the full `hunts` state on every render -- no separate
+  // fetch, no RPC change. archivedCount is deliberately independent of
+  // showArchived itself (counts the full list, not visibleHunts), so the
+  // toggle's own label stays accurate whether it's on or off.
+  const archivedCount = hunts.filter((h) => ARCHIVED_STATUSES.includes(h.status)).length;
+  const visibleHunts = showArchived ? hunts : hunts.filter((h) => !ARCHIVED_STATUSES.includes(h.status));
+
   return (
     <div>
       {loadError && (
@@ -228,13 +253,34 @@ function ManageHuntsTab() {
           Failed to load hunts — {loadError}
         </p>
       )}
+
+      <label
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+          fontSize: 12, color: COLORS.textDim, cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={showArchived}
+          onChange={(e) => setShowArchived(e.target.checked)}
+          style={{ accentColor: COLORS.purple, width: 14, height: 14, cursor: 'pointer' }}
+        />
+        Show ended/removed/flagged hunts ({archivedCount})
+      </label>
+
       {hunts.length === 0 && !loadError && (
         <p style={{ color: COLORS.textDim, fontSize: 12, textAlign: 'center', padding: '24px 0', margin: 0 }}>
           No hunts yet.
         </p>
       )}
+      {hunts.length > 0 && visibleHunts.length === 0 && !loadError && (
+        <p style={{ color: COLORS.textDim, fontSize: 12, textAlign: 'center', padding: '24px 0', margin: 0 }}>
+          All {hunts.length} hunt{hunts.length === 1 ? '' : 's'} {hunts.length === 1 ? 'is' : 'are'} archived — check the box above to view.
+        </p>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {hunts.map((h) => {
+        {visibleHunts.map((h) => {
           const statusColor = STATUS_COLORS[h.status] || COLORS.textDim;
           const isBusy = busyId === h.campaign_id;
           const confirmingHere = confirming === `${h.campaign_id}:strike` ? 'strike'
