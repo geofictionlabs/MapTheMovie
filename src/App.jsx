@@ -168,80 +168,6 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-// Temperature layer — deep blue -> purple -> gold, deliberately its own axis
-// from the heading system's green/red (see CompassScreen: headingColor).
-// Bands are the spec's as-given estimates, not calibrated against real hunt
-// data yet — retune after a real-world walk-test.
-const TEMPERATURE_TIERS = [
-  { max: 20,  key: 'burning', label: 'BURNING HOT!',   color: '#FCD34D', fillPct: 1.00 },
-  { max: 50,  key: 'hot',     label: 'HOT',            color: '#F59E0B', fillPct: 0.80 },
-  { max: 150, key: 'warm',    label: 'WARM',            color: '#C97BD1', fillPct: 0.60 },
-  { max: 400, key: 'warmer',  label: 'GETTING WARMER',  color: '#9D6FFF', fillPct: 0.40 },
-  { max: 800, key: 'cold',    label: 'COLD',             color: '#5B5BD6', fillPct: 0.20 },
-  { max: Infinity, key: 'freezing', label: 'FREEZING COLD', color: '#2563EB', fillPct: 0.05 },
-]
-function getTemperatureTier(distanceM) {
-  if (distanceM == null) return null
-  return TEMPERATURE_TIERS.find(t => distanceM < t.max)
-}
-
-// Mercury thermometer icon for the temperature phrase — glass stays a fixed
-// neutral colour, only the mercury uses tempTier.color, so there's one
-// colour signal across the phrase text/glow/icon instead of a second,
-// disconnected one (replaces the old per-tier emoji set).
-function ThermometerIcon({ fillPct, color, size = 34 }) {
-  const clamped = Math.max(0, Math.min(1, fillPct))
-  const innerTop = 14, innerBottom = 80
-  const mercuryHeight = clamped * (innerBottom - innerTop)
-  const mercuryY = innerBottom - mercuryHeight
-
-  return (
-    <svg width={size} height={size * (100 / 40)} viewBox="0 0 40 100" style={{ display: 'block', flexShrink: 0 }}>
-      <defs>
-        {/* Same recipe as the compass bezel's radial-gradient, for family resemblance */}
-        <linearGradient id="thermoGlassGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#38384C" />
-          <stop offset="18%" stopColor="#2A2A3C" />
-          <stop offset="45%" stopColor="#14141E" />
-          <stop offset="100%" stopColor="#08080C" />
-        </linearGradient>
-        <radialGradient id="thermoBulbGrad" cx="35%" cy="30%" r="75%">
-          <stop offset="0%" stopColor="#3A3A52" />
-          <stop offset="55%" stopColor="#1C1C26" />
-          <stop offset="100%" stopColor="#08080C" />
-        </radialGradient>
-        <radialGradient id="thermoInnerShadow" cx="50%" cy="50%" r="65%">
-          <stop offset="55%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
-        </radialGradient>
-      </defs>
-
-      {/* Glass tube + bulb — gradient fill instead of flat colour, plus an
-          inset vignette overlay to fake an inner shadow */}
-      <rect x={15} y={6} width={10} height={74} rx={5} fill="url(#thermoGlassGrad)" stroke="#32324A" strokeWidth={1.5} />
-      <circle cx={20} cy={82} r={17} fill="url(#thermoBulbGrad)" stroke="#32324A" strokeWidth={1.5} />
-      <rect x={15} y={6} width={10} height={74} rx={5} fill="url(#thermoInnerShadow)" />
-      <circle cx={20} cy={82} r={17} fill="url(#thermoInnerShadow)" />
-
-      {/* Glass reflection streak — tube and a short arc on the bulb */}
-      <path d="M 17.3 10 L 17.3 74 Q 17.3 78 15.2 80.5" stroke="rgba(255,255,255,0.22)" strokeWidth={1.4} strokeLinecap="round" fill="none" />
-      <path d="M 11.5 75 Q 9.5 82 12.5 90" stroke="rgba(255,255,255,0.16)" strokeWidth={1.4} strokeLinecap="round" fill="none" />
-
-      {/* Graduation ticks — decorative, same spirit as the compass distance rings */}
-      {[18, 30, 42, 54, 66].map((y, i) => (
-        <line key={y} x1={26} y1={y} x2={i % 2 === 0 ? 31 : 29.5} y2={y} stroke="#32324A" strokeWidth={1.5} />
-      ))}
-
-      {/* Mercury — bulb always full, column rises with fillPct, soft glow
-          matching the glow treatment already used on the compass ring/buttons */}
-      <g style={{ filter: `drop-shadow(0 0 4px ${hexToRgba(color, 0.85)}) drop-shadow(0 0 9px ${hexToRgba(color, 0.45)})` }}>
-        <circle cx={20} cy={82} r={13} fill={color} />
-        <rect x={17} y={mercuryY} width={6} height={mercuryHeight} rx={3} fill={color} />
-      </g>
-    </svg>
-  )
-}
-
 // Left-chevron icon for .nav-back — universal nav element, not tied to any
 // genre/tier color, so it always uses the same bright text color.
 function ChevronLeftIcon({ size = 20 }) {
@@ -942,7 +868,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  /* 24px, not just enough to close the old 2px overlap -- the dial's
+     bezel (App.jsx CompassScreen) overflows its 280x280 wrapper by 18px
+     via inset:-18 (shared sizing with the distance-rings/cardinal-ring
+     SVGs, not changed here to avoid disturbing the dial's proportions),
+     so this gap needs to clear that 18px with real margin to spare. */
+  gap: 24px;
 }
 @keyframes temp-toast-pop {
   0%   { opacity: 0; transform: translate(-50%, -90%); }
@@ -1017,7 +948,12 @@ body {
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
   letter-spacing: 2px;
-  color: #8888BB;
+  /* #B8B4D8 -- the documented brand "Subtext" token (CLAUDE.md Brand
+     Colours), not #8888BB, which is a pervasive but undocumented ad-hoc
+     gray used elsewhere in this file. Better contrast against the
+     compass screen's #08080F background, and matches an established,
+     official secondary-text color instead of inventing a new one. */
+  color: #B8B4D8;
   text-align: center;
 }
 .compass-msg-box {
@@ -3107,12 +3043,22 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
   const smoothedDistRef = useRef(null)
   const toastTimeoutRef = useRef(null)
   const [tempToast, setTempToast] = useState(null) // { type: 'warmer' | 'colder' }
-  // Two-slot crossfade for the temperature glow: each slot holds a static
-  // colour, and only `active` toggles between them on tier change, so the
-  // transition is opacity (GPU-composited) rather than animating the
-  // background/gradient string itself (paint-level, unreliable to
-  // interpolate across browsers).
-  const [glowLayers, setGlowLayers] = useState({ active: 0, colors: [null, null] })
+  // Second, separate EMA smoothing pass for the DISPLAYED distance number --
+  // distinct from smoothedDistRef above, which is deliberately scoped to
+  // the warmer/colder toast comparison only (different responsiveness
+  // need). alpha=0.35: heavier damping than the toast's 0.5 (single-poll
+  // GPS noise should visibly settle on the number the player is reading),
+  // nowhere near heading's 0.12 (that's tuned for a continuous
+  // high-frequency sensor, not a 5s-interval GPS poll -- 0.12 here would
+  // make the readout feel laggy against real movement). Starting value,
+  // not calibrated against real walk-test data yet, same caveat as the
+  // temperature bands this replaces.
+  const [smoothedDistance, setSmoothedDistance] = useState(null)
+  // Set (as a ref, not state -- see the GPS poll effect for why) whenever
+  // effectiveTarget changes, so the next poll's smoothing initializes
+  // fresh instead of blending the new target's distance against the old
+  // target's stale smoothed value.
+  const distanceResetRef = useRef(true)
   const [debugTargetOverride, setDebugTargetOverride] = useState(null)
   const [showDebug, setShowDebug] = useState(false)
   const showDebugRef = useRef(showDebug)
@@ -3181,6 +3127,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
 
   // GPS polling — getCurrentPosition every 5 seconds (Safari-compatible, no watchPosition)
   useEffect(() => {
+    // A ref mutation, not a setState call -- this effect re-runs on
+    // [effectiveTarget], and calling setState synchronously in an effect
+    // body triggers an avoidable extra render for no benefit here. The
+    // poll callback below checks this flag instead.
+    distanceResetRef.current = true
+
     function getPosition() {
       if (!navigator.geolocation) return
       navigator.geolocation.getCurrentPosition(
@@ -3225,6 +3177,19 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
             const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
             setDistance(dist)
             setStartDist(prev => prev ?? dist)
+
+            // Second EMA pass, for the on-screen meters readout specifically
+            // -- see smoothedDistance's own declaration above for why this
+            // is separate from smoothedDistRef below (toast-only, different
+            // alpha). distanceResetRef true (fresh mount or just-changed
+            // target) holds the first reading as-is, same "no blending yet"
+            // pattern emaVectorRef uses for heading; otherwise blend as usual.
+            if (distanceResetRef.current) {
+              setSmoothedDistance(dist)
+              distanceResetRef.current = false
+            } else {
+              setSmoothedDistance(prev => prev == null ? dist : prev + 0.35 * (dist - prev))
+            }
 
             // Warmer/colder toast — compares an EMA of distance, not the raw
             // per-poll reading, so single-poll GPS jitter doesn't flip the
@@ -3586,42 +3551,17 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
   const journeyPct = startDist > 0
     ? Math.min(100, Math.max(0, ((startDist - (distance || 0)) / startDist) * 100))
     : 0
-  const distMi = (distance != null && distance >= 0) ? (distance / 1000).toFixed(1) : '--'
-  const destLabel = (distance != null && distance >= 0)
-    ? (target?.isWaypoint ? 'KM TO WAYPOINT' : 'KM TO DESTINATION')
+  // Whole-number metres, driven by the smoothed value (see smoothedDistance
+  // above), not raw `distance` -- this is the number the player reads, so
+  // it gets the damped copy; arrival detection/isVeryClose/journeyPct above
+  // deliberately keep reading raw `distance` for accuracy.
+  const distDisplay = (smoothedDistance != null && smoothedDistance >= 0) ? Math.round(smoothedDistance) : '--'
+  const destLabel = (smoothedDistance != null && smoothedDistance >= 0)
+    ? (target?.isWaypoint ? 'TO WAYPOINT' : 'TO DESTINATION')
     : 'CALCULATING...'
-  // Temperature ambient glow — separate colour axis from headingColor above
-  // (blue -> purple -> gold), never green/red, so the two systems never
-  // share a colour. Replaces the old 3-tier near-black wash with the full
-  // 6-tier temperature band.
-  const tempTier = getTemperatureTier(distance)
-
-  useEffect(() => {
-    if (!tempTier) return
-    setGlowLayers(prev => {
-      if (prev.colors[prev.active] === tempTier.color) return prev
-      const next = prev.active === 0 ? 1 : 0
-      const colors = [...prev.colors]
-      colors[next] = tempTier.color
-      return { active: next, colors }
-    })
-  }, [tempTier?.key])
 
   return (
     <div className="compass-wrap">
-      {/* Temperature glow — two static layers crossfading via opacity
-          (GPU-composited) instead of transitioning the background/gradient
-          string itself, which paints every frame and doesn't reliably
-          interpolate between different gradients across browsers. */}
-      {glowLayers.colors.map((c, i) => c && (
-        <div key={i} style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: `radial-gradient(ellipse at 50% 30%, ${hexToRgba(c, 0.30)} 0%, #08080F 70%)`,
-          opacity: glowLayers.active === i ? 1 : 0,
-          transition: 'opacity 1s ease',
-        }} />
-      ))}
-
       {/* Waypoint / destination badge — tap 5× quickly to open debug panel */}
       <div
         onClick={handleDebugTap}
@@ -3825,9 +3765,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
         </div>
       </div>
 
-      {/* Temperature phrase — primary readout; exact distance is secondary */}
+      {/* Distance readout, in metres */}
       <div style={{ textAlign: 'center', marginTop: 24, position: 'relative' }}>
-        {/* Warmer/colder toast — anchored to the phrase, not the whole screen */}
+        {/* Warmer/colder toast — anchored here, not the whole screen */}
         {tempToast && (
           <div
             key={tempToast.type + Date.now()}
@@ -3848,25 +3788,15 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
           </div>
         )}
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: 30, fontWeight: 900, letterSpacing: 1,
-          color: tempTier?.color || '#F1F0FF', lineHeight: 1.2, minHeight: 36,
-          textShadow: tempTier ? `0 0 20px ${hexToRgba(tempTier.color, 0.5)}` : 'none',
-        }}>
-          {tempTier && <ThermometerIcon fillPct={tempTier.fillPct} color={tempTier.color} />}
-          {tempTier ? tempTier.label : 'LOCATING...'}
-        </div>
-        <div style={{
           fontFamily: "'Share Tech Mono', monospace",
           fontSize: 20, fontWeight: 700, marginTop: 10,
           color: '#F1F0FF', lineHeight: 1,
         }}>
-          {distMi}
+          {distDisplay}{distDisplay !== '--' ? 'm' : ''}
         </div>
         <div style={{
           fontSize: 11, letterSpacing: 3, marginTop: 4,
-          color: distance != null ? '#8888BB' : '#32324A',
+          color: smoothedDistance != null ? '#B8B4D8' : '#32324A',
         }}>
           {destLabel}
         </div>
@@ -3892,24 +3822,37 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
       {orientState === 'calibrating' && (
         <div className="compass-calibrating">CALIBRATING COMPASS</div>
       )}
-      {distance != null && gpsStatus === 'active' && (
-        <div style={{
-          fontSize: 12,
-          color: headingColor || '#8888BB',
-          fontFamily: "'Share Tech Mono', monospace",
-          letterSpacing: 1,
-          transition: isHeadingAway ? 'none' : 'color 0.4s',
-        }}>
-          {isVeryClose && isHeadingAway
-            ? "YOU'RE VERY CLOSE — look around"
-            : isHeadingAway ? 'TURN AROUND' : `HEAD ${cardinalDir()}`}
-        </div>
-      )}
+      {distance != null && gpsStatus === 'active' && (() => {
+        // Visual restyle only -- headingColor itself (green/red, set by
+        // isFacingDestination/isHeadingAway) is untouched, real logic.
+        // The neutral fallback -- this is item 5's "~3898 fallback" site --
+        // is #B8B4D8, the same contrast fix applied to .compass-status and
+        // the GPS-denied subtext, not a new colour invented for the pill.
+        const pillColor = headingColor || '#B8B4D8'
+        return (
+          <div style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: pillColor,
+            fontFamily: "'Share Tech Mono', monospace",
+            letterSpacing: 1,
+            background: hexToRgba(pillColor, 0.12),
+            border: `1px solid ${hexToRgba(pillColor, 0.4)}`,
+            borderRadius: 20,
+            padding: '6px 18px',
+            transition: isHeadingAway ? 'none' : 'color 0.4s, background 0.4s, border-color 0.4s',
+          }}>
+            {isVeryClose && isHeadingAway
+              ? "YOU'RE VERY CLOSE — look around"
+              : isHeadingAway ? 'TURN AROUND' : `HEAD ${cardinalDir()}`}
+          </div>
+        )
+      })()}
 
       {gpsStatus === 'denied' || gpsStatus === 'unavailable' ? (
         <div style={{ textAlign: 'center' }}>
           <div className="compass-status">GPS signal needed</div>
-          <div style={{ fontSize: 12, color: '#8888BB', marginTop: 4, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: '#B8B4D8', marginTop: 4, lineHeight: 1.5 }}>
             {gpsStatus === 'denied'
               ? 'Location access is off — enable it for this site in Settings and reload'
               : 'Step outside for a clearer signal'}
