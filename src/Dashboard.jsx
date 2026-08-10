@@ -345,26 +345,6 @@ tr:last-child td { border-bottom: none; }
   color: #F59E0B;
 }
 
-/*  Theme grid  */
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-}
-.theme-tile {
-  border-radius: 14px;
-  padding: 16px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.15s;
-  text-align: center;
-}
-.theme-tile:hover { filter: brightness(1.15); transform: translateY(-1px); }
-.theme-tile.active { border-color: #F1F0FF; }
-.theme-emoji { font-size: 28px; margin-bottom: 6px; }
-.theme-name { font-size: 12px; font-weight: 700; }
-.theme-tag { font-size: 10px; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px; margin-top: 2px; opacity: 0.7; }
-
 /*  Voucher upload  */
 .upload-area {
   background: #121218;
@@ -612,16 +592,6 @@ function useLivePlayers(campaignId) {
   return count
 }
 
-//  THEMES config
-const THEMES = [
-  { id: 'evergreen_80s',   emoji: '', name: '80s Grid',    tag: 'EVERGREEN', bg: '#2D1060', accent: '#7C3AED' },
-  { id: 'christmas',        emoji: '', name: 'Christmas',   tag: 'DEC',       bg: '#064E3B', accent: '#10B981' },
-  { id: 'halloween',        emoji: '', name: 'Halloween',   tag: 'OCT',       bg: '#451A03', accent: '#F97316' },
-  { id: 'valentines',       emoji: '', name: 'Valentine\'s', tag: 'FEB',      bg: '#4C0519', accent: '#F43F5E' },
-  { id: 'summer',           emoji: '', name: 'Summer',      tag: 'JULAUG',  bg: '#431407', accent: '#F59E0B' },
-  { id: 'easter',           emoji: '', name: 'Easter',      tag: 'APR',       bg: '#164E63', accent: '#06B6D4' },
-]
-
 //  Pin Drop Modal
 function PinDropModal({ onConfirm, onCancel }) {
   const containerRef = useRef(null)
@@ -719,21 +689,10 @@ function PinDropModal({ onConfirm, onCancel }) {
 }
 
 //  Overview Tab
-function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, onForceEnd, puzzlePreview, onGoToSettings }) {
+function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gpsLoading, onGoLive, onEndLive, onForceEnd, puzzlePreview, onGoToSettings, activeCampaignDetails }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
   const liveCount = useLivePlayers(activeCampaign?.id)
   const weekTotal = redemptions?.length || 0
-  const [packName, setPackName] = useState(null)
-
-  useEffect(() => {
-    if (!activeCampaign?.id) { setPackName(null); return }
-    supabase
-      .from('campaigns')
-      .select('puzzle_packs(name)')
-      .eq('id', activeCampaign.id)
-      .single()
-      .then(({ data }) => setPackName(data?.puzzle_packs?.name || null))
-  }, [activeCampaign?.id])
 
   return (
     <div>
@@ -789,7 +748,7 @@ function OverviewTab({ business, campaigns, redemptions, todayCount, isLive, gps
         <div className="stat-card">
           <div className="stat-label">ACTIVE PACK</div>
           <div className="stat-value" style={{ fontSize: 16, paddingTop: 6 }}>
-            {packName || activeCampaign?.name || 'No active pack'}
+            {activeCampaignDetails?.packName || activeCampaign?.name || 'No active pack'}
           </div>
         </div>
       </div>
@@ -1075,10 +1034,14 @@ function VouchersTab({ business, campaigns, redemptions, showToast }) {
 }
 
 //  Themes Tab
-function ThemesTab({ business, campaigns, showToast }) {
+// Hunt Details Tab -- read-only view of what was built for this business
+// (Item 24 rebuild). Replaces ThemesTab entirely: the seasonal pack-swap
+// (ILIKE puzzle_packs name match), the genre filter (dead UI, no
+// downstream effect), and the static seasonal-pricing table are all
+// removed, not hidden -- this business no longer picks anything here.
+// Difficulty is the one control kept, unchanged in behavior.
+function HuntDetailsTab({ campaigns, activeCampaignDetails, showToast }) {
   const activeCampaign = campaigns?.find(c => c.status === 'active')
-  const [activeTheme, setActiveTheme] = useState(null)
-  const [applying, setApplying] = useState(null)
   const [selectedDiff, setSelectedDiff] = useState(activeCampaign?.difficulty || 'classic')
   const [savingDiff, setSavingDiff] = useState(false)
 
@@ -1098,56 +1061,30 @@ function ThemesTab({ business, campaigns, showToast }) {
     }
   }
 
-  async function handleApply(theme) {
-    if (!activeCampaign) { showToast('! No active campaign to update'); return }
-
-    setApplying(theme.id)
-    try {
-      // Find pack by tag/slug match
-      const { data: packs } = await supabase
-        .from('puzzle_packs')
-        .select('id, name')
-        .ilike('name', `%${theme.name.split(' ')[0]}%`)
-        .limit(5)
-
-      // Fall back to just updating campaign accent or description if no pack found
-      if (!packs || packs.length === 0) {
-        showToast(`Theme "${theme.name}"  pack not found in DB yet. Add it via migrations.`)
-        setApplying(null)
-        return
-      }
-
-      const pack = packs[0]
-      const { error } = await supabase
-        .from('campaigns')
-        .update({ pack_id: pack.id })
-        .eq('id', activeCampaign.id)
-
-      if (error) throw error
-
-      setActiveTheme(theme.id)
-      showToast(`Theme switched to "${theme.name}"  live within 2 minutes`)
-    } catch (err) {
-      showToast('! Failed: ' + err.message)
-    } finally {
-      setApplying(null)
-    }
+  if (!activeCampaign) {
+    return (
+      <div>
+        <div className="page-title">Hunt Details</div>
+        <div className="page-sub">What players see when they play your hunt</div>
+        <p style={{ textAlign: 'center', color: DS.textMuted, padding: '28px 16px', fontSize: 13 }}>
+          No active hunt yet
+        </p>
+      </div>
+    )
   }
-
-  const GENRES = [
-    { id: 'action',   label: 'Action',   accent: '#EF4444' },
-    { id: 'comedy',   label: 'Comedy',   accent: '#F59E0B' },
-    { id: 'horror',   label: 'Horror',   accent: '#8B5CF6' },
-    { id: 'sci-fi',   label: 'Sci-Fi',   accent: '#06B6D4' },
-    { id: 'romance',  label: 'Romance',  accent: '#F43F5E' },
-    { id: 'thriller', label: 'Thriller', accent: '#10B981' },
-    { id: 'animated', label: 'Animated', accent: '#FCD34D' },
-    { id: 'classic',  label: 'Classic',  accent: '#B8B4D8' },
-  ]
-  const [activeGenre, setActiveGenre] = useState(null)
 
   return (
     <div>
+      <div className="page-title">Hunt Details</div>
+      <div className="page-sub">What players see when they play your hunt</div>
+
+      <div className="section-label">Genre</div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 15, color: DS.text, fontWeight: 600 }}>
+          {activeCampaignDetails?.genre || 'Not set'}
+        </div>
+      </div>
+
       <div className="page-title">Hunt Difficulty</div>
       <div className="page-sub">Controls question difficulty, hint visibility, and arrival geofence radius</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -1203,82 +1140,6 @@ function ThemesTab({ business, campaigns, showToast }) {
       >
         {savingDiff ? 'SAVING...' : 'SAVE DIFFICULTY'}
       </button>
-
-      <div className="page-title">Seasonal Themes</div>
-      <div className="page-sub">Switch your active pack to match the season or upcoming event</div>
-
-      <div className="theme-grid">
-        {THEMES.map(t => (
-          <div
-            key={t.id}
-            className={`theme-tile ${activeTheme === t.id ? 'active' : ''}`}
-            style={{ background: t.bg }}
-            onClick={() => handleApply(t)}
-          >
-
-            <div className="theme-name" style={{ color: t.accent }}>{t.name}</div>
-            <div className="theme-tag">{t.tag}</div>
-            {applying === t.id && (
-              <div style={{ fontSize: 10, marginTop: 6, color: '#F1F0FF' }}>Applying</div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="section-label" style={{ marginTop: 28 }}>Genre Filter</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
-        {GENRES.map(g => (
-          <button
-            key={g.id}
-            onClick={() => setActiveGenre(activeGenre === g.id ? null : g.id)}
-            style={{
-              background: activeGenre === g.id ? g.accent : DS.card,
-              color: activeGenre === g.id ? '#121218' : g.accent,
-              border: `1px solid ${g.accent}`,
-              borderRadius: 12,
-              padding: '7px 16px',
-              fontSize: 12,
-              fontFamily: "'Share Tech Mono', monospace",
-              letterSpacing: 1,
-              cursor: 'pointer',
-              fontWeight: 700,
-              transition: 'all 0.15s',
-            }}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="card" style={{ marginTop: 0 }}>
-        <div className="card-title">Seasonal Pricing</div>
-        <div className="card-sub">
-          Premium seasonal events attract 3 more players. Featured and Sponsored tiers include priority listing during peak periods.
-        </div>
-        <table style={{ width: '100%' }}>
-          <thead>
-            <tr>
-              <th>EVENT</th>
-              <th>DATES</th>
-              <th>UPLIFT</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['Christmas', 'Dec 1  Jan 5', '+25%'],
-              ['Halloween', 'Oct 1  Nov 1', '+15%'],
-              ['Summer',    'Jul 1  Aug 31', '+10%'],
-              ['Valentine\'s', 'Feb 7  Feb 15', '+20%'],
-            ].map(([event, dates, uplift]) => (
-              <tr key={event}>
-                <td style={{ fontWeight: 600 }}>{event}</td>
-                <td style={{ color: DS.textMuted }}>{dates}</td>
-                <td style={{ color: DS.gold, fontFamily: "'Share Tech Mono', monospace" }}>{uplift}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }
@@ -1658,6 +1519,12 @@ export default function Dashboard() {
   const [tab, setTab] = useState('overview')
   const [business, setBusiness] = useState(null)
   const [campaigns, setCampaigns] = useState([])
+  // { packName, genre, difficulty } for the current active campaign, or
+  // null. One query (campaigns + puzzle_packs(name, genre) embed) shared
+  // by OverviewTab's ACTIVE PACK card and HuntDetailsTab's genre display
+  // -- replaces OverviewTab's old separate, conditionally-firing
+  // puzzle_packs(name)-only fetch (the "Active Pack" bug's root cause).
+  const [activeCampaignDetails, setActiveCampaignDetails] = useState(null)
   const [redemptions, setRedemptions] = useState([])
   const [todayCount, setTodayCount] = useState(0)
   const [isLive, setIsLive] = useState(false)
@@ -1702,6 +1569,27 @@ export default function Dashboard() {
     setCampaigns(dash.campaigns || [])
     setRedemptions(dash.redemptions || [])
     setTodayCount(dash.today_count || 0)
+
+    // One query, name + genre + difficulty together, via the same
+    // puzzle_packs(name) embed already confirmed readable (no grant
+    // restriction on that path, unlike puzzles.real_lat/real_lon).
+    // Shared by OverviewTab (ACTIVE PACK card) and HuntDetailsTab
+    // (genre display) instead of each tab fetching its own subset.
+    const activeCampaignForDetails = (dash.campaigns || []).find(c => c.status === 'active')
+    if (activeCampaignForDetails) {
+      const { data: details } = await supabase
+        .from('campaigns')
+        .select('difficulty, puzzle_packs(name, genre)')
+        .eq('id', activeCampaignForDetails.id)
+        .single()
+      setActiveCampaignDetails(details ? {
+        packName:   details.puzzle_packs?.name || null,
+        genre:      details.puzzle_packs?.genre || null,
+        difficulty: details.difficulty || null,
+      } : null)
+    } else {
+      setActiveCampaignDetails(null)
+    }
 
     // Verify live status directly — RPC live_session can be stale
     const today = new Date().toISOString().slice(0, 10)
@@ -1812,7 +1700,7 @@ export default function Dashboard() {
   const TABS = [
     { id: 'overview',  icon: '', label: 'Overview' },
     { id: 'vouchers',  icon: '',  label: 'Vouchers' },
-    { id: 'themes',    icon: '', label: 'Themes' },
+    { id: 'hunt',      icon: '', label: 'Hunt Details' },
     { id: 'history',   icon: '', label: 'History' },
     { id: 'settings',  icon: '', label: 'Settings' },
   ]
@@ -1991,13 +1879,14 @@ export default function Dashboard() {
               onForceEnd={handleForceEndAll}
               puzzlePreview={puzzlePreview}
               onGoToSettings={() => setTab('settings')}
+              activeCampaignDetails={activeCampaignDetails}
             />
           )}
           {tab === 'vouchers' && (
             <VouchersTab business={business} campaigns={campaigns} redemptions={redemptions} showToast={showToast} />
           )}
-          {tab === 'themes' && (
-            <ThemesTab business={business} campaigns={campaigns} showToast={showToast} />
+          {tab === 'hunt' && (
+            <HuntDetailsTab campaigns={campaigns} activeCampaignDetails={activeCampaignDetails} showToast={showToast} />
           )}
           {tab === 'history' && <HistoryTab redemptions={redemptions} />}
           {tab === 'settings' && (
