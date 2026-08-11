@@ -875,12 +875,6 @@ body {
      so this gap needs to clear that 18px with real margin to spare. */
   gap: 24px;
 }
-@keyframes temp-toast-pop {
-  0%   { opacity: 0; transform: translate(-50%, -90%); }
-  15%  { opacity: 1; transform: translate(-50%, -100%); }
-  80%  { opacity: 1; transform: translate(-50%, -100%); }
-  100% { opacity: 0; transform: translate(-50%, -110%); }
-}
 .compass-dist {
   font-family: 'Share Tech Mono', monospace;
   font-size: 48px;
@@ -3025,19 +3019,15 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
   const needleSpringRef = useRef({ pos: 0, vel: 0, ready: false })
   const cardinalRingRef = useRef(null)
   const needleWrapRef = useRef(null)
-  const smoothedDistRef = useRef(null)
-  const toastTimeoutRef = useRef(null)
-  const [tempToast, setTempToast] = useState(null) // { type: 'warmer' | 'colder' }
-  // Second, separate EMA smoothing pass for the DISPLAYED distance number --
-  // distinct from smoothedDistRef above, which is deliberately scoped to
-  // the warmer/colder toast comparison only (different responsiveness
-  // need). alpha=0.35: heavier damping than the toast's 0.5 (single-poll
-  // GPS noise should visibly settle on the number the player is reading),
-  // nowhere near heading's 0.12 (that's tuned for a continuous
+  // EMA smoothing pass for the DISPLAYED distance number, asymmetric per
+  // 2026-08-11 field testing: a real approach (reading drops) applies
+  // instantly with no lag, since arrival fires off raw `distance` and the
+  // on-screen number must not visibly trail it. A reading that rises
+  // (likely GPS noise, not real backward movement) still gets alpha=0.35
+  // EMA damping so single-poll jitter doesn't jump the number around.
+  // Nowhere near heading's 0.12 (that's tuned for a continuous
   // high-frequency sensor, not a 5s-interval GPS poll -- 0.12 here would
-  // make the readout feel laggy against real movement). Starting value,
-  // not calibrated against real walk-test data yet, same caveat as the
-  // temperature bands this replaces.
+  // make the readout feel laggy against real movement).
   const [smoothedDistance, setSmoothedDistance] = useState(null)
   // Set (as a ref, not state -- see the GPS poll effect for why) whenever
   // effectiveTarget changes, so the next poll's smoothing initializes
@@ -3163,32 +3153,22 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
             setDistance(dist)
             setStartDist(prev => prev ?? dist)
 
-            // Second EMA pass, for the on-screen meters readout specifically
-            // -- see smoothedDistance's own declaration above for why this
-            // is separate from smoothedDistRef below (toast-only, different
-            // alpha). distanceResetRef true (fresh mount or just-changed
-            // target) holds the first reading as-is, same "no blending yet"
-            // pattern emaVectorRef uses for heading; otherwise blend as usual.
+            // EMA pass, for the on-screen meters readout specifically.
+            // distanceResetRef true (fresh mount or just-changed target)
+            // holds the first reading as-is, same "no blending yet" pattern
+            // emaVectorRef uses for heading; otherwise blend asymmetrically:
+            // a closer reading applies immediately (no lag against a real
+            // approach, confirmed by field testing arrival firing while the
+            // display still lagged 35-40m behind), a farther reading (GPS
+            // noise, not real backward movement) still gets damped.
             if (distanceResetRef.current) {
               setSmoothedDistance(dist)
               distanceResetRef.current = false
             } else {
-              setSmoothedDistance(prev => prev == null ? dist : prev + 0.35 * (dist - prev))
-            }
-
-            // Warmer/colder toast — compares an EMA of distance, not the raw
-            // per-poll reading, so single-poll GPS jitter doesn't flip the
-            // toast back and forth. Equal 0.5/0.5 weighting: light damping
-            // without adding much lag on top of the already-slow 5s poll.
-            // Deliberately separate from `distance` above — the glow/phrase
-            // tiers and the geofence arrival check keep using the raw value.
-            const prevSmoothed = smoothedDistRef.current
-            const smoothed = prevSmoothed == null ? dist : prevSmoothed * 0.5 + dist * 0.5
-            smoothedDistRef.current = smoothed
-            if (prevSmoothed != null) {
-              const delta = smoothed - prevSmoothed
-              if (delta <= -5) showTempToast('warmer')
-              else if (delta >= 5) showTempToast('colder')
+              setSmoothedDistance(prev => {
+                if (prev == null) return dist
+                return dist <= prev ? dist : prev + 0.35 * (dist - prev)
+              })
             }
 
             // Staleness clock: reset the moment distance genuinely moves.
@@ -3241,7 +3221,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
       if (intervalRef.current) clearInterval(intervalRef.current)
-      clearTimeout(toastTimeoutRef.current)
     }
   }, [effectiveTarget])
 
@@ -3293,12 +3272,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
       if (orientCleanupRef.current) orientCleanupRef.current()
     }
   }, [])
-
-  function showTempToast(type) {
-    clearTimeout(toastTimeoutRef.current)
-    setTempToast({ type })
-    toastTimeoutRef.current = setTimeout(() => setTempToast(null), 2000)
-  }
 
   // Recovery action for the "lost the waypoint signal" banner -- asks the
   // parent to re-derive compassTarget straight from the server (never
@@ -3749,26 +3722,6 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
 
       {/* Distance readout, in metres */}
       <div style={{ textAlign: 'center', marginTop: 24, position: 'relative' }}>
-        {/* Warmer/colder toast — anchored here, not the whole screen */}
-        {tempToast && (
-          <div
-            key={tempToast.type + Date.now()}
-            style={{
-              position: 'absolute', top: -14, left: '50%',
-              padding: '6px 18px', borderRadius: 20,
-              fontFamily: "'Share Tech Mono', monospace", fontSize: 13, fontWeight: 800,
-              letterSpacing: 1, whiteSpace: 'nowrap', zIndex: 10,
-              background: tempToast.type === 'warmer' ? '#F59E0B' : '#2563EB',
-              color: tempToast.type === 'warmer' ? '#000' : '#fff',
-              boxShadow: tempToast.type === 'warmer'
-                ? '0 0 20px rgba(245,158,11,0.5)'
-                : '0 0 20px rgba(37,99,235,0.5)',
-              animation: 'temp-toast-pop 2s ease forwards',
-            }}
-          >
-            {tempToast.type === 'warmer' ? 'Warmer!' : 'Colder...'}
-          </div>
-        )}
         <div style={{
           fontFamily: "'Share Tech Mono', monospace",
           fontSize: 20, fontWeight: 700, marginTop: 10,
