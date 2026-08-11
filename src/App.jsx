@@ -907,21 +907,6 @@ body {
   border-color: #10B981;
   box-shadow: 0 0 30px rgba(16,185,129,0.4), inset 0 0 24px rgba(16,185,129,0.12);
 }
-/* Radar sweep — rotating line inside the compass ring */
-.compass-radar-line {
-  transform-box: view-box;
-  transform-origin: center;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .compass-radar-line {
-    animation: compass-radar-spin 4s linear infinite;
-  }
-}
-@keyframes compass-radar-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
 .compass-journey-bar {
   width: 200px;
   height: 6px;
@@ -3655,8 +3640,8 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
             const lx = 158 + 120 * Math.cos(rad), ly = 158 + 120 * Math.sin(rad)
             return (
               <g key={label}>
-                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#9D5FF5" strokeWidth={3} strokeLinecap="round" />
-                <text x={lx} y={ly} fill="#9D5FF5" fontSize={13} fontWeight={800}
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#44445A" strokeWidth={3} strokeLinecap="round" />
+                <text x={lx} y={ly} fill="#44445A" fontSize={13} fontWeight={800}
                   textAnchor="middle" dominantBaseline="middle"
                   fontFamily="'Share Tech Mono', monospace">{label}</text>
               </g>
@@ -3666,33 +3651,27 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
             const rad = (angle - 90) * Math.PI / 180
             const x1 = 158 + 148 * Math.cos(rad), y1 = 158 + 148 * Math.sin(rad)
             const x2 = 158 + 140 * Math.cos(rad), y2 = 158 + 140 * Math.sin(rad)
-            return <line key={angle} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6B67A0" strokeWidth={2} strokeLinecap="round" opacity={0.6} />
+            return <line key={angle} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#44445A" strokeWidth={2} strokeLinecap="round" opacity={0.6} />
+          })}
+          {/* Fine graduation ticks — every 30deg between the ticks above,
+              purely decorative precision-dial detail added alongside the
+              recolor; same radial line formula, just shorter and dimmer. */}
+          {[15, 30, 60, 75, 105, 120, 150, 165, 195, 210, 240, 255, 285, 300, 330, 345].map(angle => {
+            const rad = (angle - 90) * Math.PI / 180
+            const x1 = 158 + 144 * Math.cos(rad), y1 = 158 + 144 * Math.sin(rad)
+            const x2 = 158 + 140 * Math.cos(rad), y2 = 158 + 140 * Math.sin(rad)
+            return <line key={angle} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#44445A" strokeWidth={1} strokeLinecap="round" opacity={0.35} />
           })}
         </svg>
 
-        {/* Outer ring — reactive green/red heading state via inline styles */}
+        {/* Outer ring — static instrument housing. Fixed neutral gunmetal
+            tone, no longer reactive to headingColor/facing state; only the
+            needle below still carries color and glow. */}
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
-          border: `3px solid ${headingColor || '#7C3AED'}`,
-          boxShadow: isFacingDestination
-            ? '0 0 30px rgba(93,202,165,0.4), inset 0 0 24px rgba(93,202,165,0.12)'
-            : isHeadingAway
-              ? '0 0 30px rgba(226,75,74,0.4), inset 0 0 24px rgba(226,75,74,0.12)'
-              : '0 0 20px rgba(124,58,237,0.3), inset 0 0 24px rgba(124,58,237,0.12)',
-          transition: isHeadingAway ? 'none' : 'border-color 0.4s, box-shadow 0.4s',
+          border: '3px solid #44445A',
+          boxShadow: 'inset 0 0 18px rgba(0,0,0,0.45)',
         }} />
-
-        {/* Radar sweep — rotating line, sonar/spy feel */}
-        <svg viewBox="0 0 280 280" style={{ position: 'absolute', inset: 0, width: 280, height: 280, pointerEvents: 'none' }}>
-          <line
-            className="compass-radar-line"
-            x1={140} y1={140} x2={140} y2={20}
-            stroke={headingColor || '#7C3AED'}
-            strokeWidth={2}
-            strokeLinecap="round"
-            opacity={0.55}
-          />
-        </svg>
 
         {/* Sprocket holes — 11 dark-filled circles via SVG, film-reel perforation motif */}
         <svg style={{ position: 'absolute', inset: 0, width: 280, height: 280 }}>
@@ -3724,10 +3703,12 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
                   <stop offset="100%" stopColor="#F59E0B" />
                 </linearGradient>
               </defs>
-              {/* Diamond-faceted tip tapering into the shaft — gold by default,
-                  green when facing destination, red when heading away */}
+              {/* Slim tapered blade — gold by default, green when facing
+                  destination, red when heading away. Spans 0-100 of the
+                  140-long needle (~2.5x the tail below) so it reads as
+                  the pointing end at a glance. */}
               <polygon
-                points="0,0 7,20 4,70 -4,70 -7,20"
+                points="0,0 5,100 -5,100"
                 style={{
                   fill: headingColor || 'url(#needleTipGrad)',
                   filter: isFacingDestination
@@ -3738,8 +3719,9 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
                   transition: isHeadingAway ? 'none' : 'fill 0.4s, filter 0.4s',
                 }}
               />
-              {/* Base — grey, flares wider near the hub */}
-              <polygon points="4,70 -4,70 -7,140 7,140" fill="#32324A" />
+              {/* Counterweight tail — short, dim, desaturated grey; the
+                  needle's only non-reactive part */}
+              <polygon points="5,100 -5,100 -7,140 7,140" fill="#32324A" opacity={0.55} />
             </svg>
           </div>
         </div>
@@ -3754,7 +3736,7 @@ function CompassScreen({ target, hunt, onArrived, onWaypointReached, onRetryTarg
           zIndex: 3,
         }}>
           <svg width={28} height={28} viewBox="0 0 28 28">
-            <circle cx={14} cy={14} r={13} fill="none" stroke="#9D5FF5" strokeWidth={2} />
+            <circle cx={14} cy={14} r={13} fill="none" stroke="#44445A" strokeWidth={2} />
             <circle cx={14} cy={14} r={10.5} fill="none" stroke="#32324A" strokeWidth={1} opacity={0.6} />
             <circle
               cx={14} cy={14} r={8}
