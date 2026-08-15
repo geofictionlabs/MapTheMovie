@@ -275,7 +275,7 @@ export default function FlightDeck() {
       supabase.from('campaigns').select('id', { count: 'exact', head: true }),
       supabase.from('redemptions').select('id', { count: 'exact', head: true }),
       supabase.from('prize_pools').select('prize_amount_gbp').eq('status', 'active').maybeSingle(),
-      supabase.from('trivia_pool').select('id', { count: 'exact', head: true }),
+      supabase.rpc('get_trivia_pool_count'),
       supabase.from('hunt_sessions').select('id, created_at, businesses(name)').order('created_at', { ascending: false }).limit(20),
       // Per-business "has an active campaign" signal for the businesses tab's
       // three-state status column. Deliberately separate from the campaigns
@@ -296,7 +296,7 @@ export default function FlightDeck() {
 
       // Build alerts
       const alerts = [];
-      const lowTrivia = (trivia.count || 0) < 100;
+      const lowTrivia = (trivia.data || 0) < 100;
       if (lowTrivia) alerts.push({ level: 'amber', message: 'Trivia pool below 100 questions — add more before Comic Con' });
       if (paying.length === 0) alerts.push({ level: 'red', message: 'No paying businesses yet — Stripe integration needed' });
       if ((players.count || 0) < 10) alerts.push({ level: 'amber', message: 'Player count low — push beta testers to complete hunts' });
@@ -312,7 +312,7 @@ export default function FlightDeck() {
         totalRedemptions: redemptions.count|| 0,
         mrr,
         prizePool:  prize.data?.prize_amount_gbp || 0,
-        triviaCount:trivia.count || 0,
+        triviaCount:trivia.data || 0,
         businesses: bizData,
         businessIdsWithActiveCampaign,
         recentActivity: (sessions.data || []).map(s => ({
