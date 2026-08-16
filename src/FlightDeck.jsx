@@ -271,19 +271,37 @@ export default function FlightDeck() {
     setLoading(true);
     Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('businesses').select('id, name, is_active, billing_tier, subscription_active, contact_email, requested_genre, requested_difficulty'),
-      supabase.from('campaigns').select('id', { count: 'exact', head: true }),
-      supabase.from('redemptions').select('id', { count: 'exact', head: true }),
+      supabase.from('businesses').select('id, name, is_active, billing_tier, subscription_active, contact_email, requested_genre, requested_difficulty').eq('is_test_fixture', false),
+      // businesses!inner forces a real join so the is_test_fixture filter
+      // below can reach it -- campaigns has no is_test_fixture column of
+      // its own (migration 087 only added it to businesses). Side effect
+      // worth knowing: campaigns.business_id is nullable (confirmed via
+      // schema), so !inner also drops any campaign with no business_id
+      // from this count, not just test-fixture ones -- no evidence such a
+      // campaign currently exists, but this is a real behavior change
+      // beyond test-fixture exclusion if one ever does.
+      supabase.from('campaigns').select('id, businesses!inner(is_test_fixture)', { count: 'exact', head: true }).eq('businesses.is_test_fixture', false),
+      // redemptions.business_id is NOT NULL (confirmed via schema), so
+      // !inner here has no null-exclusion side effect the way the
+      // campaigns query above does.
+      supabase.from('redemptions').select('id, businesses!inner(is_test_fixture)', { count: 'exact', head: true }).eq('businesses.is_test_fixture', false),
       supabase.from('prize_pools').select('prize_amount_gbp').eq('status', 'active').maybeSingle(),
       supabase.rpc('get_trivia_pool_count'),
+      // NOT filtered: verified hunt_sessions has no FK to businesses or
+      // campaigns at all (only puzzle_id -> puzzles and user_id ->
+      // profiles) -- the businesses(name) embed below has no relationship
+      // PostgREST can resolve, so this query does not actually touch
+      // businesses/campaigns despite how it reads. Pre-existing, appears
+      // separately broken, not something this change is scoped to fix.
       supabase.from('hunt_sessions').select('id, created_at, businesses(name)').order('created_at', { ascending: false }).limit(20),
       // Per-business "has an active campaign" signal for the businesses tab's
       // three-state status column. Deliberately separate from the campaigns
       // count query above (that one stays a bare head-count for totalHunts)
       // and from the `active` variable below (is_live-based, feeds alerts
       // only -- a different concept, not reused here per this session's
-      // investigation).
-      supabase.from('campaigns').select('business_id').eq('status', 'active'),
+      // investigation). Same businesses!inner filter and nullable-
+      // business_id caveat as the campaigns count query above.
+      supabase.from('campaigns').select('business_id, businesses!inner(is_test_fixture)').eq('status', 'active').eq('businesses.is_test_fixture', false),
     ]).then(([players, businesses, hunts, redemptions, prize, trivia, sessions, activeCampaigns]) => {
       const bizData = businesses.data || [];
       const paying  = bizData.filter(b => b.billing_tier && b.billing_tier !== 'free');

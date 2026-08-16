@@ -216,6 +216,16 @@ Supabase access token.** A service-role key bypasses RLS entirely and would undo
 the security posture built across several sessions. If blocked, say what is
 blocking and ask for a query to be run instead.
 
+STAGING EXCEPTION (added 15 Aug 2026): The rule above applies fully to
+PRODUCTION (hnayygbrhrxyyfucgrus). It does NOT apply to the staging
+project (dlypoersysiovufzaigv): staging holds schema only, zero real
+user data, and was built specifically as a safe environment for this
+kind of work. A STAGING_DB_URL value may be read and used freely for
+staging — querying, running supabase test db, writing and executing
+pgTAP tests. This exception is scoped to staging by project ref; if a
+new staging project is ever created, update this line to match.
+Production access rules are completely unchanged by this exception.
+
 **Type long content directly into the reply body.** File contents, SQL, and diffs
 must be typed out in the reply, never referenced from a tool result — the
 copy-paste relay truncates and corrupts them, and has already done so repeatedly.
